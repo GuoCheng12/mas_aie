@@ -81,12 +81,12 @@ def main(
         "Assess the likely AIE mechanism for this molecule.",
         help="User task description.",
     ),
-    execution_profile: str = typer.Option(
-        "local-dev",
+    execution_profile: Optional[str] = typer.Option(
+        None,
         help="Execution profile: local-dev for local mock validation, linux-prod for Linux deployment.",
     ),
-    tool_backend: str = typer.Option(
-        "mock",
+    tool_backend: Optional[str] = typer.Option(
+        None,
         help="Tool backend: mock for current first-stage runs, real for future Linux wrappers.",
     ),
     prompts_dir: Optional[Path] = typer.Option(

@@ -211,4 +211,33 @@ python3 run_case.py \
   --tool-backend mock
 ```
 
+为了避免每次手动 `export`，仓库里已经提供了 Linux 环境脚本：
+
+1. 当前 shell 生效：
+
+```bash
+source env/linux_mock.sh
+python run_case.py --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
+```
+
+2. 直接通过包装脚本运行：
+
+```bash
+bash scripts/run_linux_mock.sh --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
+```
+
+3. 如果希望登录后自动带上这些环境变量，把下面这一行加入 `~/.bashrc`：
+
+```bash
+source /datasets/workspace/mas_aie/env/linux_mock.sh
+```
+
+4. 如果你想保留自己的路径配置而不改仓库文件：
+
+```bash
+cp env/linux_mock.local.example.sh env/linux_mock.local.sh
+```
+
+然后修改 `env/linux_mock.local.sh` 即可。这个文件已加入 `.gitignore`，不会被提交。
+
 未来接入真实 Linux wrapper 后，保持同一 graph / state / prompt / memory 结构，只需把 `tool_backend` 切到 `real` 并配置真实二进制路径。
