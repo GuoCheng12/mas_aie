@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 from aie_mas.agents.planner import PlannerAgent
 from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
@@ -202,6 +202,22 @@ def build_graph(config: Optional[AieMasConfig] = None):
     return AieMasWorkflow(config).build()
 
 
+def normalize_graph_result(result: Any) -> AieMasState:
+    if isinstance(result, AieMasState):
+        return result
+    if isinstance(result, dict):
+        return AieMasState.model_validate(result)
+    raise TypeError(f"Unsupported graph result type: {type(result)!r}")
+
+
+def invoke_graph(graph: Any, initial_state: AieMasState) -> AieMasState:
+    return normalize_graph_result(graph.invoke(initial_state))
+
+
 def get_runner(config: Optional[AieMasConfig] = None) -> Callable[[AieMasState], AieMasState]:
     graph = build_graph(config)
-    return graph.invoke
+
+    def _runner(initial_state: AieMasState) -> AieMasState:
+        return invoke_graph(graph, initial_state)
+
+    return _runner

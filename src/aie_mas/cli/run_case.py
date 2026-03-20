@@ -7,7 +7,7 @@ from typing import Optional
 import typer
 
 from aie_mas.config import AieMasConfig, ExecutionProfile, ToolBackend
-from aie_mas.graph.builder import build_graph
+from aie_mas.graph.builder import build_graph, invoke_graph
 from aie_mas.graph.state import AieMasState
 
 app = typer.Typer(add_completion=False)
@@ -71,7 +71,7 @@ def run_case_workflow(
     )
     graph = build_graph(config)
     initial_state = AieMasState(user_query=user_query, smiles=smiles)
-    return graph.invoke(initial_state)
+    return invoke_graph(graph, initial_state)
 
 
 @app.command()
@@ -140,7 +140,7 @@ def main(
         external_search_binary_path=external_search_binary_path,
     )
     graph = build_graph(config)
-    state = graph.invoke(AieMasState(user_query=user_query, smiles=smiles))
+    state = invoke_graph(graph, AieMasState(user_query=user_query, smiles=smiles))
     payload = {
         "runtime_context": config.runtime_context(),
         "final_answer": state.final_answer,
