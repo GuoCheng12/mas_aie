@@ -1,0 +1,52 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aie-mas"
+version = "0.1.0"
+description = "A LangGraph-based multi-agent system for AIE mechanism reasoning."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "OpenAI Codex Bootstrap" }
+]
+dependencies = [
+  "pydantic>=2.7.0",
+  "pyyaml>=6.0.1",
+  "typer>=0.12.3",
+  "rich>=13.7.1"
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.2.0",
+  "pytest-cov>=5.0.0",
+  "ruff>=0.6.0"
+]
+linux-runtime = [
+  "langgraph>=0.2.0",
+  "langchain>=0.3.0",
+  "langchain-core>=0.3.0"
+]
+
+[project.scripts]
+aie-mas-run-case = "aie_mas.cli.run_case:cli"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = []
