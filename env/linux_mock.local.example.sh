@@ -8,6 +8,9 @@ export AIE_MAS_MEMORY_DIR="${AIE_MAS_PROJECT_ROOT}/var/data/memory"
 export AIE_MAS_LOG_DIR="${AIE_MAS_PROJECT_ROOT}/var/log"
 export AIE_MAS_RUNTIME_DIR="${AIE_MAS_PROJECT_ROOT}/var/runtime"
 export AIE_MAS_TOOLS_WORK_DIR="${AIE_MAS_PROJECT_ROOT}/var/runtime/tools"
+export AIE_MAS_PLANNER_BACKEND="mock"
+export AIE_MAS_OPENAI_BASE_URL="http://34.13.73.248:3888/v1"
+export AIE_MAS_OPENAI_MODEL="gpt-4.1-mini"
 
 # Future Linux-only tool wrappers can be configured here.
 # export AIE_MAS_ATB_BIN="/path/to/atb"

@@ -6,7 +6,7 @@ from typing import Optional
 
 import typer
 
-from aie_mas.config import AieMasConfig, ExecutionProfile, ToolBackend
+from aie_mas.config import AieMasConfig, ExecutionProfile, PlannerBackend, ToolBackend
 from aie_mas.graph.builder import build_graph, invoke_graph
 from aie_mas.graph.state import AieMasState
 
@@ -16,6 +16,12 @@ app = typer.Typer(add_completion=False)
 def build_runtime_config(
     execution_profile: Optional[ExecutionProfile] = None,
     tool_backend: Optional[ToolBackend] = None,
+    planner_backend: Optional[PlannerBackend] = None,
+    planner_base_url: Optional[str] = None,
+    planner_model: Optional[str] = None,
+    planner_api_key: Optional[str] = None,
+    planner_temperature: Optional[float] = None,
+    planner_timeout_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -29,6 +35,12 @@ def build_runtime_config(
     return AieMasConfig.from_env(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        planner_backend=planner_backend,
+        planner_base_url=planner_base_url,
+        planner_model=planner_model,
+        planner_api_key=planner_api_key,
+        planner_temperature=planner_temperature,
+        planner_timeout_seconds=planner_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -46,6 +58,12 @@ def run_case_workflow(
     user_query: str,
     execution_profile: Optional[ExecutionProfile] = None,
     tool_backend: Optional[ToolBackend] = None,
+    planner_backend: Optional[PlannerBackend] = None,
+    planner_base_url: Optional[str] = None,
+    planner_model: Optional[str] = None,
+    planner_api_key: Optional[str] = None,
+    planner_temperature: Optional[float] = None,
+    planner_timeout_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -59,6 +77,12 @@ def run_case_workflow(
     config = build_runtime_config(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        planner_backend=planner_backend,
+        planner_base_url=planner_base_url,
+        planner_model=planner_model,
+        planner_api_key=planner_api_key,
+        planner_temperature=planner_temperature,
+        planner_timeout_seconds=planner_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -88,6 +112,30 @@ def main(
     tool_backend: Optional[str] = typer.Option(
         None,
         help="Tool backend: mock for current first-stage runs, real for future Linux wrappers.",
+    ),
+    planner_backend: Optional[str] = typer.Option(
+        None,
+        help="Planner backend: mock or openai_sdk.",
+    ),
+    planner_base_url: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible planner base URL.",
+    ),
+    planner_model: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible planner model name.",
+    ),
+    planner_api_key: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible planner API key. Optional for proxies that accept a placeholder.",
+    ),
+    planner_temperature: Optional[float] = typer.Option(
+        None,
+        help="Planner LLM temperature.",
+    ),
+    planner_timeout_seconds: Optional[float] = typer.Option(
+        None,
+        help="Planner LLM timeout in seconds.",
     ),
     prompts_dir: Optional[Path] = typer.Option(
         None,
@@ -129,6 +177,12 @@ def main(
     config = build_runtime_config(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        planner_backend=planner_backend,
+        planner_base_url=planner_base_url,
+        planner_model=planner_model,
+        planner_api_key=planner_api_key,
+        planner_temperature=planner_temperature,
+        planner_timeout_seconds=planner_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,

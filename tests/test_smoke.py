@@ -72,6 +72,7 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
     runner = CliRunner()
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
     monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "mock")
     monkeypatch.setenv("AIE_MAS_PROMPTS_DIR", str(PROMPTS_DIR))
     monkeypatch.setenv("AIE_MAS_DATA_DIR", str(tmp_path / "data_env"))
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", str(tmp_path / "memory_env"))

@@ -136,6 +136,7 @@ User Query
 
 - `execution_profile=local-dev | linux-prod`
 - `tool_backend=mock | real`
+- `planner_backend=mock | openai_sdk`
 
 说明：
 
@@ -156,6 +157,15 @@ User Query
 - `atb_binary_path` / `AIE_MAS_ATB_BIN`
 - `amesp_binary_path` / `AIE_MAS_AMESP_BIN`
 - `external_search_binary_path` / `AIE_MAS_EXTERNAL_SEARCH_BIN`
+
+Planner LLM 配置也集中通过环境变量或 CLI 参数提供：
+
+- `planner_backend` / `AIE_MAS_PLANNER_BACKEND`
+- `planner_base_url` / `AIE_MAS_OPENAI_BASE_URL`
+- `planner_model` / `AIE_MAS_OPENAI_MODEL`
+- `planner_api_key` / `AIE_MAS_OPENAI_API_KEY`
+- `planner_temperature` / `AIE_MAS_OPENAI_TEMPERATURE`
+- `planner_timeout_seconds` / `AIE_MAS_OPENAI_TIMEOUT`
 
 如果不显式指定，默认会落在项目根目录下的跨平台相对路径：
 
@@ -208,6 +218,7 @@ aie-mas-run-case --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
 python3 run_case.py \
   --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1' \
   --execution-profile linux-prod \
+  --planner-backend mock \
   --tool-backend mock
 ```
 
@@ -225,6 +236,34 @@ python run_case.py --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
 ```bash
 bash scripts/run_linux_mock.sh --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
 ```
+
+如果要启用真实 Planner LLM，同时保留其他 agent 为 mock：
+
+1. 复制并填写本地覆盖文件：
+
+```bash
+cp env/linux_llm.local.example.sh env/linux_llm.local.sh
+```
+
+2. 当前 shell 生效：
+
+```bash
+source env/linux_llm.sh
+python run_case.py --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
+```
+
+3. 或直接运行包装脚本：
+
+```bash
+bash scripts/run_linux_llm.sh --smiles 'C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1'
+```
+
+默认 OpenAI-compatible 配置：
+
+- `base_url=http://34.13.73.248:3888/v1`
+- `model=gpt-4.1-mini`
+
+如果你的中转站要求 key，再在 `env/linux_llm.local.sh` 里补 `AIE_MAS_OPENAI_API_KEY`。
 
 3. 如果希望登录后自动带上这些环境变量，把下面这一行加入 `~/.bashrc`：
 

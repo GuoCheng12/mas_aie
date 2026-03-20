@@ -6,6 +6,7 @@ from pydantic import BaseModel, Field
 
 PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize"]
 PendingAgent = Literal["macro", "microscopic", "verifier"]
+MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 
 
 class HypothesisEntry(BaseModel):
@@ -44,6 +45,13 @@ class WorkingMemoryEntry(BaseModel):
     main_gap: str
     conflict_status: str
     next_action: str
+
+
+class MicroscopicTaskSpec(BaseModel):
+    mode: MicroscopicTaskMode
+    task_label: str
+    objective: str
+    target_property: Optional[str] = None
 
 
 class CaseMemoryEntry(BaseModel):
@@ -98,6 +106,8 @@ class AieMasState(BaseModel):
     latest_evidence_summary: Optional[str] = None
     latest_main_gap: Optional[str] = None
     latest_conflict_status: Optional[str] = None
+    next_microscopic_task: Optional[MicroscopicTaskSpec] = None
+    last_microscopic_task: Optional[MicroscopicTaskSpec] = None
 
     case_memory_hits: list[CaseMemoryEntry] = Field(default_factory=list)
     strategy_memory_hits: list[StrategyMemoryEntry] = Field(default_factory=list)

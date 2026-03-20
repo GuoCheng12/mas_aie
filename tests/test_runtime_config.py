@@ -13,6 +13,9 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
     monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "openai_sdk")
+    monkeypatch.setenv("AIE_MAS_OPENAI_BASE_URL", "http://34.13.73.248:3888/v1")
+    monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
     monkeypatch.setenv("AIE_MAS_LOG_DIR", "runtime_logs")
@@ -23,6 +26,9 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
 
     assert config.execution_profile == "linux-prod"
     assert config.tool_backend == "mock"
+    assert config.planner_backend == "openai_sdk"
+    assert config.planner_base_url == "http://34.13.73.248:3888/v1"
+    assert config.planner_model == "gpt-4.1-mini"
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
     assert config.log_dir == (tmp_path / "runtime_logs").resolve()
@@ -57,3 +63,11 @@ def test_normalize_graph_result_accepts_langgraph_dict_output() -> None:
     assert isinstance(normalized, AieMasState)
     assert normalized.final_answer == {"current_hypothesis": "mock"}
     assert normalized.state_snapshot == {"ok": True}
+
+
+def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> None:
+    local_config = AieMasConfig(project_root=tmp_path, execution_profile="local-dev")
+    linux_config = AieMasConfig(project_root=tmp_path, execution_profile="linux-prod")
+
+    assert local_config.planner_backend == "mock"
+    assert linux_config.planner_backend == "openai_sdk"

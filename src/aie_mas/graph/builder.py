@@ -7,7 +7,7 @@ from aie_mas.agents.planner import PlannerAgent
 from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
 from aie_mas.compat.langgraph import END, StateGraph
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import AieMasState
+from aie_mas.graph.state import AieMasState, MicroscopicTaskSpec, PlannerDecision
 from aie_mas.memory.long_term import LongTermMemoryStore
 from aie_mas.memory.working import WorkingMemoryManager
 from aie_mas.tools.factory import build_toolset
@@ -20,12 +20,13 @@ class AieMasWorkflow:
         self.config.ensure_runtime_dirs()
         self.config.assert_supported_runtime()
         self.prompts = PromptRepository(self.config.prompts_dir)
-        self.planner = PlannerAgent(self.prompts, verifier_threshold=self.config.verifier_threshold)
+        self.planner = PlannerAgent(self.prompts, config=self.config)
         toolset = build_toolset(self.config)
         self.macro_agent = MacroAgent(tool=toolset.macro_tool)
         self.microscopic_agent = MicroscopicAgent(
             s0_tool=toolset.s0_tool,
             s1_tool=toolset.s1_tool,
+            targeted_tool=toolset.targeted_micro_tool,
         )
         self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool)
         self.working_memory = WorkingMemoryManager()
@@ -77,7 +78,10 @@ class AieMasWorkflow:
     def ingest_user_query(self, state: AieMasState) -> AieMasState:
         if state.case_id is None:
             state.case_id = uuid.uuid4().hex[:12]
-        state.case_memory_hits = self.long_term_memory.load_case_hits(state.smiles)
+        state.case_memory_hits = self.long_term_memory.load_case_hits(
+            state.smiles,
+            exclude_case_ids={state.case_id},
+        )
         state.strategy_memory_hits = self.long_term_memory.load_strategy_hits(state.current_hypothesis)
         state.reliability_memory_hits = self.long_term_memory.load_reliability_hits()
         state.long_term_memory_path = str(self.long_term_memory.memory_dir)
@@ -96,6 +100,12 @@ class AieMasWorkflow:
         state.latest_evidence_summary = "Initial planning used only the user query and SMILES."
         state.latest_main_gap = "Internal macro and microscopic evidence are both missing."
         state.latest_conflict_status = "none"
+        state.next_microscopic_task = MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Run fixed first-stage S0/S1 optimization.",
+            target_property="baseline excited-state geometry",
+        )
         return state
 
     def run_macro(self, state: AieMasState) -> AieMasState:
@@ -109,13 +119,22 @@ class AieMasWorkflow:
         return state
 
     def run_microscopic(self, state: AieMasState) -> AieMasState:
+        task_spec = state.next_microscopic_task or MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="fallback-baseline",
+            objective="Run fixed S0/S1 optimization.",
+            target_property="baseline excited-state geometry",
+        )
         report = self.microscopic_agent.run(
             smiles=state.smiles,
-            task_received="Run fixed first-stage S0/S1 optimization and return templated results.",
+            task_received=task_spec.objective,
+            task_spec=task_spec,
         )
         state.microscopic_reports.append(report)
         state.active_round_reports.append(report)
         state.pending_agents = [agent for agent in state.pending_agents if agent != "microscopic"]
+        state.last_microscopic_task = task_spec
+        state.next_microscopic_task = None
         return state
 
     def planner_diagnosis(self, state: AieMasState) -> AieMasState:
@@ -141,7 +160,8 @@ class AieMasWorkflow:
         return self.working_memory.append_round_summary(state)
 
     def update_long_term_memory(self, state: AieMasState) -> AieMasState:
-        self.long_term_memory.write_case_entry(state)
+        if state.finalize:
+            self.long_term_memory.write_case_entry(state)
         return state
 
     def final_output(self, state: AieMasState) -> AieMasState:
@@ -193,9 +213,27 @@ class AieMasWorkflow:
         state.latest_evidence_summary = str(result["evidence_summary"])
         state.latest_main_gap = str(result["main_gap"])
         state.latest_conflict_status = str(result["conflict_status"])
+        state.next_microscopic_task = self._build_next_microscopic_task(state, decision)
         state.planner_diagnosis_history.append(decision.diagnosis)  # type: ignore[union-attr]
         state.planner_action_history.append(decision.action)  # type: ignore[union-attr]
         return state
+
+    def _build_next_microscopic_task(
+        self,
+        state: AieMasState,
+        decision: PlannerDecision,
+    ) -> MicroscopicTaskSpec | None:
+        if decision.action != "microscopic":
+            return None
+        return MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label=f"round-{state.round_idx + 1}-targeted-micro",
+            objective=(
+                f"Investigate the current microscopic gap for hypothesis "
+                f"'{decision.current_hypothesis}': {state.latest_main_gap or 'refine the unresolved signal.'}"
+            ),
+            target_property=state.latest_conflict_status or "micro_consistency",
+        )
 
 
 def build_graph(config: Optional[AieMasConfig] = None):

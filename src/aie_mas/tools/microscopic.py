@@ -39,3 +39,24 @@ class MockS1OptimizationTool:
             "geometry_change_proxy": geometry_change_proxy,
             "oscillator_strength_proxy": oscillator_strength_proxy,
         }
+
+
+class MockTargetedMicroscopicTool:
+    name = "mock_targeted_microscopic_followup"
+
+    def invoke(self, smiles: str, objective: str, target_property: str | None = None) -> dict[str, Any]:
+        features = extract_smiles_features(smiles)
+        consistency_proxy = round(
+            min(0.97, 0.35 + features.conjugation_proxy * 0.03 + features.aromatic_atom_count * 0.01),
+            4,
+        )
+        constraint_sensitivity = round(
+            max(0.08, features.flexibility_proxy / max(features.conjugation_proxy + 1.0, 1.0)),
+            4,
+        )
+        return {
+            "objective": objective,
+            "target_property": target_property or "follow_up_consistency",
+            "consistency_proxy": consistency_proxy,
+            "constraint_sensitivity": constraint_sensitivity,
+        }

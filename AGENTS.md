@@ -67,10 +67,15 @@ Microscopic、Macro、Verifier 都不应承担推理职责，它们只负责：
 - 请阅读并遵守 `RUNTIME_ENV.md`
 - 不要将本机路径或本机环境假设硬编码进实现
 
-
-### 6. Planner 的输出必须包含两部分
+### 7. Planner 的输出必须包含两部分
 - `diagnosis`
 - `action`
+
+### 8. LLM runtime
+- 默认使用 OpenAI SDK 兼容方式接入模型
+- base_url、model、api_key 必须可配置
+- 不要将官方默认 base_url 硬编码
+- 当前项目可能通过兼容 OpenAI API 的中转站运行
 
 ## 四、Memory 规则
 

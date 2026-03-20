@@ -5,14 +5,13 @@ AIE_MAS_PROJECT_ROOT_DEFAULT="$(cd -- "${AIE_MAS_ENV_DIR}/.." && pwd)"
 
 export AIE_MAS_PROJECT_ROOT="${AIE_MAS_PROJECT_ROOT:-${AIE_MAS_PROJECT_ROOT_DEFAULT}}"
 
-if [ -f "${AIE_MAS_ENV_DIR}/linux_mock.local.sh" ]; then
-  # User-specific overrides live here and are not tracked by Git.
-  . "${AIE_MAS_ENV_DIR}/linux_mock.local.sh"
+if [ -f "${AIE_MAS_ENV_DIR}/linux_llm.local.sh" ]; then
+  . "${AIE_MAS_ENV_DIR}/linux_llm.local.sh"
 fi
 
 export AIE_MAS_EXECUTION_PROFILE="${AIE_MAS_EXECUTION_PROFILE:-linux-prod}"
 export AIE_MAS_TOOL_BACKEND="${AIE_MAS_TOOL_BACKEND:-mock}"
-export AIE_MAS_PLANNER_BACKEND="${AIE_MAS_PLANNER_BACKEND:-mock}"
+export AIE_MAS_PLANNER_BACKEND="${AIE_MAS_PLANNER_BACKEND:-openai_sdk}"
 export AIE_MAS_OPENAI_BASE_URL="${AIE_MAS_OPENAI_BASE_URL:-http://34.13.73.248:3888/v1}"
 export AIE_MAS_OPENAI_MODEL="${AIE_MAS_OPENAI_MODEL:-gpt-4.1-mini}"
 export AIE_MAS_PROMPTS_DIR="${AIE_MAS_PROMPTS_DIR:-${AIE_MAS_PROJECT_ROOT}/src/aie_mas/prompts}"

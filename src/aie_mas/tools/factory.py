@@ -4,7 +4,11 @@ from dataclasses import dataclass
 
 from aie_mas.config import AieMasConfig
 from aie_mas.tools.macro import MockMacroStructureTool
-from aie_mas.tools.microscopic import MockS0OptimizationTool, MockS1OptimizationTool
+from aie_mas.tools.microscopic import (
+    MockS0OptimizationTool,
+    MockS1OptimizationTool,
+    MockTargetedMicroscopicTool,
+)
 from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
 
@@ -13,6 +17,7 @@ class ToolSet:
     macro_tool: MockMacroStructureTool
     s0_tool: MockS0OptimizationTool
     s1_tool: MockS1OptimizationTool
+    targeted_micro_tool: MockTargetedMicroscopicTool
     verifier_tool: MockVerifierEvidenceTool
 
 
@@ -28,5 +33,6 @@ def build_toolset(config: AieMasConfig) -> ToolSet:
         macro_tool=MockMacroStructureTool(),
         s0_tool=MockS0OptimizationTool(),
         s1_tool=MockS1OptimizationTool(),
+        targeted_micro_tool=MockTargetedMicroscopicTool(),
         verifier_tool=MockVerifierEvidenceTool(),
     )

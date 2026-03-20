@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 
 ExecutionProfile = Literal["local-dev", "linux-prod"]
 ToolBackend = Literal["mock", "real"]
+PlannerBackend = Literal["mock", "openai_sdk"]
 
 
 def _default_project_root() -> Path:
@@ -18,6 +19,12 @@ class AieMasConfig(BaseModel):
     project_root: Path = Field(default_factory=_default_project_root)
     execution_profile: ExecutionProfile = "local-dev"
     tool_backend: ToolBackend = "mock"
+    planner_backend: Optional[PlannerBackend] = None
+    planner_base_url: str = "http://34.13.73.248:3888/v1"
+    planner_model: str = "gpt-4.1-mini"
+    planner_api_key: Optional[str] = None
+    planner_temperature: float = 0.0
+    planner_timeout_seconds: float = 120.0
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
     memory_dir: Optional[Path] = None
@@ -38,6 +45,10 @@ class AieMasConfig(BaseModel):
             "project_root": "AIE_MAS_PROJECT_ROOT",
             "execution_profile": "AIE_MAS_EXECUTION_PROFILE",
             "tool_backend": "AIE_MAS_TOOL_BACKEND",
+            "planner_backend": "AIE_MAS_PLANNER_BACKEND",
+            "planner_base_url": "AIE_MAS_OPENAI_BASE_URL",
+            "planner_model": "AIE_MAS_OPENAI_MODEL",
+            "planner_api_key": "AIE_MAS_OPENAI_API_KEY",
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
             "data_dir": "AIE_MAS_DATA_DIR",
             "memory_dir": "AIE_MAS_MEMORY_DIR",
@@ -70,6 +81,10 @@ class AieMasConfig(BaseModel):
             env_values["verifier_threshold"] = float(os.getenv("AIE_MAS_VERIFIER_THRESHOLD", "0.72"))
         if os.getenv("AIE_MAS_MAX_ROUNDS"):
             env_values["max_rounds"] = int(os.getenv("AIE_MAS_MAX_ROUNDS", "4"))
+        if os.getenv("AIE_MAS_OPENAI_TEMPERATURE"):
+            env_values["planner_temperature"] = float(os.getenv("AIE_MAS_OPENAI_TEMPERATURE", "0.0"))
+        if os.getenv("AIE_MAS_OPENAI_TIMEOUT"):
+            env_values["planner_timeout_seconds"] = float(os.getenv("AIE_MAS_OPENAI_TIMEOUT", "120.0"))
 
         for key, value in overrides.items():
             if value is not None:
@@ -79,6 +94,9 @@ class AieMasConfig(BaseModel):
 
     def model_post_init(self, __context: object) -> None:
         self.project_root = self.project_root.expanduser().resolve()
+
+        if self.planner_backend is None:
+            self.planner_backend = "mock" if self.execution_profile == "local-dev" else "openai_sdk"
 
         if self.prompts_dir is None:
             self.prompts_dir = Path("src") / "aie_mas" / "prompts"
@@ -121,6 +139,10 @@ class AieMasConfig(BaseModel):
         return {
             "execution_profile": self.execution_profile,
             "tool_backend": self.tool_backend,
+            "planner_backend": self.planner_backend,
+            "planner_base_url": self.planner_base_url,
+            "planner_model": self.planner_model,
+            "planner_api_key_configured": bool(self.planner_api_key),
             "project_root": str(self.project_root),
             "prompts_dir": str(self.prompts_dir),
             "data_dir": str(self.data_dir),
@@ -135,6 +157,8 @@ class AieMasConfig(BaseModel):
                 if self.external_search_binary_path
                 else None
             ),
+            "planner_temperature": self.planner_temperature,
+            "planner_timeout_seconds": self.planner_timeout_seconds,
             "verifier_threshold": self.verifier_threshold,
             "max_rounds": self.max_rounds,
         }

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 from aie_mas.graph.state import (
     AieMasState,
@@ -31,10 +31,21 @@ class LongTermMemoryStore:
             if not path.exists():
                 path.write_text("[]\n", encoding="utf-8")
 
-    def load_case_hits(self, smiles: str) -> list[CaseMemoryEntry]:
+    def load_case_hits(
+        self,
+        smiles: str,
+        exclude_case_ids: Iterable[str] | None = None,
+    ) -> list[CaseMemoryEntry]:
         entries = self._read_entries(self._case_path, CaseMemoryEntry)
         case_scaffold = scaffold_proxy(smiles)
-        return [entry for entry in entries if entry.smiles == smiles or entry.scaffold == case_scaffold][:3]
+        blocked_case_ids = {case_id for case_id in (exclude_case_ids or []) if case_id}
+        filtered = [
+            entry
+            for entry in entries
+            if entry.case_id not in blocked_case_ids
+            and (entry.smiles == smiles or entry.scaffold == case_scaffold)
+        ]
+        return filtered[:3]
 
     def load_strategy_hits(self, current_hypothesis: str | None = None) -> list[StrategyMemoryEntry]:
         entries = self._read_entries(self._strategy_path, StrategyMemoryEntry)
