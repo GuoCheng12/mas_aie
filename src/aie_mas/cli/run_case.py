@@ -235,8 +235,40 @@ def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, obj
         "action": final_answer.get("action"),
         "finalize": state.finalize,
         "working_memory_rounds": len(state.working_memory),
+        "rounds": build_rounds_payload(state),
         "report_dir": str(report_dir),
     }
+
+
+def build_rounds_payload(state: AieMasState) -> list[dict[str, object]]:
+    rounds: list[dict[str, object]] = []
+    for entry in state.working_memory:
+        rounds.append(
+            {
+                "round_id": entry.round_id,
+                "current_hypothesis": entry.current_hypothesis,
+                "confidence": entry.confidence,
+                "action_taken": entry.action_taken,
+                "planner": {
+                    "diagnosis_summary": entry.diagnosis_summary,
+                    "selected_next_action": entry.next_action,
+                    "task_instruction": entry.planner_task_instruction,
+                    "agent_task_instructions": entry.planner_agent_task_instructions,
+                },
+                "working_memory": {
+                    "evidence_summary": entry.evidence_summary,
+                    "main_gap": entry.main_gap,
+                    "conflict_status": entry.conflict_status,
+                    "information_gain_assessment": entry.information_gain_assessment,
+                    "gap_trend": entry.gap_trend,
+                    "stagnation_detected": entry.stagnation_detected,
+                    "agent_reports": [
+                        agent_entry.model_dump(mode="json") for agent_entry in entry.agent_reports
+                    ],
+                },
+            }
+        )
+    return rounds
 
 
 def build_full_state_payload(
@@ -287,6 +319,8 @@ def render_terminal_summary(
         f"confidence: {summary['confidence']}",
         f"action: {summary['action']}",
         f"finalize: {summary['finalize']}",
+        f"rounds: {summary['working_memory_rounds']}",
+        f"report_dir: {summary['report_dir']}",
         f"summary_file: {report_paths['summary_path']}",
         f"full_state_file: {report_paths['full_state_path']}",
     ]

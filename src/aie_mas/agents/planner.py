@@ -19,6 +19,8 @@ class PlannerInitialResponse(BaseModel):
     confidence: float
     diagnosis: str
     action: str = "macro_and_microscopic"
+    task_instruction: str = ""
+    agent_task_instructions: dict[str, str] = Field(default_factory=dict)
 
 
 class PlannerRoundResponse(BaseModel):
@@ -28,12 +30,62 @@ class PlannerRoundResponse(BaseModel):
     confidence: float
     needs_verifier: bool = False
     finalize: bool = False
+    task_instruction: str = ""
+    agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     evidence_summary: str = "No additional evidence summary was provided."
     main_gap: str = "No main gap was provided."
     conflict_status: str = "none"
     information_gain_assessment: str = "Information gain has not been assessed."
     gap_trend: str = "Gap trend has not been assessed."
     stagnation_detected: bool = False
+
+
+def _normalize_agent_task_instructions(raw_mapping: dict[str, str]) -> dict[str, str]:
+    allowed_agents = {"macro", "microscopic", "verifier"}
+    return {
+        agent_name: instruction.strip()
+        for agent_name, instruction in raw_mapping.items()
+        if agent_name in allowed_agents and instruction.strip()
+    }
+
+
+def _default_initial_agent_task_instructions(current_hypothesis: str) -> dict[str, str]:
+    return {
+        "macro": (
+            f"Assess macro-level structural evidence relevant to the current working hypothesis "
+            f"'{current_hypothesis}'. Summarize low-cost structural indicators only."
+        ),
+        "microscopic": (
+            f"Run the first-round fixed S0/S1 microscopic proxy task for the current working hypothesis "
+            f"'{current_hypothesis}'. Report local excited-state proxy results only."
+        ),
+    }
+
+
+def _default_follow_up_task_instruction(
+    action: str,
+    current_hypothesis: str,
+    payload: dict[str, Any],
+) -> str | None:
+    if action == "macro":
+        return (
+            f"Collect additional macro-level structural evidence for the current working hypothesis "
+            f"'{current_hypothesis}'. Focus on the current gap: "
+            f"{payload.get('main_gap') or 'clarify the unresolved macro signal.'}"
+        )
+    if action == "microscopic":
+        return (
+            f"Collect additional microscopic evidence for the current working hypothesis "
+            f"'{current_hypothesis}'. Focus on the current gap: "
+            f"{payload.get('main_gap') or 'refine the unresolved microscopic signal.'}"
+        )
+    if action == "verifier":
+        return (
+            f"Retrieve external supervision evidence for the current working hypothesis "
+            f"'{current_hypothesis}' and clarify the current gap: "
+            f"{payload.get('main_gap') or 'check whether the internal signal is externally consistent.'}"
+        )
+    return None
 
 
 class PlannerBackend(Protocol):
@@ -92,6 +144,7 @@ class MockPlannerBackend:
             ]
         current_hypothesis = hypothesis_pool[0].name
         confidence = hypothesis_pool[0].confidence or 0.4
+        agent_task_instructions = _default_initial_agent_task_instructions(current_hypothesis)
         diagnosis = (
             f"Current task: assess the likely emission mechanism for SMILES {payload['smiles']}. "
             f"The leading working hypothesis is {current_hypothesis}. "
@@ -109,6 +162,10 @@ class MockPlannerBackend:
                 needs_verifier=False,
                 finalize=False,
                 planned_agents=["macro", "microscopic"],
+                task_instruction=(
+                    "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis."
+                ),
+                agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
             ),
         }
 
@@ -118,6 +175,16 @@ class MockPlannerBackend:
         microscopic_report = payload["latest_microscopic_report"] or {}
         macro_results = macro_report.get("structured_results", {})
         micro_results = microscopic_report.get("structured_results", {})
+        macro_task_understanding = str(macro_report.get("task_understanding") or "").strip()
+        macro_execution_plan = str(macro_report.get("execution_plan") or "").strip()
+        macro_result_summary = str(macro_report.get("result_summary") or "").strip()
+        micro_task_understanding = str(microscopic_report.get("task_understanding") or "").strip()
+        micro_execution_plan = str(microscopic_report.get("execution_plan") or "").strip()
+        micro_result_summary = str(microscopic_report.get("result_summary") or "").strip()
+        local_uncertainty_bits = [
+            str(macro_report.get("remaining_local_uncertainty") or "").strip(),
+            str(microscopic_report.get("remaining_local_uncertainty") or "").strip(),
+        ]
 
         confidence = float(payload["current_confidence"] or 0.4)
         evidence_bits: list[str] = []
@@ -135,6 +202,12 @@ class MockPlannerBackend:
                 support_score += 0.11
             if macro_results.get("flexibility_proxy", 0.0) >= 2.0:
                 support_score += 0.08
+            if macro_task_understanding:
+                evidence_bits.append(f"macro task understanding: {macro_task_understanding}")
+            if macro_execution_plan:
+                evidence_bits.append(f"macro execution plan: {macro_execution_plan}")
+            if macro_result_summary:
+                evidence_bits.append(f"macro agent summary: {macro_result_summary}")
 
         if micro_results:
             evidence_bits.append(
@@ -148,11 +221,26 @@ class MockPlannerBackend:
                 support_score += 0.06
             if micro_results.get("oscillator_strength_proxy", 0.0) >= 0.55:
                 support_score += 0.07
+            if micro_task_understanding:
+                evidence_bits.append(f"microscopic task understanding: {micro_task_understanding}")
+            if micro_execution_plan:
+                evidence_bits.append(f"microscopic execution plan: {micro_execution_plan}")
+            if micro_result_summary:
+                evidence_bits.append(f"microscopic agent summary: {micro_result_summary}")
 
         confidence = round(min(0.89, confidence + support_score), 3)
         evidence_impact = "strengthens" if support_score >= 0.22 else "is still insufficient for"
         evidence_summary = "; ".join(evidence_bits) if evidence_bits else "no new internal evidence was added"
-        unresolved = "External supervision has not checked whether the current internal signal is consistent."
+        unresolved_fragments = [
+            fragment
+            for fragment in local_uncertainty_bits
+            if fragment and fragment != "Remaining local uncertainty was not provided."
+        ]
+        unresolved = (
+            " ".join(unresolved_fragments)
+            if unresolved_fragments
+            else "External supervision has not checked whether the current internal signal is consistent."
+        )
         main_gap = "Verifier evidence is required before a temporary conclusion can be trusted."
         information_gain_assessment = "The current round adds substantive new information."
         gap_trend = "The main gap is shrinking."
@@ -187,6 +275,16 @@ class MockPlannerBackend:
             needs_verifier = False
             planned_agents = ["microscopic"]
             main_gap = "Microscopic evidence is still too thin."
+        task_instruction = _default_follow_up_task_instruction(
+            action,
+            str(payload["current_hypothesis"]),
+            {"main_gap": main_gap},
+        )
+        agent_task_instructions = (
+            {action: task_instruction}
+            if action in {"macro", "microscopic", "verifier"} and task_instruction
+            else {}
+        )
 
         diagnosis = (
             f"Current leading hypothesis: {payload['current_hypothesis']}. "
@@ -208,6 +306,8 @@ class MockPlannerBackend:
                 needs_verifier=needs_verifier,
                 finalize=False,
                 planned_agents=planned_agents,
+                task_instruction=task_instruction,
+                agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
                 information_gain_assessment=information_gain_assessment,
                 gap_trend=gap_trend,
                 stagnation_detected=stagnation_detected,
@@ -223,6 +323,7 @@ class MockPlannerBackend:
         _ = rendered_prompt
         verifier_report = payload["verifier_report"] or {}
         verifier_cards = verifier_report.get("structured_results", {}).get("evidence_cards", [])
+        verifier_result_summary = str(verifier_report.get("result_summary") or "").strip()
         support_count = sum(card.get("relation_to_hypothesis") == "support" for card in verifier_cards)
         conflict_count = sum(card.get("relation_to_hypothesis") == "conflict" for card in verifier_cards)
         current_confidence = float(payload["current_confidence"] or 0.5)
@@ -249,6 +350,21 @@ class MockPlannerBackend:
                 needs_verifier=False,
                 finalize=False,
                 planned_agents=["macro"],
+                task_instruction=_default_follow_up_task_instruction(
+                    "macro",
+                    next_hypothesis,
+                    {"main_gap": main_gap},
+                ),
+                agent_task_instructions=_normalize_agent_task_instructions(
+                    {
+                        "macro": _default_follow_up_task_instruction(
+                            "macro",
+                            next_hypothesis,
+                            {"main_gap": main_gap},
+                        )
+                        or ""
+                    }
+                ),
             )
         elif support_count > 0 and conflict_count > 0:
             confidence = round(max(0.48, current_confidence - 0.03), 3)
@@ -268,6 +384,21 @@ class MockPlannerBackend:
                 needs_verifier=False,
                 finalize=False,
                 planned_agents=["microscopic"],
+                task_instruction=_default_follow_up_task_instruction(
+                    "microscopic",
+                    current_hypothesis,
+                    {"main_gap": main_gap},
+                ),
+                agent_task_instructions=_normalize_agent_task_instructions(
+                    {
+                        "microscopic": _default_follow_up_task_instruction(
+                            "microscopic",
+                            current_hypothesis,
+                            {"main_gap": main_gap},
+                        )
+                        or ""
+                    }
+                ),
             )
         elif support_count == 0 and conflict_count == 0:
             confidence = round(max(0.45, current_confidence - 0.04), 3)
@@ -286,6 +417,21 @@ class MockPlannerBackend:
                 needs_verifier=False,
                 finalize=False,
                 planned_agents=["microscopic"],
+                task_instruction=_default_follow_up_task_instruction(
+                    "microscopic",
+                    current_hypothesis,
+                    {"main_gap": main_gap},
+                ),
+                agent_task_instructions=_normalize_agent_task_instructions(
+                    {
+                        "microscopic": _default_follow_up_task_instruction(
+                            "microscopic",
+                            current_hypothesis,
+                            {"main_gap": main_gap},
+                        )
+                        or ""
+                    }
+                ),
             )
         else:
             confidence = round(min(0.95, current_confidence + 0.08 + support_count * 0.02), 3)
@@ -309,9 +455,8 @@ class MockPlannerBackend:
 
         return {
             "decision": decision,
-            "evidence_summary": (
-                f"Verifier returned {support_count} support card(s) and {conflict_count} conflict card(s)."
-            ),
+            "evidence_summary": verifier_result_summary
+            or f"Verifier returned {support_count} support card(s) and {conflict_count} conflict card(s).",
             "main_gap": main_gap,
             "conflict_status": conflict_status,
         }
@@ -334,6 +479,11 @@ class OpenAIPlannerBackend:
             response_model=PlannerInitialResponse,
             schema_name="planner_initial_response",
         )
+        agent_task_instructions = _normalize_agent_task_instructions(response.agent_task_instructions)
+        if not agent_task_instructions:
+            agent_task_instructions = _normalize_agent_task_instructions(
+                _default_initial_agent_task_instructions(response.current_hypothesis)
+            )
         decision = PlannerDecision(
             diagnosis=response.diagnosis,
             action="macro_and_microscopic",
@@ -342,6 +492,9 @@ class OpenAIPlannerBackend:
             needs_verifier=False,
             finalize=False,
             planned_agents=["macro", "microscopic"],
+            task_instruction=response.task_instruction.strip()
+            or "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis.",
+            agent_task_instructions=agent_task_instructions,  # type: ignore[arg-type]
         )
         return {
             "hypothesis_pool": response.hypothesis_pool,
@@ -372,6 +525,14 @@ class OpenAIPlannerBackend:
         post_verifier: bool,
     ) -> dict[str, Any]:
         confidence = self._clamp_confidence(response.confidence)
+        task_instruction = response.task_instruction.strip() or _default_follow_up_task_instruction(
+            response.action,
+            response.current_hypothesis,
+            payload,
+        )
+        agent_task_instructions = _normalize_agent_task_instructions(response.agent_task_instructions)
+        if not agent_task_instructions and task_instruction and response.action in {"macro", "microscopic", "verifier"}:
+            agent_task_instructions = {response.action: task_instruction}
         decision = PlannerDecision(
             diagnosis=response.diagnosis,
             action=self._normalize_action(response.action, post_verifier=post_verifier),
@@ -380,6 +541,8 @@ class OpenAIPlannerBackend:
             needs_verifier=response.needs_verifier,
             finalize=response.finalize,
             planned_agents=[],
+            task_instruction=task_instruction,
+            agent_task_instructions=agent_task_instructions,  # type: ignore[arg-type]
             information_gain_assessment=response.information_gain_assessment,
             gap_trend=response.gap_trend,
             stagnation_detected=response.stagnation_detected,
@@ -396,11 +559,23 @@ class OpenAIPlannerBackend:
                 decision.action = "verifier"
                 decision.needs_verifier = True
                 decision.finalize = False
+                decision.task_instruction = _default_follow_up_task_instruction(
+                    "verifier",
+                    decision.current_hypothesis,
+                    {"main_gap": main_gap},
+                )
+                decision.agent_task_instructions = _normalize_agent_task_instructions(
+                    {"verifier": decision.task_instruction or ""}
+                )  # type: ignore[assignment]
                 if decision.stagnation_detected and main_gap == response.main_gap:
                     main_gap = "Recent rounds indicate stagnation, so external supervision is needed."
             decision.planned_agents = self._planned_agents_for_action(decision.action)
             if decision.action != "verifier":
                 decision.needs_verifier = False
+                if decision.action in {"macro", "microscopic"} and not decision.agent_task_instructions:
+                    decision.agent_task_instructions = _normalize_agent_task_instructions(
+                        {decision.action: decision.task_instruction or ""}
+                    )  # type: ignore[assignment]
         else:
             decision, conflict_status, main_gap = self._postprocess_reweight(payload, decision, conflict_status, main_gap)
 
@@ -440,6 +615,14 @@ class OpenAIPlannerBackend:
                 else fallback_switch
             )
             decision.planned_agents = ["macro"]
+            decision.task_instruction = _default_follow_up_task_instruction(
+                "macro",
+                decision.current_hypothesis,
+                {"main_gap": main_gap},
+            )
+            decision.agent_task_instructions = _normalize_agent_task_instructions(
+                {"macro": decision.task_instruction or ""}
+            )  # type: ignore[assignment]
             main_gap = "The switched hypothesis needs fresh internal evidence."
         elif support_count > 0 and conflict_count > 0:
             conflict_status = "weak"
@@ -448,6 +631,14 @@ class OpenAIPlannerBackend:
             decision.action = "microscopic"
             decision.current_hypothesis = current_hypothesis
             decision.planned_agents = ["microscopic"]
+            decision.task_instruction = _default_follow_up_task_instruction(
+                "microscopic",
+                decision.current_hypothesis,
+                {"main_gap": main_gap},
+            )
+            decision.agent_task_instructions = _normalize_agent_task_instructions(
+                {"microscopic": decision.task_instruction or ""}
+            )  # type: ignore[assignment]
             main_gap = "Weak verifier conflict remains, so one more internal refinement step is needed."
         elif support_count == 0 and conflict_count == 0:
             conflict_status = "uncertain"
@@ -456,6 +647,14 @@ class OpenAIPlannerBackend:
             decision.action = "microscopic"
             decision.current_hypothesis = current_hypothesis
             decision.planned_agents = ["microscopic"]
+            decision.task_instruction = _default_follow_up_task_instruction(
+                "microscopic",
+                decision.current_hypothesis,
+                {"main_gap": main_gap},
+            )
+            decision.agent_task_instructions = _normalize_agent_task_instructions(
+                {"microscopic": decision.task_instruction or ""}
+            )  # type: ignore[assignment]
             main_gap = "Verifier evidence is neutral, so one more internal refinement step is needed."
         else:
             conflict_status = "none"
@@ -464,6 +663,8 @@ class OpenAIPlannerBackend:
             decision.needs_verifier = False
             decision.current_hypothesis = current_hypothesis
             decision.planned_agents = []
+            decision.task_instruction = None
+            decision.agent_task_instructions = {}  # type: ignore[assignment]
             main_gap = "No critical evidence gap remains in the current workflow."
 
         return decision, conflict_status, main_gap

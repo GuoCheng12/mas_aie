@@ -22,13 +22,14 @@ class AieMasWorkflow:
         self.prompts = PromptRepository(self.config.prompts_dir)
         self.planner = PlannerAgent(self.prompts, config=self.config)
         toolset = build_toolset(self.config)
-        self.macro_agent = MacroAgent(tool=toolset.macro_tool)
+        self.macro_agent = MacroAgent(tool=toolset.macro_tool, prompts=self.prompts)
         self.microscopic_agent = MicroscopicAgent(
             s0_tool=toolset.s0_tool,
             s1_tool=toolset.s1_tool,
             targeted_tool=toolset.targeted_micro_tool,
+            prompts=self.prompts,
         )
-        self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool)
+        self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool, prompts=self.prompts)
         self.working_memory = WorkingMemoryManager()
         self.long_term_memory = (
             LongTermMemoryStore(self.config.memory_dir)
@@ -105,28 +106,39 @@ class AieMasWorkflow:
         state.current_hypothesis = decision.current_hypothesis
         state.confidence = decision.confidence
         state.pending_agents = decision.planned_agents
+        state.pending_agent_instructions = dict(decision.agent_task_instructions)
         state.last_planner_decision = decision
         state.planner_diagnosis_history.append(decision.diagnosis)
         state.planner_action_history.append(decision.action)
         state.latest_evidence_summary = "Initial planning used only the user query and SMILES."
         state.latest_main_gap = "Internal macro and microscopic evidence are both missing."
         state.latest_conflict_status = "none"
+        microscopic_instruction = (
+            decision.agent_task_instructions.get("microscopic")
+            or "Run fixed first-stage S0/S1 optimization."
+        )
         state.next_microscopic_task = MicroscopicTaskSpec(
             mode="baseline_s0_s1",
             task_label="initial-baseline",
-            objective="Run fixed first-stage S0/S1 optimization.",
+            objective=microscopic_instruction,
             target_property="baseline excited-state geometry",
         )
         return state
 
     def run_macro(self, state: AieMasState) -> AieMasState:
+        task_instruction = state.pending_agent_instructions.get(
+            "macro",
+            "Run low-cost structural and empirical analysis for the current hypothesis.",
+        )
         report = self.macro_agent.run(
             smiles=state.smiles,
-            task_received="Run low-cost structural and empirical analysis for the current hypothesis.",
+            task_received=task_instruction,
+            current_hypothesis=state.current_hypothesis or "unknown",
         )
         state.macro_reports.append(report)
         state.active_round_reports.append(report)
         state.pending_agents = [agent for agent in state.pending_agents if agent != "macro"]
+        state.pending_agent_instructions.pop("macro", None)
         return state
 
     def run_microscopic(self, state: AieMasState) -> AieMasState:
@@ -136,14 +148,17 @@ class AieMasWorkflow:
             objective="Run fixed S0/S1 optimization.",
             target_property="baseline excited-state geometry",
         )
+        task_instruction = state.pending_agent_instructions.get("microscopic", task_spec.objective)
         report = self.microscopic_agent.run(
             smiles=state.smiles,
-            task_received=task_spec.objective,
+            task_received=task_instruction,
             task_spec=task_spec,
+            current_hypothesis=state.current_hypothesis or "unknown",
         )
         state.microscopic_reports.append(report)
         state.active_round_reports.append(report)
         state.pending_agents = [agent for agent in state.pending_agents if agent != "microscopic"]
+        state.pending_agent_instructions.pop("microscopic", None)
         state.last_microscopic_task = task_spec
         state.next_microscopic_task = None
         return state
@@ -153,14 +168,19 @@ class AieMasWorkflow:
         return self._apply_planner_result(state, result)
 
     def run_verifier(self, state: AieMasState) -> AieMasState:
+        task_instruction = state.pending_agent_instructions.get(
+            "verifier",
+            "Retrieve external supervision evidence cards for the current hypothesis.",
+        )
         report = self.verifier_agent.run(
             smiles=state.smiles,
             current_hypothesis=state.current_hypothesis or "unknown",
-            task_received="Retrieve external supervision evidence cards for the current hypothesis.",
+            task_received=task_instruction,
         )
         state.verifier_reports.append(report)
         state.active_round_reports.append(report)
         state.pending_agents = [agent for agent in state.pending_agents if agent != "verifier"]
+        state.pending_agent_instructions.pop("verifier", None)
         return state
 
     def planner_reweight_or_finalize(self, state: AieMasState) -> AieMasState:
@@ -220,6 +240,7 @@ class AieMasWorkflow:
         state.current_hypothesis = decision.current_hypothesis  # type: ignore[union-attr]
         state.confidence = decision.confidence  # type: ignore[union-attr]
         state.pending_agents = decision.planned_agents  # type: ignore[union-attr]
+        state.pending_agent_instructions = dict(decision.agent_task_instructions)  # type: ignore[union-attr]
         state.finalize = decision.finalize  # type: ignore[union-attr]
         state.latest_evidence_summary = str(result["evidence_summary"])
         state.latest_main_gap = str(result["main_gap"])
@@ -245,8 +266,12 @@ class AieMasWorkflow:
             mode="targeted_follow_up",
             task_label=f"round-{state.round_idx + 1}-targeted-micro",
             objective=(
-                f"Investigate the current microscopic gap for hypothesis "
-                f"'{decision.current_hypothesis}': {state.latest_main_gap or 'refine the unresolved signal.'}"
+                decision.agent_task_instructions.get("microscopic")
+                or decision.task_instruction
+                or (
+                    f"Investigate the current microscopic gap for hypothesis "
+                    f"'{decision.current_hypothesis}': {state.latest_main_gap or 'refine the unresolved signal.'}"
+                )
             ),
             target_property=state.latest_conflict_status or "micro_consistency",
         )

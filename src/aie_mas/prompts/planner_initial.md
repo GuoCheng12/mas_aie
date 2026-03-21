@@ -8,6 +8,7 @@ Your task in this initial stage is to:
 2. Generate an initial hypothesis pool for the likely emission mechanism(s).
 3. Select the current leading hypothesis.
 4. Decide the first-round action plan.
+5. Provide specialized natural-language task instructions for the first-round Macro and Microscopic agents.
 
 System rules:
 - The system works in a single-leading-hypothesis mode.
@@ -29,6 +30,8 @@ Return a structured decision containing:
 - confidence
 - diagnosis
 - action
+- task_instruction
+- agent_task_instructions
 
 The diagnosis should explain:
 - what the task is
@@ -37,3 +40,15 @@ The diagnosis should explain:
 - why the first round should gather macro and microscopic evidence
 
 The action should indicate that the first round runs macro and microscopic evidence collection.
+
+task_instruction should summarize the overall first-round dispatch.
+
+agent_task_instructions must provide separate natural-language instructions for:
+- macro
+- microscopic
+
+These instructions should:
+- define the local task for the specialized agent
+- stay within that agent's local scope
+- not ask the agent to decide the global mechanism
+- not ask the agent to choose the system-level next action

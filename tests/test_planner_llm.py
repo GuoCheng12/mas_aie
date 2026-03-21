@@ -91,6 +91,8 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
 
     assert result["decision"].action == "macro_and_microscopic"
     assert result["decision"].current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
+    assert "macro" in result["decision"].agent_task_instructions
+    assert "microscopic" in result["decision"].agent_task_instructions
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
@@ -162,6 +164,21 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
         smiles="C1=CC=CC=C1",
         current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
         confidence=0.52,
+        macro_reports=[
+            {
+                "agent_name": "macro",
+                "task_received": "macro task",
+                "task_understanding": "macro understanding",
+                "execution_plan": "macro execution plan",
+                "result_summary": "macro result summary",
+                "remaining_local_uncertainty": "macro uncertainty",
+                "tool_calls": [],
+                "raw_results": {},
+                "structured_results": {},
+                "status": "success",
+                "planner_readable_report": "macro planner readable report",
+            }
+        ],
         working_memory=[
             WorkingMemoryEntry(
                 round_id=1,
@@ -195,3 +212,5 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     assert "recent_rounds_context" in message_payload
     assert '"action_taken": "macro, microscopic"' in message_payload
     assert '"diagnosis_summary": "The same verifier gap remains."' in message_payload
+    assert '"task_understanding": "macro understanding"' in message_payload
+    assert '"execution_plan": "macro execution plan"' in message_payload

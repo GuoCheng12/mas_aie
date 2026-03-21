@@ -14,6 +14,13 @@ You will be given:
 - latest_microscopic_report (optional)
 - latest_verifier_report (optional)
 
+Each non-Planner agent report may include:
+- task_understanding
+- execution_plan
+- result_summary
+- remaining_local_uncertainty
+- planner_readable_report
+
 Your task is to:
 1. Read the latest returned results.
 2. Explain what these results mean for the current leading hypothesis.
@@ -24,6 +31,7 @@ Your task is to:
 7. Judge whether the main gap is shrinking, unchanged, or widening.
 8. Decide whether the process has entered stagnation / low-information-gain status.
 9. Decide the single next action.
+10. If the next action is Macro, Microscopic, or Verifier, write a natural-language task instruction for that specialized agent.
 
 Important rules:
 - Stay focused on the current leading hypothesis.
@@ -42,6 +50,7 @@ Return:
 - confidence
 - needs_verifier
 - finalize
+- task_instruction
 - evidence_summary
 - main_gap
 - conflict_status
@@ -58,3 +67,9 @@ The diagnosis must explicitly include:
 - whether the current main gap is shrinking, unchanged, or widening
 - whether the process is entering stagnation / low-information-gain status
 - why the chosen next action is the best next step
+
+task_instruction rules:
+- required when action is macro, microscopic, or verifier
+- should describe only that specialized agent's local task
+- must not ask the agent to decide the global mechanism
+- must not ask the agent to choose the next system-level action

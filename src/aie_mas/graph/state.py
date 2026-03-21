@@ -18,11 +18,25 @@ class HypothesisEntry(BaseModel):
 class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
+    task_understanding: str = "Task understanding was not provided."
+    execution_plan: str = "Execution plan was not provided."
+    result_summary: str = "Result summary was not provided."
+    remaining_local_uncertainty: str = "Remaining local uncertainty was not provided."
     tool_calls: list[str] = Field(default_factory=list)
     raw_results: dict[str, Any] = Field(default_factory=dict)
     structured_results: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
     planner_readable_report: str
+
+
+class WorkingMemoryAgentEntry(BaseModel):
+    agent_name: Literal["microscopic", "macro", "verifier"]
+    task_received: str
+    task_understanding: str
+    execution_plan: str
+    result_summary: str
+    remaining_local_uncertainty: str
+    status: Literal["success", "partial", "failed"] = "success"
 
 
 class PlannerDecision(BaseModel):
@@ -33,6 +47,8 @@ class PlannerDecision(BaseModel):
     needs_verifier: bool = False
     finalize: bool = False
     planned_agents: list[PendingAgent] = Field(default_factory=list)
+    task_instruction: Optional[str] = None
+    agent_task_instructions: dict[PendingAgent, str] = Field(default_factory=dict)
     information_gain_assessment: Optional[str] = None
     gap_trend: Optional[str] = None
     stagnation_detected: bool = False
@@ -48,6 +64,12 @@ class WorkingMemoryEntry(BaseModel):
     main_gap: str
     conflict_status: str
     next_action: str
+    planner_task_instruction: Optional[str] = None
+    planner_agent_task_instructions: dict[PendingAgent, str] = Field(default_factory=dict)
+    information_gain_assessment: Optional[str] = None
+    gap_trend: Optional[str] = None
+    stagnation_detected: bool = False
+    agent_reports: list[WorkingMemoryAgentEntry] = Field(default_factory=list)
 
 
 class MicroscopicTaskSpec(BaseModel):
@@ -92,6 +114,7 @@ class AieMasState(BaseModel):
     smiles: str
     round_idx: int = 0
     pending_agents: list[PendingAgent] = Field(default_factory=list)
+    pending_agent_instructions: dict[PendingAgent, str] = Field(default_factory=dict)
 
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
     current_hypothesis: Optional[str] = None

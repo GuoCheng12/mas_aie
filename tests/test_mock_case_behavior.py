@@ -1,0 +1,173 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+from pathlib import Path
+
+from aie_mas.agents.planner import PlannerAgent
+from aie_mas.cli.run_case import run_case_workflow
+from aie_mas.config import AieMasConfig
+from aie_mas.graph.state import AieMasState
+from aie_mas.utils.prompts import PromptRepository
+
+
+PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts"
+
+
+@dataclass(frozen=True)
+class MockCase:
+    name: str
+    smiles: str
+    expected_initial_hypothesis: str
+
+
+MOCK_CASES = [
+    MockCase(
+        name="bulky_rim_case",
+        smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
+        expected_initial_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+    ),
+    MockCase(
+        name="non_esipt_hydrocarbon_case",
+        smiles="c1ccccc1",
+        expected_initial_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+    ),
+    MockCase(
+        name="ict_donor_acceptor_case",
+        smiles="O=N(=O)c1ccc(N(CC)CC)cc1",
+        expected_initial_hypothesis="ICT-assisted emission with aggregation-enabled rigidification",
+    ),
+]
+
+
+def _build_planner(tmp_path: Path) -> PlannerAgent:
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="local-dev",
+        planner_backend="mock",
+        prompts_dir=PROMPTS_DIR,
+    )
+    return PlannerAgent(PromptRepository(PROMPTS_DIR), config=config)
+
+
+def _run_case(case: MockCase, tmp_path: Path) -> AieMasState:
+    case_dir = tmp_path / case.name
+    return run_case_workflow(
+        smiles=case.smiles,
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        execution_profile="local-dev",
+        planner_backend="mock",
+        tool_backend="mock",
+        enable_long_term_memory=False,
+        prompts_dir=PROMPTS_DIR,
+        data_dir=case_dir / "data",
+        memory_dir=case_dir / "memory",
+        report_dir=case_dir / "reports",
+        log_dir=case_dir / "log",
+        runtime_dir=case_dir / "runtime",
+    )
+
+
+def test_mock_cases_generate_distinct_initial_hypotheses_and_task_instructions(tmp_path: Path) -> None:
+    planner = _build_planner(tmp_path)
+    initial_results = {
+        case.name: planner.plan_initial(
+            AieMasState(
+                user_query="Assess the likely AIE mechanism for this molecule.",
+                smiles=case.smiles,
+            )
+        )
+        for case in MOCK_CASES
+    }
+
+    bulky_decision = initial_results["bulky_rim_case"]["decision"]
+    ict_decision = initial_results["ict_donor_acceptor_case"]["decision"]
+
+    for case in MOCK_CASES:
+        result = initial_results[case.name]
+        decision = result["decision"]
+        assert decision.current_hypothesis == case.expected_initial_hypothesis
+        assert decision.task_instruction
+        assert decision.agent_task_instructions
+        assert "macro" in decision.agent_task_instructions
+        assert "microscopic" in decision.agent_task_instructions
+        assert decision.agent_task_instructions["macro"]
+        assert decision.agent_task_instructions["microscopic"]
+
+    assert bulky_decision.current_hypothesis != ict_decision.current_hypothesis
+    assert bulky_decision.agent_task_instructions["macro"] != ict_decision.agent_task_instructions["macro"]
+    assert bulky_decision.agent_task_instructions["microscopic"] != ict_decision.agent_task_instructions["microscopic"]
+
+
+def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavior(tmp_path: Path) -> None:
+    states = {case.name: _run_case(case, tmp_path) for case in MOCK_CASES}
+
+    for case in MOCK_CASES:
+        state = states[case.name]
+        assert state.state_snapshot is not None
+        assert state.macro_reports
+        assert state.microscopic_reports
+        assert state.working_memory
+
+        first_macro = state.macro_reports[0]
+        first_micro = state.microscopic_reports[0]
+        for report in (first_macro, first_micro):
+            assert report.task_understanding
+            assert report.execution_plan
+            assert report.result_summary
+            assert report.remaining_local_uncertainty
+            assert "Task understanding:" in report.planner_readable_report
+            assert "Execution plan:" in report.planner_readable_report
+            assert "Remaining local uncertainty:" in report.planner_readable_report
+
+        if state.verifier_reports:
+            first_verifier = state.verifier_reports[0]
+            assert first_verifier.task_understanding
+            assert first_verifier.execution_plan
+            assert first_verifier.result_summary
+            assert first_verifier.remaining_local_uncertainty
+
+        assert "Remaining local uncertainty:" in state.working_memory[0].evidence_summary
+        assert any(
+            "baseline S0/S1 proxy run still cannot determine external consistency or final mechanism"
+            in entry.evidence_summary
+            or "the evidence cards still need Planner-level synthesis before any mechanism decision"
+            in entry.evidence_summary
+            for entry in state.working_memory
+        )
+        assert any(
+            "macro task understanding:" in diagnosis or "microscopic execution plan:" in diagnosis
+            for diagnosis in state.planner_diagnosis_history
+        )
+        assert any(
+            "the baseline S0/S1 proxy run still cannot determine external consistency or final mechanism"
+            in diagnosis
+            or "the evidence cards still need Planner-level synthesis before any mechanism decision"
+            in diagnosis
+            for diagnosis in state.planner_diagnosis_history
+        )
+
+    bulky_state = states["bulky_rim_case"]
+    non_esipt_state = states["non_esipt_hydrocarbon_case"]
+    ict_state = states["ict_donor_acceptor_case"]
+
+    assert bulky_state.finalize is True
+    assert bulky_state.planner_action_history == ["macro_and_microscopic", "verifier", "finalize"]
+    assert bulky_state.current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
+    assert bulky_state.verifier_reports
+
+    assert non_esipt_state.finalize is False
+    assert non_esipt_state.planner_action_history[1] == "microscopic"
+    assert "verifier" in non_esipt_state.planner_action_history
+    assert len(non_esipt_state.working_memory) == 4
+    assert non_esipt_state.current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
+
+    assert ict_state.finalize is False
+    assert ict_state.current_hypothesis == "ICT-assisted emission with aggregation-enabled rigidification"
+    assert ict_state.planner_action_history[1] == "verifier"
+    assert ict_state.planner_action_history.count("verifier") >= 2
+    assert "microscopic" in ict_state.planner_action_history
+    assert len(ict_state.verifier_reports) >= 2
+
+    assert bulky_state.planner_action_history != non_esipt_state.planner_action_history
+    assert bulky_state.planner_action_history != ict_state.planner_action_history
+    assert non_esipt_state.planner_action_history != ict_state.planner_action_history

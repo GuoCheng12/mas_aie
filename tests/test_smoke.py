@@ -5,7 +5,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from aie_mas.cli.run_case import app, run_case_workflow
+from aie_mas.cli.run_case import app, build_summary_payload, run_case_workflow
 
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts"
@@ -41,7 +41,42 @@ def test_minimal_workflow_smoke(tmp_path: Path) -> None:
     assert len(state.working_memory) >= 2
     assert state.working_memory[0].action_taken == "macro, microscopic"
     assert state.long_term_memory_path is None
+    assert state.macro_reports[0].task_understanding
+    assert state.macro_reports[0].execution_plan
+    assert state.macro_reports[0].result_summary
+    assert state.microscopic_reports[0].task_understanding
+    assert state.microscopic_reports[0].execution_plan
+    assert state.microscopic_reports[0].task_received != "Run fixed first-stage S0/S1 optimization."
+    assert "current working hypothesis" in state.macro_reports[0].task_received
     assert state.finalize is True
+
+
+def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
+    smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
+    state = run_case_workflow(
+        smiles=smiles,
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        execution_profile="local-dev",
+        tool_backend="mock",
+        data_dir=tmp_path / "data_rounds",
+        memory_dir=tmp_path / "memory_rounds",
+        report_dir=tmp_path / "reports_rounds",
+        log_dir=tmp_path / "log_rounds",
+        runtime_dir=tmp_path / "runtime_rounds",
+    )
+
+    summary_payload = build_summary_payload(state, tmp_path / "reports_rounds" / "example_case")
+
+    assert len(summary_payload["rounds"]) == len(state.working_memory)
+    first_round = summary_payload["rounds"][0]
+    assert first_round["round_id"] == 1
+    assert first_round["action_taken"] == "macro, microscopic"
+    assert first_round["planner"]["selected_next_action"] in {"microscopic", "verifier"}
+    assert first_round["planner"]["agent_task_instructions"]
+    assert first_round["working_memory"]["main_gap"]
+    assert first_round["working_memory"]["agent_reports"]
+    assert first_round["working_memory"]["agent_reports"][0]["task_understanding"]
+    assert first_round["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
 
 
 def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> None:
@@ -88,7 +123,15 @@ def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> N
     assert str(summary_payload["confidence"]) == terminal_summary["confidence"]
     assert summary_payload["action"] == terminal_summary["action"]
     assert str(summary_payload["finalize"]) == terminal_summary["finalize"]
+    assert str(summary_payload["working_memory_rounds"]) == terminal_summary["rounds"]
     assert summary_payload["report_dir"] == str(summary_path.parent)
+    assert terminal_summary["report_dir"] == str(summary_path.parent)
+    assert len(summary_payload["rounds"]) == summary_payload["working_memory_rounds"]
+    assert summary_payload["rounds"][0]["action_taken"] == "macro, microscopic"
+    assert summary_payload["rounds"][0]["planner"]["selected_next_action"] in {"microscopic", "verifier"}
+    assert summary_payload["rounds"][0]["working_memory"]["agent_reports"]
+    assert summary_payload["rounds"][0]["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
+    assert summary_payload["rounds"][0]["working_memory"]["evidence_summary"]
     assert full_state_payload["runtime_context"]["execution_profile"] == "local-dev"
     assert full_state_payload["runtime_context"]["tool_backend"] == "mock"
     assert full_state_payload["runtime_context"]["enable_long_term_memory"] is False
@@ -127,8 +170,10 @@ def test_cli_can_enable_long_term_memory_for_a_run(tmp_path: Path) -> None:
     full_state_payload = json.loads(
         Path(terminal_summary["full_state_file"]).read_text(encoding="utf-8")
     )
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
 
     assert summary_path.exists()
+    assert summary_payload["rounds"]
     assert full_state_payload["runtime_context"]["enable_long_term_memory"] is True
     assert (memory_dir / "case_memory.json").exists()
 
@@ -159,10 +204,14 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
 
     assert result.exit_code == 0
     terminal_summary = _parse_terminal_summary(result.stdout)
+    summary_payload = json.loads(
+        Path(terminal_summary["summary_file"]).read_text(encoding="utf-8")
+    )
     full_state_payload = json.loads(
         Path(terminal_summary["full_state_file"]).read_text(encoding="utf-8")
     )
 
+    assert summary_payload["rounds"]
     assert full_state_payload["runtime_context"]["execution_profile"] == "linux-prod"
     assert full_state_payload["runtime_context"]["tool_backend"] == "mock"
     assert full_state_payload["runtime_context"]["enable_long_term_memory"] is True
@@ -191,9 +240,11 @@ def test_cli_uses_default_project_report_dir_when_unspecified(tmp_path: Path, mo
     assert result.exit_code == 0
     terminal_summary = _parse_terminal_summary(result.stdout)
     summary_path = Path(terminal_summary["summary_file"])
+    summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
     full_state_payload = json.loads(
         Path(terminal_summary["full_state_file"]).read_text(encoding="utf-8")
     )
 
     assert summary_path.parent.parent == (tmp_path / "var" / "reports")
+    assert summary_payload["rounds"]
     assert full_state_payload["runtime_context"]["report_dir"] == str(tmp_path / "var" / "reports")

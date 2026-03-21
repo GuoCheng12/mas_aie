@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from aie_mas.graph.state import AieMasState, WorkingMemoryEntry
+from aie_mas.graph.state import AieMasState, WorkingMemoryAgentEntry, WorkingMemoryEntry
 
 
 class WorkingMemoryManager:
@@ -22,6 +22,19 @@ class WorkingMemoryManager:
         if len(diagnosis_summary) > 240:
             diagnosis_summary = f"{diagnosis_summary[:237]}..."
 
+        agent_reports = [
+            WorkingMemoryAgentEntry(
+                agent_name=report.agent_name,
+                task_received=report.task_received,
+                task_understanding=report.task_understanding,
+                execution_plan=report.execution_plan,
+                result_summary=report.result_summary,
+                remaining_local_uncertainty=report.remaining_local_uncertainty,
+                status=report.status,
+            )
+            for report in state.active_round_reports
+        ]
+
         entry = WorkingMemoryEntry(
             round_id=state.round_idx + 1,
             current_hypothesis=state.current_hypothesis or "unknown",
@@ -32,6 +45,12 @@ class WorkingMemoryManager:
             main_gap=state.latest_main_gap or "Not specified.",
             conflict_status=state.latest_conflict_status or "unknown",
             next_action=state.last_planner_decision.action,
+            planner_task_instruction=state.last_planner_decision.task_instruction,
+            planner_agent_task_instructions=dict(state.last_planner_decision.agent_task_instructions),
+            information_gain_assessment=state.last_planner_decision.information_gain_assessment,
+            gap_trend=state.last_planner_decision.gap_trend,
+            stagnation_detected=state.last_planner_decision.stagnation_detected,
+            agent_reports=agent_reports,
         )
         state.working_memory.append(entry)
         state.round_idx += 1
