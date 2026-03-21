@@ -16,6 +16,7 @@ app = typer.Typer(add_completion=False)
 def build_runtime_config(
     execution_profile: Optional[ExecutionProfile] = None,
     tool_backend: Optional[ToolBackend] = None,
+    enable_long_term_memory: Optional[bool] = None,
     planner_backend: Optional[PlannerBackend] = None,
     planner_base_url: Optional[str] = None,
     planner_model: Optional[str] = None,
@@ -35,6 +36,7 @@ def build_runtime_config(
     return AieMasConfig.from_env(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        enable_long_term_memory=enable_long_term_memory,
         planner_backend=planner_backend,
         planner_base_url=planner_base_url,
         planner_model=planner_model,
@@ -58,6 +60,7 @@ def run_case_workflow(
     user_query: str,
     execution_profile: Optional[ExecutionProfile] = None,
     tool_backend: Optional[ToolBackend] = None,
+    enable_long_term_memory: Optional[bool] = None,
     planner_backend: Optional[PlannerBackend] = None,
     planner_base_url: Optional[str] = None,
     planner_model: Optional[str] = None,
@@ -77,6 +80,7 @@ def run_case_workflow(
     config = build_runtime_config(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        enable_long_term_memory=enable_long_term_memory,
         planner_backend=planner_backend,
         planner_base_url=planner_base_url,
         planner_model=planner_model,
@@ -112,6 +116,11 @@ def main(
     tool_backend: Optional[str] = typer.Option(
         None,
         help="Tool backend: mock for current first-stage runs, real for future Linux wrappers.",
+    ),
+    enable_long_term_memory: Optional[bool] = typer.Option(
+        None,
+        "--enable-long-term-memory/--disable-long-term-memory",
+        help="Enable or disable long-term memory reads and writes for this run.",
     ),
     planner_backend: Optional[str] = typer.Option(
         None,
@@ -177,6 +186,7 @@ def main(
     config = build_runtime_config(
         execution_profile=execution_profile,
         tool_backend=tool_backend,
+        enable_long_term_memory=enable_long_term_memory,
         planner_backend=planner_backend,
         planner_base_url=planner_base_url,
         planner_model=planner_model,

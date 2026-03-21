@@ -37,3 +37,28 @@ class WorkingMemoryManager:
         state.round_idx += 1
         state.active_round_reports.clear()
         return state
+
+    def build_recent_rounds_context(
+        self,
+        state: AieMasState,
+        *,
+        window_size: int = 3,
+    ) -> list[dict[str, object]]:
+        recent_entries = state.working_memory[-window_size:]
+        context: list[dict[str, object]] = []
+        for entry in recent_entries:
+            context.append(
+                {
+                    "round_id": entry.round_id,
+                    "action_taken": entry.action_taken,
+                    "main_gap": entry.main_gap,
+                    "evidence_summary": self._truncate(entry.evidence_summary, 260),
+                    "diagnosis_summary": self._truncate(entry.diagnosis_summary, 260),
+                }
+            )
+        return context
+
+    def _truncate(self, text: str, limit: int) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3]}..."

@@ -32,6 +32,7 @@ def test_minimal_workflow_smoke(tmp_path: Path) -> None:
     assert len(state.verifier_reports) >= 1
     assert len(state.working_memory) >= 2
     assert state.working_memory[0].action_taken == "macro, microscopic"
+    assert state.long_term_memory_path is None
     assert state.finalize is True
 
 
@@ -46,6 +47,7 @@ def test_cli_outputs_state_snapshot(tmp_path: Path) -> None:
             "local-dev",
             "--tool-backend",
             "mock",
+            "--disable-long-term-memory",
             "--data-dir",
             str(tmp_path / "data_cli"),
             "--memory-dir",
@@ -61,8 +63,39 @@ def test_cli_outputs_state_snapshot(tmp_path: Path) -> None:
     payload = json.loads(result.stdout)
     assert payload["runtime_context"]["execution_profile"] == "local-dev"
     assert payload["runtime_context"]["tool_backend"] == "mock"
+    assert payload["runtime_context"]["enable_long_term_memory"] is False
     assert '"state_snapshot"' in result.stdout
     assert '"final_answer"' in result.stdout
+
+
+def test_cli_can_enable_long_term_memory_for_a_run(tmp_path: Path) -> None:
+    runner = CliRunner()
+    memory_dir = tmp_path / "memory_cli_on"
+    result = runner.invoke(
+        app,
+        [
+            "--smiles",
+            "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
+            "--execution-profile",
+            "local-dev",
+            "--tool-backend",
+            "mock",
+            "--enable-long-term-memory",
+            "--data-dir",
+            str(tmp_path / "data_cli_on"),
+            "--memory-dir",
+            str(memory_dir),
+            "--log-dir",
+            str(tmp_path / "log_cli_on"),
+            "--runtime-dir",
+            str(tmp_path / "runtime_cli_on"),
+        ],
+    )
+
+    assert result.exit_code == 0
+    payload = json.loads(result.stdout)
+    assert payload["runtime_context"]["enable_long_term_memory"] is True
+    assert (memory_dir / "case_memory.json").exists()
 
 
 def test_cli_uses_environment_defaults_when_flags_are_omitted(
@@ -73,6 +106,7 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
     monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
     monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY", "1")
     monkeypatch.setenv("AIE_MAS_PROMPTS_DIR", str(PROMPTS_DIR))
     monkeypatch.setenv("AIE_MAS_DATA_DIR", str(tmp_path / "data_env"))
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", str(tmp_path / "memory_env"))
@@ -91,3 +125,4 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
     payload = json.loads(result.stdout)
     assert payload["runtime_context"]["execution_profile"] == "linux-prod"
     assert payload["runtime_context"]["tool_backend"] == "mock"
+    assert payload["runtime_context"]["enable_long_term_memory"] is True

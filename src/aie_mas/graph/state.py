@@ -33,6 +33,9 @@ class PlannerDecision(BaseModel):
     needs_verifier: bool = False
     finalize: bool = False
     planned_agents: list[PendingAgent] = Field(default_factory=list)
+    information_gain_assessment: Optional[str] = None
+    gap_trend: Optional[str] = None
+    stagnation_detected: bool = False
 
 
 class WorkingMemoryEntry(BaseModel):
@@ -106,6 +109,9 @@ class AieMasState(BaseModel):
     latest_evidence_summary: Optional[str] = None
     latest_main_gap: Optional[str] = None
     latest_conflict_status: Optional[str] = None
+    latest_information_gain_assessment: Optional[str] = None
+    latest_gap_trend: Optional[str] = None
+    stagnation_detected: bool = False
     next_microscopic_task: Optional[MicroscopicTaskSpec] = None
     last_microscopic_task: Optional[MicroscopicTaskSpec] = None
 

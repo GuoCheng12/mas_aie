@@ -4,7 +4,7 @@ from pathlib import Path
 
 from aie_mas.agents.planner import PlannerAgent, PlannerInitialResponse
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import AieMasState
+from aie_mas.graph.state import AieMasState, WorkingMemoryEntry
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
 from aie_mas.utils.prompts import PromptRepository
 
@@ -120,3 +120,78 @@ def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
     )
 
     assert parsed.current_hypothesis == "mock"
+
+
+def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "diagnosis": "Recent rounds add only modest new evidence, so continue refinement.",
+              "action": "microscopic",
+              "current_hypothesis": "restriction of intramolecular motion (RIM)-dominated AIE",
+              "confidence": 0.55,
+              "needs_verifier": false,
+              "finalize": false,
+              "evidence_summary": "Macro and micro evidence were reviewed.",
+              "main_gap": "Microscopic consistency is still incomplete.",
+              "conflict_status": "none",
+              "information_gain_assessment": "The current round adds some new information.",
+              "gap_trend": "The main gap is shrinking.",
+              "stagnation_detected": false
+            }
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        planner_backend="openai_sdk",
+        planner_base_url="http://34.13.73.248:3888/v1",
+        planner_model="gpt-4.1-mini",
+        planner_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    planner = PlannerAgent(
+        prompts=PromptRepository(PROMPTS_DIR),
+        config=config,
+        llm_client=OpenAICompatiblePlannerClient(config, client=fake_client),
+    )
+    state = AieMasState(
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        smiles="C1=CC=CC=C1",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        confidence=0.52,
+        working_memory=[
+            WorkingMemoryEntry(
+                round_id=1,
+                current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+                confidence=0.45,
+                action_taken="macro, microscopic",
+                evidence_summary="Initial internal evidence was collected.",
+                diagnosis_summary="The main gap is verifier evidence.",
+                main_gap="Verifier evidence is required before a temporary conclusion can be trusted.",
+                conflict_status="none",
+                next_action="microscopic",
+            ),
+            WorkingMemoryEntry(
+                round_id=2,
+                current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+                confidence=0.5,
+                action_taken="microscopic",
+                evidence_summary="One follow-up micro refinement was run.",
+                diagnosis_summary="The same verifier gap remains.",
+                main_gap="Verifier evidence is required before a temporary conclusion can be trusted.",
+                conflict_status="none",
+                next_action="microscopic",
+            ),
+        ],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    assert result["decision"].action == "microscopic"
+    message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "recent_rounds_context" in message_payload
+    assert '"action_taken": "macro, microscopic"' in message_payload
+    assert '"diagnosis_summary": "The same verifier gap remains."' in message_payload

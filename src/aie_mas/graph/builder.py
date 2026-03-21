@@ -30,7 +30,11 @@ class AieMasWorkflow:
         )
         self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool)
         self.working_memory = WorkingMemoryManager()
-        self.long_term_memory = LongTermMemoryStore(self.config.memory_dir)
+        self.long_term_memory = (
+            LongTermMemoryStore(self.config.memory_dir)
+            if self.config.enable_long_term_memory
+            else None
+        )
 
     def build(self):
         graph = StateGraph(AieMasState)
@@ -78,6 +82,13 @@ class AieMasWorkflow:
     def ingest_user_query(self, state: AieMasState) -> AieMasState:
         if state.case_id is None:
             state.case_id = uuid.uuid4().hex[:12]
+        if self.long_term_memory is None:
+            state.case_memory_hits = []
+            state.strategy_memory_hits = []
+            state.reliability_memory_hits = []
+            state.long_term_memory_path = None
+            return state
+
         state.case_memory_hits = self.long_term_memory.load_case_hits(
             state.smiles,
             exclude_case_ids={state.case_id},
@@ -160,7 +171,7 @@ class AieMasWorkflow:
         return self.working_memory.append_round_summary(state)
 
     def update_long_term_memory(self, state: AieMasState) -> AieMasState:
-        if state.finalize:
+        if self.long_term_memory is not None and state.finalize:
             self.long_term_memory.write_case_entry(state)
         return state
 
@@ -213,6 +224,11 @@ class AieMasWorkflow:
         state.latest_evidence_summary = str(result["evidence_summary"])
         state.latest_main_gap = str(result["main_gap"])
         state.latest_conflict_status = str(result["conflict_status"])
+        state.latest_information_gain_assessment = str(
+            result.get("information_gain_assessment") or decision.information_gain_assessment or ""
+        ) or None
+        state.latest_gap_trend = str(result.get("gap_trend") or decision.gap_trend or "") or None
+        state.stagnation_detected = bool(decision.stagnation_detected)
         state.next_microscopic_task = self._build_next_microscopic_task(state, decision)
         state.planner_diagnosis_history.append(decision.diagnosis)  # type: ignore[union-attr]
         state.planner_action_history.append(decision.action)  # type: ignore[union-attr]

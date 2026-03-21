@@ -20,12 +20,14 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
     monkeypatch.setenv("AIE_MAS_LOG_DIR", "runtime_logs")
     monkeypatch.setenv("AIE_MAS_RUNTIME_DIR", "runtime_workspace")
+    monkeypatch.setenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY", "1")
 
     config = AieMasConfig.from_env()
     config.ensure_runtime_dirs()
 
     assert config.execution_profile == "linux-prod"
     assert config.tool_backend == "mock"
+    assert config.enable_long_term_memory is True
     assert config.planner_backend == "openai_sdk"
     assert config.planner_base_url == "http://34.13.73.248:3888/v1"
     assert config.planner_model == "gpt-4.1-mini"
@@ -37,6 +39,21 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.memory_dir.exists()
     assert config.log_dir.exists()
     assert config.runtime_dir.exists()
+
+
+def test_config_skips_memory_dir_when_long_term_memory_is_disabled(tmp_path: Path) -> None:
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="local-dev",
+        enable_long_term_memory=False,
+    )
+
+    config.ensure_runtime_dirs()
+
+    assert config.data_dir.exists()
+    assert config.log_dir.exists()
+    assert config.runtime_dir.exists()
+    assert not config.memory_dir.exists()
 
 
 def test_real_backend_is_reserved_for_future_linux_wrappers(tmp_path: Path) -> None:

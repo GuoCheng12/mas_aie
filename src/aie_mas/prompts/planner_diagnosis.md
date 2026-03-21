@@ -9,6 +9,7 @@ You will be given:
 - current_hypothesis
 - current_confidence
 - working_memory_summary
+- recent_rounds_context
 - latest_macro_report (optional)
 - latest_microscopic_report (optional)
 - latest_verifier_report (optional)
@@ -18,13 +19,18 @@ Your task is to:
 2. Explain what these results mean for the current leading hypothesis.
 3. Identify what still cannot be judged.
 4. Identify the main gap.
-5. Decide the single next action.
+5. Compare the current round with the most recent two or three working-memory rounds.
+6. Judge whether there is substantial new information relative to those recent rounds.
+7. Judge whether the main gap is shrinking, unchanged, or widening.
+8. Decide whether the process has entered stagnation / low-information-gain status.
+9. Decide the single next action.
 
 Important rules:
 - Stay focused on the current leading hypothesis.
 - Do not switch hypothesis in this stage unless the system is in a verifier-after stage.
 - Macro, Microscopic, and Verifier reports are result reports only; they do not contain the final interpretation.
 - If confidence is already high enough for a temporary conclusion, the next action must be Verifier.
+- If confidence is not yet high but the recent rounds indicate stagnation / low information gain, you may trigger Verifier now to break the deadlock.
 - If internal evidence is still insufficient, choose the most informative next step between Macro or Microscopic.
 - Do not finalize unless there has already been enough evidence and verifier handling has been addressed.
 
@@ -36,10 +42,19 @@ Return:
 - confidence
 - needs_verifier
 - finalize
+- evidence_summary
+- main_gap
+- conflict_status
+- information_gain_assessment
+- gap_trend
+- stagnation_detected
 
 The diagnosis must explicitly include:
 - current leading hypothesis
 - what new evidence was added
 - whether the new evidence strengthens, weakens, or is still insufficient for the current hypothesis
 - what remains unresolved
+- whether the current round provides substantial new information compared with the recent rounds
+- whether the current main gap is shrinking, unchanged, or widening
+- whether the process is entering stagnation / low-information-gain status
 - why the chosen next action is the best next step

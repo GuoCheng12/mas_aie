@@ -8,6 +8,7 @@ from aie_mas.compat.langchain import prompt_value_to_messages
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import AieMasState, HypothesisEntry, PlannerDecision
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
+from aie_mas.memory.working import WorkingMemoryManager
 from aie_mas.utils.prompts import PromptRepository
 from aie_mas.utils.smiles import extract_smiles_features
 
@@ -30,6 +31,9 @@ class PlannerRoundResponse(BaseModel):
     evidence_summary: str = "No additional evidence summary was provided."
     main_gap: str = "No main gap was provided."
     conflict_status: str = "none"
+    information_gain_assessment: str = "Information gain has not been assessed."
+    gap_trend: str = "Gap trend has not been assessed."
+    stagnation_detected: bool = False
 
 
 class PlannerBackend(Protocol):
@@ -150,11 +154,29 @@ class MockPlannerBackend:
         evidence_summary = "; ".join(evidence_bits) if evidence_bits else "no new internal evidence was added"
         unresolved = "External supervision has not checked whether the current internal signal is consistent."
         main_gap = "Verifier evidence is required before a temporary conclusion can be trusted."
+        information_gain_assessment = "The current round adds substantive new information."
+        gap_trend = "The main gap is shrinking."
+        stagnation_detected = False
 
-        if confidence >= self._verifier_threshold:
+        recent_rounds_context = payload.get("recent_rounds_context", [])
+        if len(recent_rounds_context) >= 2:
+            latest_recent = recent_rounds_context[-1]
+            previous_recent = recent_rounds_context[-2]
+            repeated_gap = latest_recent.get("main_gap") == previous_recent.get("main_gap")
+            repeated_action = latest_recent.get("action_taken") == previous_recent.get("action_taken")
+            if repeated_gap and repeated_action:
+                information_gain_assessment = (
+                    "Compared with the recent rounds, the current loop is adding limited new information."
+                )
+                gap_trend = "The main gap is not shrinking."
+                stagnation_detected = True
+
+        if confidence >= self._verifier_threshold or stagnation_detected:
             action = "verifier"
             needs_verifier = True
             planned_agents = ["verifier"]
+            if stagnation_detected:
+                main_gap = "Recent rounds indicate stagnation, so external supervision is needed."
         elif not macro_results:
             action = "macro"
             needs_verifier = False
@@ -171,6 +193,9 @@ class MockPlannerBackend:
             f"New evidence added: {evidence_summary}. "
             f"This new evidence {evidence_impact} the current hypothesis at confidence {confidence:.2f}. "
             f"What remains unresolved: {unresolved} "
+            f"Relative to the recent rounds, {information_gain_assessment} "
+            f"The current gap trend is: {gap_trend} "
+            f"Stagnation status: {'stagnation detected.' if stagnation_detected else 'no stagnation detected.'} "
             f"The main gap is {main_gap} "
             f"The chosen next action is {action} because it addresses the highest-value missing evidence now."
         )
@@ -183,10 +208,15 @@ class MockPlannerBackend:
                 needs_verifier=needs_verifier,
                 finalize=False,
                 planned_agents=planned_agents,
+                information_gain_assessment=information_gain_assessment,
+                gap_trend=gap_trend,
+                stagnation_detected=stagnation_detected,
             ),
             "evidence_summary": evidence_summary,
             "main_gap": main_gap,
             "conflict_status": "none",
+            "information_gain_assessment": information_gain_assessment,
+            "gap_trend": gap_trend,
         }
 
     def plan_reweight_or_finalize(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
@@ -350,6 +380,9 @@ class OpenAIPlannerBackend:
             needs_verifier=response.needs_verifier,
             finalize=response.finalize,
             planned_agents=[],
+            information_gain_assessment=response.information_gain_assessment,
+            gap_trend=response.gap_trend,
+            stagnation_detected=response.stagnation_detected,
         )
 
         evidence_summary = response.evidence_summary
@@ -359,10 +392,12 @@ class OpenAIPlannerBackend:
         if not post_verifier:
             if decision.finalize:
                 decision.finalize = False
-            if confidence >= self._verifier_threshold:
+            if confidence >= self._verifier_threshold or decision.stagnation_detected:
                 decision.action = "verifier"
                 decision.needs_verifier = True
                 decision.finalize = False
+                if decision.stagnation_detected and main_gap == response.main_gap:
+                    main_gap = "Recent rounds indicate stagnation, so external supervision is needed."
             decision.planned_agents = self._planned_agents_for_action(decision.action)
             if decision.action != "verifier":
                 decision.needs_verifier = False
@@ -374,6 +409,8 @@ class OpenAIPlannerBackend:
             "evidence_summary": evidence_summary,
             "main_gap": main_gap,
             "conflict_status": conflict_status,
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
         }
 
     def _postprocess_reweight(
@@ -458,6 +495,7 @@ class PlannerAgent:
     ) -> None:
         self._prompts = prompts
         self._config = config
+        self._working_memory = WorkingMemoryManager()
         self._backend = self._build_backend(config, llm_client)
 
     def plan_initial(self, state: AieMasState) -> dict[str, Any]:
@@ -477,6 +515,7 @@ class PlannerAgent:
             "current_hypothesis": state.current_hypothesis,
             "current_confidence": state.confidence,
             "working_memory_summary": [entry.model_dump(mode="json") for entry in state.working_memory],
+            "recent_rounds_context": self._working_memory.build_recent_rounds_context(state),
             "latest_macro_report": latest_macro,
             "latest_microscopic_report": latest_microscopic,
             "latest_verifier_report": latest_verifier,
