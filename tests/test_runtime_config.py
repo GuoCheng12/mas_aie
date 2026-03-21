@@ -18,6 +18,7 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
+    monkeypatch.setenv("AIE_MAS_REPORT_DIR", "runtime_reports")
     monkeypatch.setenv("AIE_MAS_LOG_DIR", "runtime_logs")
     monkeypatch.setenv("AIE_MAS_RUNTIME_DIR", "runtime_workspace")
     monkeypatch.setenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY", "1")
@@ -33,10 +34,12 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.planner_model == "gpt-4.1-mini"
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
+    assert config.report_dir == (tmp_path / "runtime_reports").resolve()
     assert config.log_dir == (tmp_path / "runtime_logs").resolve()
     assert config.runtime_dir == (tmp_path / "runtime_workspace").resolve()
     assert config.tools_work_dir == (tmp_path / "runtime_workspace" / "tools").resolve()
     assert config.memory_dir.exists()
+    assert config.report_dir.exists()
     assert config.log_dir.exists()
     assert config.runtime_dir.exists()
 
@@ -51,6 +54,7 @@ def test_config_skips_memory_dir_when_long_term_memory_is_disabled(tmp_path: Pat
     config.ensure_runtime_dirs()
 
     assert config.data_dir.exists()
+    assert config.report_dir.exists()
     assert config.log_dir.exists()
     assert config.runtime_dir.exists()
     assert not config.memory_dir.exists()

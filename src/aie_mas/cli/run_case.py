@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -26,6 +27,7 @@ def build_runtime_config(
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
     log_dir: Optional[Path] = None,
     runtime_dir: Optional[Path] = None,
     tools_work_dir: Optional[Path] = None,
@@ -46,6 +48,7 @@ def build_runtime_config(
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
+        report_dir=report_dir,
         log_dir=log_dir,
         runtime_dir=runtime_dir,
         tools_work_dir=tools_work_dir,
@@ -70,6 +73,7 @@ def run_case_workflow(
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
     log_dir: Optional[Path] = None,
     runtime_dir: Optional[Path] = None,
     tools_work_dir: Optional[Path] = None,
@@ -90,6 +94,7 @@ def run_case_workflow(
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
+        report_dir=report_dir,
         log_dir=log_dir,
         runtime_dir=runtime_dir,
         tools_work_dir=tools_work_dir,
@@ -158,6 +163,10 @@ def main(
         None,
         help="Optional directory for long-term memory JSON files.",
     ),
+    report_dir: Optional[Path] = typer.Option(
+        None,
+        help="Optional directory where per-run report folders will be written.",
+    ),
     log_dir: Optional[Path] = typer.Option(
         None,
         help="Optional log directory.",
@@ -196,6 +205,7 @@ def main(
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
+        report_dir=report_dir,
         log_dir=log_dir,
         runtime_dir=runtime_dir,
         tools_work_dir=tools_work_dir,
@@ -205,12 +215,82 @@ def main(
     )
     graph = build_graph(config)
     state = invoke_graph(graph, AieMasState(user_query=user_query, smiles=smiles))
+    report_paths = write_run_report(config, state)
     payload = {
         "runtime_context": config.runtime_context(),
-        "final_answer": state.final_answer,
+        "summary": build_summary_payload(state, report_paths["report_dir"]),
         "state_snapshot": state.state_snapshot,
     }
-    typer.echo(json.dumps(payload, ensure_ascii=False, indent=2))
+    render_terminal_summary(payload["summary"], report_paths)
+
+
+def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, object]:
+    final_answer = state.final_answer or {}
+    return {
+        "case_id": state.case_id,
+        "smiles": state.smiles,
+        "current_hypothesis": state.current_hypothesis,
+        "confidence": state.confidence,
+        "diagnosis": final_answer.get("diagnosis"),
+        "action": final_answer.get("action"),
+        "finalize": state.finalize,
+        "working_memory_rounds": len(state.working_memory),
+        "report_dir": str(report_dir),
+    }
+
+
+def build_full_state_payload(
+    config: AieMasConfig,
+    state: AieMasState,
+    report_dir: Path,
+) -> dict[str, object]:
+    return {
+        "runtime_context": config.runtime_context(),
+        "report_dir": str(report_dir),
+        "state_snapshot": state.state_snapshot,
+    }
+
+
+def write_run_report(config: AieMasConfig, state: AieMasState) -> dict[str, Path]:
+    timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+    case_id = state.case_id or "unknown-case"
+    report_dir = config.report_dir / f"{timestamp}_{case_id}"
+    report_dir.mkdir(parents=True, exist_ok=True)
+
+    summary_path = report_dir / "summary.json"
+    full_state_path = report_dir / "full_state.json"
+    summary_payload = build_summary_payload(state, report_dir)
+    full_state_payload = build_full_state_payload(config, state, report_dir)
+
+    summary_path.write_text(
+        json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    full_state_path.write_text(
+        json.dumps(full_state_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "report_dir": report_dir,
+        "summary_path": summary_path,
+        "full_state_path": full_state_path,
+    }
+
+
+def render_terminal_summary(
+    summary: dict[str, object],
+    report_paths: dict[str, Path],
+) -> None:
+    lines = [
+        f"case_id: {summary['case_id']}",
+        f"current_hypothesis: {summary['current_hypothesis']}",
+        f"confidence: {summary['confidence']}",
+        f"action: {summary['action']}",
+        f"finalize: {summary['finalize']}",
+        f"summary_file: {report_paths['summary_path']}",
+        f"full_state_file: {report_paths['full_state_path']}",
+    ]
+    typer.echo("\n".join(lines))
 
 
 def cli() -> None:

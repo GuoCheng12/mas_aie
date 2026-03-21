@@ -29,6 +29,7 @@ class AieMasConfig(BaseModel):
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
     memory_dir: Optional[Path] = None
+    report_dir: Optional[Path] = None
     log_dir: Optional[Path] = None
     runtime_dir: Optional[Path] = None
     tools_work_dir: Optional[Path] = None
@@ -54,6 +55,7 @@ class AieMasConfig(BaseModel):
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
             "data_dir": "AIE_MAS_DATA_DIR",
             "memory_dir": "AIE_MAS_MEMORY_DIR",
+            "report_dir": "AIE_MAS_REPORT_DIR",
             "log_dir": "AIE_MAS_LOG_DIR",
             "runtime_dir": "AIE_MAS_RUNTIME_DIR",
             "tools_work_dir": "AIE_MAS_TOOLS_WORK_DIR",
@@ -66,6 +68,7 @@ class AieMasConfig(BaseModel):
             "prompts_dir",
             "data_dir",
             "memory_dir",
+            "report_dir",
             "log_dir",
             "runtime_dir",
             "tools_work_dir",
@@ -110,6 +113,8 @@ class AieMasConfig(BaseModel):
             self.data_dir = Path("var") / "data"
         if self.memory_dir is None:
             self.memory_dir = self.data_dir / "memory"
+        if self.report_dir is None:
+            self.report_dir = Path("var") / "reports"
         if self.log_dir is None:
             self.log_dir = Path("var") / "log"
         if self.runtime_dir is None:
@@ -120,6 +125,7 @@ class AieMasConfig(BaseModel):
         self.prompts_dir = self._resolve_path(self.prompts_dir)
         self.data_dir = self._resolve_path(self.data_dir)
         self.memory_dir = self._resolve_path(self.memory_dir)
+        self.report_dir = self._resolve_path(self.report_dir)
         self.log_dir = self._resolve_path(self.log_dir)
         self.runtime_dir = self._resolve_path(self.runtime_dir)
         self.tools_work_dir = self._resolve_path(self.tools_work_dir)
@@ -130,7 +136,7 @@ class AieMasConfig(BaseModel):
         )
 
     def ensure_runtime_dirs(self) -> None:
-        runtime_dirs = [self.data_dir, self.log_dir, self.runtime_dir, self.tools_work_dir]
+        runtime_dirs = [self.data_dir, self.report_dir, self.log_dir, self.runtime_dir, self.tools_work_dir]
         if self.enable_long_term_memory:
             runtime_dirs.append(self.memory_dir)
         for path in runtime_dirs:
@@ -157,6 +163,7 @@ class AieMasConfig(BaseModel):
             "prompts_dir": str(self.prompts_dir),
             "data_dir": str(self.data_dir),
             "memory_dir": str(self.memory_dir),
+            "report_dir": str(self.report_dir),
             "log_dir": str(self.log_dir),
             "runtime_dir": str(self.runtime_dir),
             "tools_work_dir": str(self.tools_work_dir),
