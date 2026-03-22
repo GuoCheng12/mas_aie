@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections import Counter
+
 from aie_mas.graph.state import AieMasState, WorkingMemoryAgentEntry, WorkingMemoryEntry
 
 
@@ -34,6 +36,12 @@ class WorkingMemoryManager:
             )
             for report in state.active_round_reports
         ]
+        local_uncertainty_summary = " | ".join(
+            f"{report.agent_name}: {report.remaining_local_uncertainty}" for report in state.active_round_reports
+        )
+        if not local_uncertainty_summary:
+            local_uncertainty_summary = None
+        repeated_local_uncertainty_signals = self._repeated_local_uncertainties(state, agent_reports)
 
         entry = WorkingMemoryEntry(
             round_id=state.round_idx + 1,
@@ -47,9 +55,16 @@ class WorkingMemoryManager:
             next_action=state.last_planner_decision.action,
             planner_task_instruction=state.last_planner_decision.task_instruction,
             planner_agent_task_instructions=dict(state.last_planner_decision.agent_task_instructions),
+            hypothesis_uncertainty_note=state.last_planner_decision.hypothesis_uncertainty_note,
+            capability_assessment=state.last_planner_decision.capability_assessment,
+            stagnation_assessment=state.last_planner_decision.stagnation_assessment,
+            contraction_reason=state.last_planner_decision.contraction_reason,
             information_gain_assessment=state.last_planner_decision.information_gain_assessment,
             gap_trend=state.last_planner_decision.gap_trend,
             stagnation_detected=state.last_planner_decision.stagnation_detected,
+            local_uncertainty_summary=local_uncertainty_summary,
+            repeated_local_uncertainty_signals=repeated_local_uncertainty_signals,
+            capability_lesson_candidates=list(state.last_planner_decision.capability_lesson_candidates),
             agent_reports=agent_reports,
         )
         state.working_memory.append(entry)
@@ -73,11 +88,84 @@ class WorkingMemoryManager:
                     "main_gap": entry.main_gap,
                     "evidence_summary": self._truncate(entry.evidence_summary, 260),
                     "diagnosis_summary": self._truncate(entry.diagnosis_summary, 260),
+                    "planner_task_instruction": self._truncate(entry.planner_task_instruction or "", 220),
+                    "local_uncertainty_summary": self._truncate(entry.local_uncertainty_summary or "", 260),
+                    "repeated_local_uncertainty_signals": entry.repeated_local_uncertainty_signals,
+                    "capability_assessment": self._truncate(entry.capability_assessment or "", 220),
+                    "stagnation_assessment": self._truncate(entry.stagnation_assessment or "", 220),
+                    "contraction_reason": self._truncate(entry.contraction_reason or "", 220),
+                    "information_gain_assessment": self._truncate(
+                        entry.information_gain_assessment or "",
+                        220,
+                    ),
+                    "gap_trend": entry.gap_trend,
+                    "stagnation_detected": entry.stagnation_detected,
                 }
             )
         return context
+
+    def build_capability_context(
+        self,
+        state: AieMasState,
+        *,
+        window_size: int = 3,
+    ) -> dict[str, object]:
+        recent_entries = state.working_memory[-window_size:]
+        repeated_gaps = self._repeated_strings([entry.main_gap for entry in recent_entries if entry.main_gap])
+        repeated_uncertainties = self._repeated_strings(
+            [
+                agent_report.remaining_local_uncertainty
+                for entry in recent_entries
+                for agent_report in entry.agent_reports
+                if agent_report.remaining_local_uncertainty
+            ]
+        )
+        repeated_actions = self._repeated_strings(
+            [entry.action_taken for entry in recent_entries if entry.action_taken]
+        )
+        low_information_round_ids = [
+            entry.round_id
+            for entry in recent_entries
+            if entry.information_gain_assessment
+            and any(
+                marker in entry.information_gain_assessment.lower()
+                for marker in ("limited", "little", "modest", "not shrinking")
+            )
+        ]
+        stagnation_round_ids = [entry.round_id for entry in recent_entries if entry.stagnation_detected]
+        return {
+            "recent_round_count": len(recent_entries),
+            "repeated_main_gaps": repeated_gaps,
+            "repeated_actions": repeated_actions,
+            "repeated_local_uncertainties": repeated_uncertainties,
+            "low_information_round_ids": low_information_round_ids,
+            "stagnation_round_ids": stagnation_round_ids,
+        }
 
     def _truncate(self, text: str, limit: int) -> str:
         if len(text) <= limit:
             return text
         return f"{text[: limit - 3]}..."
+
+    def _repeated_local_uncertainties(
+        self,
+        state: AieMasState,
+        agent_reports: list[WorkingMemoryAgentEntry],
+    ) -> list[str]:
+        recent_texts = [
+            report.remaining_local_uncertainty
+            for entry in state.working_memory[-2:]
+            for report in entry.agent_reports
+            if report.remaining_local_uncertainty
+        ]
+        recent_texts.extend(
+            report.remaining_local_uncertainty
+            for report in agent_reports
+            if report.remaining_local_uncertainty
+        )
+        return self._repeated_strings(recent_texts)
+
+    def _repeated_strings(self, values: list[str]) -> list[str]:
+        normalized = [value.strip() for value in values if value.strip()]
+        counts = Counter(normalized)
+        return [value for value, count in counts.items() if count >= 2]

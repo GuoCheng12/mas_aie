@@ -31,6 +31,7 @@ def test_initial_planner_dispatch_contains_agent_task_instructions(tmp_path: Pat
     )
 
     decision = result["decision"]
+    top_hypothesis = result["hypothesis_pool"][0]
 
     assert decision.action == "macro_and_microscopic"
     assert decision.task_instruction
@@ -38,3 +39,6 @@ def test_initial_planner_dispatch_contains_agent_task_instructions(tmp_path: Pat
     assert "microscopic" in decision.agent_task_instructions
     assert "current working hypothesis" in decision.agent_task_instructions["macro"]
     assert "S0/S1" in decision.agent_task_instructions["microscopic"]
+    assert top_hypothesis.candidate_strength == "medium"
+    assert "generic mock fallback" in decision.hypothesis_uncertainty_note.lower()
+    assert "specialized agents" in decision.capability_assessment.lower()

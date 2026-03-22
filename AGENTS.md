@@ -77,6 +77,13 @@ Microscopic、Macro、Verifier 都不应承担推理职责，它们只负责：
 - 不要将官方默认 base_url 硬编码
 - 当前项目可能通过兼容 OpenAI API 的中转站运行
 
+### 9. 不要用硬编码化学规则替代 Planner 推理
+- 发光机制判断、hypothesis pool 生成、化学场景识别，应优先由 Planner 的 LLM reasoning 完成
+- 不要在代码中通过一长串 `if/elif/else` 针对特定分子、特定 scaffold、特定化学场景直接规定机制判断
+- 不要为 benzene、rigid aromatic、donor-acceptor 等具体 case family 写硬规则来决定主假设或系统动作
+- 允许存在 mock fallback，但 mock fallback 必须是通用占位，不能伪装成真实化学判别器
+- 结构化特征、working memory、verifier 结果可以作为 Planner 的上下文输入，但不应在 Python 逻辑中被写成“结构模式 -> 机制结论”的裁决规则
+
 ## 四、Memory 规则
 
 ### Working Memory
@@ -120,3 +127,4 @@ Microscopic、Macro、Verifier 都不应承担推理职责，它们只负责：
 - 不要把 Verifier 做成直接裁决器
 - 不要把 working memory 简化成原始聊天记录堆积
 - 不要为了临时跑通而破坏最终版职责边界
+- 不要通过硬编码化学规则替代 Planner 的机制推理

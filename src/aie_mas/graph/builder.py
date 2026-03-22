@@ -113,6 +113,11 @@ class AieMasWorkflow:
         state.latest_evidence_summary = "Initial planning used only the user query and SMILES."
         state.latest_main_gap = "Internal macro and microscopic evidence are both missing."
         state.latest_conflict_status = "none"
+        state.latest_hypothesis_uncertainty_note = decision.hypothesis_uncertainty_note
+        state.latest_capability_assessment = decision.capability_assessment
+        state.latest_stagnation_assessment = decision.stagnation_assessment
+        state.latest_contraction_reason = decision.contraction_reason
+        state.capability_lesson_candidates = list(decision.capability_lesson_candidates)
         microscopic_instruction = (
             decision.agent_task_instructions.get("microscopic")
             or "Run fixed first-stage S0/S1 optimization."
@@ -205,6 +210,10 @@ class AieMasWorkflow:
             "diagnosis": decision.diagnosis if decision else None,
             "action": decision.action if decision else None,
             "finalize": state.finalize,
+            "hypothesis_uncertainty_note": state.latest_hypothesis_uncertainty_note,
+            "capability_assessment": state.latest_capability_assessment,
+            "stagnation_assessment": state.latest_stagnation_assessment,
+            "contraction_reason": state.latest_contraction_reason,
             "working_memory_rounds": len(state.working_memory),
         }
         state.state_snapshot = state.model_dump(mode="json")
@@ -245,11 +254,24 @@ class AieMasWorkflow:
         state.latest_evidence_summary = str(result["evidence_summary"])
         state.latest_main_gap = str(result["main_gap"])
         state.latest_conflict_status = str(result["conflict_status"])
+        state.latest_hypothesis_uncertainty_note = str(
+            result.get("hypothesis_uncertainty_note") or decision.hypothesis_uncertainty_note or ""
+        ) or None
+        state.latest_capability_assessment = str(
+            result.get("capability_assessment") or decision.capability_assessment or ""
+        ) or None
+        state.latest_stagnation_assessment = str(
+            result.get("stagnation_assessment") or decision.stagnation_assessment or ""
+        ) or None
+        state.latest_contraction_reason = str(
+            result.get("contraction_reason") or decision.contraction_reason or ""
+        ) or None
         state.latest_information_gain_assessment = str(
             result.get("information_gain_assessment") or decision.information_gain_assessment or ""
         ) or None
         state.latest_gap_trend = str(result.get("gap_trend") or decision.gap_trend or "") or None
         state.stagnation_detected = bool(decision.stagnation_detected)
+        state.capability_lesson_candidates = list(decision.capability_lesson_candidates)
         state.next_microscopic_task = self._build_next_microscopic_task(state, decision)
         state.planner_diagnosis_history.append(decision.diagnosis)  # type: ignore[union-attr]
         state.planner_action_history.append(decision.action)  # type: ignore[union-attr]

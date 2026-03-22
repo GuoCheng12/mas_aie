@@ -234,6 +234,10 @@ def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, obj
         "diagnosis": final_answer.get("diagnosis"),
         "action": final_answer.get("action"),
         "finalize": state.finalize,
+        "hypothesis_uncertainty_note": final_answer.get("hypothesis_uncertainty_note"),
+        "capability_assessment": final_answer.get("capability_assessment"),
+        "stagnation_assessment": final_answer.get("stagnation_assessment"),
+        "contraction_reason": final_answer.get("contraction_reason"),
         "working_memory_rounds": len(state.working_memory),
         "rounds": build_rounds_payload(state),
         "report_dir": str(report_dir),
@@ -254,6 +258,10 @@ def build_rounds_payload(state: AieMasState) -> list[dict[str, object]]:
                     "selected_next_action": entry.next_action,
                     "task_instruction": entry.planner_task_instruction,
                     "agent_task_instructions": entry.planner_agent_task_instructions,
+                    "hypothesis_uncertainty_note": entry.hypothesis_uncertainty_note,
+                    "capability_assessment": entry.capability_assessment,
+                    "stagnation_assessment": entry.stagnation_assessment,
+                    "contraction_reason": entry.contraction_reason,
                 },
                 "working_memory": {
                     "evidence_summary": entry.evidence_summary,
@@ -262,6 +270,11 @@ def build_rounds_payload(state: AieMasState) -> list[dict[str, object]]:
                     "information_gain_assessment": entry.information_gain_assessment,
                     "gap_trend": entry.gap_trend,
                     "stagnation_detected": entry.stagnation_detected,
+                    "local_uncertainty_summary": entry.local_uncertainty_summary,
+                    "repeated_local_uncertainty_signals": entry.repeated_local_uncertainty_signals,
+                    "capability_lesson_candidates": [
+                        lesson.model_dump(mode="json") for lesson in entry.capability_lesson_candidates
+                    ],
                     "agent_reports": [
                         agent_entry.model_dump(mode="json") for agent_entry in entry.agent_reports
                     ],

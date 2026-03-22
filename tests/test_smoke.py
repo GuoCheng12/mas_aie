@@ -73,10 +73,13 @@ def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
     assert first_round["action_taken"] == "macro, microscopic"
     assert first_round["planner"]["selected_next_action"] in {"microscopic", "verifier"}
     assert first_round["planner"]["agent_task_instructions"]
+    assert first_round["planner"]["hypothesis_uncertainty_note"]
+    assert first_round["planner"]["capability_assessment"]
     assert first_round["working_memory"]["main_gap"]
     assert first_round["working_memory"]["agent_reports"]
     assert first_round["working_memory"]["agent_reports"][0]["task_understanding"]
     assert first_round["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
+    assert "local_uncertainty_summary" in first_round["working_memory"]
 
 
 def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> None:
@@ -124,11 +127,14 @@ def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> N
     assert summary_payload["action"] == terminal_summary["action"]
     assert str(summary_payload["finalize"]) == terminal_summary["finalize"]
     assert str(summary_payload["working_memory_rounds"]) == terminal_summary["rounds"]
+    assert summary_payload["hypothesis_uncertainty_note"]
+    assert summary_payload["capability_assessment"]
     assert summary_payload["report_dir"] == str(summary_path.parent)
     assert terminal_summary["report_dir"] == str(summary_path.parent)
     assert len(summary_payload["rounds"]) == summary_payload["working_memory_rounds"]
     assert summary_payload["rounds"][0]["action_taken"] == "macro, microscopic"
     assert summary_payload["rounds"][0]["planner"]["selected_next_action"] in {"microscopic", "verifier"}
+    assert summary_payload["rounds"][0]["planner"]["capability_assessment"]
     assert summary_payload["rounds"][0]["working_memory"]["agent_reports"]
     assert summary_payload["rounds"][0]["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
     assert summary_payload["rounds"][0]["working_memory"]["evidence_summary"]

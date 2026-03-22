@@ -83,6 +83,13 @@ class LongTermMemoryStore:
             critical_turning_points=[entry.diagnosis_summary for entry in state.working_memory],
             useful_actions=[entry.action_taken for entry in state.working_memory],
             failed_actions=[],
+            capability_lessons=[
+                (
+                    f"{candidate.agent_name}: {candidate.blocked_task_pattern} | "
+                    f"{candidate.observed_limitation} | {candidate.recommended_contraction}"
+                )
+                for candidate in state.capability_lesson_candidates
+            ],
             final_gt_source="mock_verifier_stub" if state.verifier_reports else None,
         )
         payload = self._read_json(self._case_path)

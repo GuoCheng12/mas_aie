@@ -60,6 +60,7 @@ def test_verifier_support_branch_finalizes(tmp_path: Path) -> None:
     assert result["decision"].finalize is True
     assert result["decision"].task_instruction is None
     assert result["conflict_status"] == "none"
+    assert result["decision"].contraction_reason
 
 
 def test_verifier_weak_conflict_branch_continues_refine(tmp_path: Path) -> None:
@@ -78,6 +79,8 @@ def test_verifier_weak_conflict_branch_continues_refine(tmp_path: Path) -> None:
     assert result["decision"].current_hypothesis == state.current_hypothesis
     assert result["decision"].task_instruction
     assert result["conflict_status"] == "weak"
+    assert result["decision"].capability_assessment
+    assert result["decision"].contraction_reason
 
 
 def test_verifier_strong_conflict_branch_switches_hypothesis(tmp_path: Path) -> None:
@@ -96,3 +99,4 @@ def test_verifier_strong_conflict_branch_switches_hypothesis(tmp_path: Path) -> 
     assert result["decision"].current_hypothesis == "ICT-assisted emission with aggregation-enabled rigidification"
     assert result["decision"].task_instruction
     assert result["conflict_status"] == "strong"
+    assert result["decision"].contraction_reason

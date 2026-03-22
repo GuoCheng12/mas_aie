@@ -83,6 +83,9 @@ def test_recent_rounds_context_keeps_latest_action_gap_and_summaries() -> None:
     assert context[1]["main_gap"] == "Micro consistency is still weak."
     assert context[2]["evidence_summary"] == "round 4 evidence"
     assert context[2]["diagnosis_summary"] == "round 4 diagnosis"
+    assert "capability_assessment" in context[0]
+    assert "local_uncertainty_summary" in context[1]
+    assert "repeated_local_uncertainty_signals" in context[2]
 
 
 def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
@@ -120,6 +123,7 @@ def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
             AgentReport(
                 agent_name="macro",
                 task_received="Return low-cost structure results.",
+                remaining_local_uncertainty="Macro structure proxies are repeating and cannot separate RIM from packing effects.",
                 tool_calls=["mock_macro_tool"],
                 raw_results={"macro_tool": {"aromatic_atom_count": 4}},
                 structured_results={
@@ -135,6 +139,7 @@ def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
             AgentReport(
                 agent_name="microscopic",
                 task_received="Return micro proxy results.",
+                remaining_local_uncertainty="Microscopic proxy evidence remains too weak to break the current gap.",
                 tool_calls=["mock_s0_tool", "mock_s1_tool"],
                 raw_results={"micro_tool": {"relaxation_gap": 0.12}},
                 structured_results={
@@ -154,6 +159,11 @@ def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
     assert decision.action == "verifier"
     assert decision.needs_verifier is True
     assert decision.stagnation_detected is True
+    assert decision.hypothesis_uncertainty_note
+    assert decision.capability_assessment
+    assert decision.stagnation_assessment
+    assert decision.contraction_reason
+    assert decision.capability_lesson_candidates
     assert "limited new information" in result["information_gain_assessment"]
     assert "not shrinking" in result["gap_trend"]
     assert "stagnation" in result["main_gap"].lower()

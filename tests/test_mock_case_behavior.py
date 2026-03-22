@@ -17,24 +17,20 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts
 class MockCase:
     name: str
     smiles: str
-    expected_initial_hypothesis: str
 
 
 MOCK_CASES = [
     MockCase(
         name="bulky_rim_case",
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
-        expected_initial_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
     ),
     MockCase(
         name="non_esipt_hydrocarbon_case",
         smiles="c1ccccc1",
-        expected_initial_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
     ),
     MockCase(
         name="ict_donor_acceptor_case",
         smiles="O=N(=O)c1ccc(N(CC)CC)cc1",
-        expected_initial_hypothesis="ICT-assisted emission with aggregation-enabled rigidification",
     ),
 ]
 
@@ -67,7 +63,7 @@ def _run_case(case: MockCase, tmp_path: Path) -> AieMasState:
     )
 
 
-def test_mock_cases_generate_distinct_initial_hypotheses_and_task_instructions(tmp_path: Path) -> None:
+def test_mock_cases_generate_generic_fallback_dispatch_with_nonempty_task_instructions(tmp_path: Path) -> None:
     planner = _build_planner(tmp_path)
     initial_results = {
         case.name: planner.plan_initial(
@@ -79,23 +75,19 @@ def test_mock_cases_generate_distinct_initial_hypotheses_and_task_instructions(t
         for case in MOCK_CASES
     }
 
-    bulky_decision = initial_results["bulky_rim_case"]["decision"]
-    ict_decision = initial_results["ict_donor_acceptor_case"]["decision"]
-
     for case in MOCK_CASES:
         result = initial_results[case.name]
         decision = result["decision"]
-        assert decision.current_hypothesis == case.expected_initial_hypothesis
         assert decision.task_instruction
         assert decision.agent_task_instructions
         assert "macro" in decision.agent_task_instructions
         assert "microscopic" in decision.agent_task_instructions
         assert decision.agent_task_instructions["macro"]
         assert decision.agent_task_instructions["microscopic"]
-
-    assert bulky_decision.current_hypothesis != ict_decision.current_hypothesis
-    assert bulky_decision.agent_task_instructions["macro"] != ict_decision.agent_task_instructions["macro"]
-    assert bulky_decision.agent_task_instructions["microscopic"] != ict_decision.agent_task_instructions["microscopic"]
+        assert decision.hypothesis_uncertainty_note
+        assert decision.capability_assessment
+        assert "generic mock fallback" in decision.hypothesis_uncertainty_note.lower()
+        assert result["hypothesis_pool"][0].candidate_strength == "medium"
 
 
 def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavior(tmp_path: Path) -> None:
@@ -145,6 +137,8 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
             in diagnosis
             for diagnosis in state.planner_diagnosis_history
         )
+        assert any(entry.capability_assessment for entry in state.working_memory)
+        assert any(entry.hypothesis_uncertainty_note for entry in state.working_memory)
 
     bulky_state = states["bulky_rim_case"]
     non_esipt_state = states["non_esipt_hydrocarbon_case"]
@@ -156,18 +150,38 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
     assert bulky_state.verifier_reports
 
     assert non_esipt_state.finalize is False
-    assert non_esipt_state.planner_action_history[1] == "microscopic"
+    assert non_esipt_state.planner_action_history[1] == "verifier"
     assert "verifier" in non_esipt_state.planner_action_history
-    assert len(non_esipt_state.working_memory) == 4
-    assert non_esipt_state.current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
+    assert "microscopic" in non_esipt_state.planner_action_history
+    assert len(non_esipt_state.working_memory) >= 3
+    assert any(
+        entry.capability_assessment and "limit" in entry.capability_assessment.lower()
+        for entry in non_esipt_state.working_memory
+    )
 
     assert ict_state.finalize is False
-    assert ict_state.current_hypothesis == "ICT-assisted emission with aggregation-enabled rigidification"
-    assert ict_state.planner_action_history[1] == "verifier"
-    assert ict_state.planner_action_history.count("verifier") >= 2
+    assert ict_state.planner_action_history[1] == "microscopic"
+    assert "verifier" in ict_state.planner_action_history
     assert "microscopic" in ict_state.planner_action_history
-    assert len(ict_state.verifier_reports) >= 2
+    assert len(ict_state.verifier_reports) >= 1
 
     assert bulky_state.planner_action_history != non_esipt_state.planner_action_history
     assert bulky_state.planner_action_history != ict_state.planner_action_history
-    assert non_esipt_state.planner_action_history != ict_state.planner_action_history
+    assert non_esipt_state.working_memory[-1].contraction_reason != ict_state.working_memory[-1].contraction_reason
+
+
+def test_low_information_case_shows_capability_limited_contraction(tmp_path: Path) -> None:
+    state = _run_case(MOCK_CASES[1], tmp_path)
+
+    assert state.hypothesis_pool[0].candidate_strength == "medium"
+    assert state.planner_action_history[:2] == ["macro_and_microscopic", "verifier"]
+    assert "generic mock fallback" in state.macro_reports[0].task_received.lower()
+    assert any(
+        entry.contraction_reason and "conservatively contracting to verifier" in entry.contraction_reason.lower()
+        for entry in state.working_memory
+    )
+    assert any(
+        entry.capability_assessment and "practical mock capability limit" in entry.capability_assessment.lower()
+        for entry in state.working_memory
+    )
+    assert state.finalize is False

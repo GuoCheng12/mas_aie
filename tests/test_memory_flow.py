@@ -30,6 +30,7 @@ def test_current_case_does_not_hit_its_own_case_memory(tmp_path: Path) -> None:
     case_memory_payload = json.loads((memory_dir / "case_memory.json").read_text(encoding="utf-8"))
     assert len(case_memory_payload) == 1
     assert case_memory_payload[0]["case_id"] == first_state.case_id
+    assert "capability_lessons" in case_memory_payload[0]
 
     second_state = run_case_workflow(
         smiles=smiles,
