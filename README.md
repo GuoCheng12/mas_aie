@@ -280,3 +280,49 @@ cp env/linux_mock.local.example.sh env/linux_mock.local.sh
 然后修改 `env/linux_mock.local.sh` 即可。这个文件已加入 `.gitignore`，不会被提交。
 
 未来接入真实 Linux wrapper 后，保持同一 graph / state / prompt / memory 结构，只需把 `tool_backend` 切到 `real` 并配置真实二进制路径。
+
+## Amesp / PyAmesp 结构准备
+
+Amesp 和 PyAmesp 都需要 3D 结构输入，不直接接受原始 SMILES 字符串。
+
+当前仓库已经提供一条独立的结构准备 + PyAmesp smoke 路径：
+
+1. 远端 Linux 安装 RDKit：
+
+```bash
+conda install -c conda-forge rdkit
+```
+
+2. 加载 Amesp/PyAmesp 运行环境：
+
+```bash
+source env/amesp.sh
+```
+
+3. 用现成 ASE 分子名跑 legacy smoke：
+
+```bash
+python scripts/pyamesp_smoke.py
+```
+
+4. 用 SMILES 先生成 3D 结构，再交给 PyAmesp/Amesp：
+
+```bash
+python scripts/pyamesp_smoke.py --smiles "C1=CCCCC1" --label cyclohexene
+```
+
+该脚本会在工作目录里同时写出：
+
+- `prepared_structure.xyz`
+- `prepared_structure.sdf`
+- `structure_prep_summary.json`
+- `*.aip`
+- `*.aop`
+- `*.mo`
+
+当前第一版结构准备限制：
+
+- 只支持中性闭壳层分子
+- `formal charge != 0` 会明确报错
+- radical / open-shell 会明确报错
+- 如果远端 Linux 未安装 RDKit，会明确提示使用 `conda install -c conda-forge rdkit`

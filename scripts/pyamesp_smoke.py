@@ -62,16 +62,26 @@ def ensure_import_path(pyamesp_root: str) -> None:
         sys.path.insert(0, pyamesp_root)
 
 
+def resolve_input_selection(args: argparse.Namespace) -> tuple[str, str]:
+    if args.smiles:
+        return ("smiles", args.smiles)
+    if args.molecule:
+        return ("molecule", args.molecule)
+    return ("molecule", "NH3")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Minimal PyAmesp smoke test.")
     parser.add_argument("--label", default="nh3_py")
-    parser.add_argument("--molecule", default="NH3")
     parser.add_argument("--workdir", type=Path, default=None)
     parser.add_argument("--maxcore", type=int, default=512)
     parser.add_argument("--npara", type=int, default=2)
     parser.add_argument("--charge", type=int, default=0)
     parser.add_argument("--mult", type=int, default=1)
     parser.add_argument("--keywords", nargs="+", default=["hf", "3-21g", "force"])
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument("--molecule", default=None, help="Simple ASE molecule name for the legacy smoke path.")
+    group.add_argument("--smiles", default=None, help="SMILES string to prepare as a 3D structure before running PyAmesp.")
     return parser
 
 
@@ -83,6 +93,11 @@ def main() -> int:
     ensure_import_path(env_info["pyamesp_root"])
 
     from aie_mas.compat.pyamesp import known_parser_diagnosis, patch_pyamesp, summarize_aop_text
+    from aie_mas.chem.structure_prep import (
+        StructurePrepError,
+        StructurePrepRequest,
+        prepare_structure_from_smiles,
+    )
 
     print(f"project_root: {env_info['project_root']}")
     print(f"amesp_bin: {env_info['amesp_bin']}")
@@ -105,7 +120,38 @@ def main() -> int:
     os.chdir(workdir)
     print(f"workdir: {workdir}")
 
-    atoms = molecule(args.molecule)
+    input_mode, input_value = resolve_input_selection(args)
+    print(f"structure_source: {input_mode}")
+
+    if input_mode == "smiles":
+        try:
+            atoms, prepared = prepare_structure_from_smiles(
+                StructurePrepRequest(
+                    smiles=input_value,
+                    label=args.label,
+                    workdir=workdir,
+                )
+            )
+        except StructurePrepError as exc:
+            print("structure_prep_status: failed")
+            print(f"structure_prep_error_code: {exc.code}")
+            print(f"structure_prep_error_message: {exc.message}")
+            return 2
+
+        print("structure_prep_status: ok")
+        print(f"canonical_smiles: {prepared.canonical_smiles}")
+        print(f"prepared_charge: {prepared.charge}")
+        print(f"prepared_multiplicity: {prepared.multiplicity}")
+        print(f"prepared_conformer_count: {prepared.conformer_count}")
+        print(f"prepared_selected_conformer_id: {prepared.selected_conformer_id}")
+        print(f"prepared_force_field: {prepared.force_field}")
+        print(f"prepared_xyz_path: {prepared.xyz_path}")
+        print(f"prepared_sdf_path: {prepared.sdf_path}")
+        print(f"prepared_summary_path: {prepared.summary_path}")
+    else:
+        atoms = molecule(input_value)
+        print("structure_prep_status: skipped")
+
     calc = Amesp(
         atoms=atoms,
         label=args.label,
