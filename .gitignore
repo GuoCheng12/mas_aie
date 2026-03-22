@@ -6,3 +6,5 @@ __pycache__/
 data/
 var/
 env/*.local.sh
+third_party/Amesp/
+third_party/PyAmesp/
