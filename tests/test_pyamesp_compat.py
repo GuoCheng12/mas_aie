@@ -1,28 +1,20 @@
 from __future__ import annotations
 
-import importlib.util
-from pathlib import Path
+from aie_mas.compat.pyamesp import (
+    _parse_geometry_series,
+    known_parser_diagnosis,
+    summarize_aop_text,
+)
 
 
-SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "pyamesp_smoke.py"
-
-
-def _load_module():
-    spec = importlib.util.spec_from_file_location("pyamesp_smoke", SCRIPT_PATH)
-    assert spec is not None
-    assert spec.loader is not None
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-def test_parse_aop_summary_extracts_core_fields() -> None:
-    module = _load_module()
+def test_summarize_aop_text_extracts_core_fields() -> None:
     text = """
 Current Geometry(angstroms):
                     x               y               z
  O              0.0000000       0.0000000       0.0000000
  H              0.0000000       0.0000000       0.9600000
+
+ ----------------------------------------------------------------
 
  ETot =      -75.310013547          Ekin =      74.587633672
 
@@ -44,7 +36,7 @@ Current Geometry(angstroms):
  Final Energy:      -75.3100135471
  Normal termination of Amesp!
 """
-    summary = module.parse_aop_summary(text)
+    summary = summarize_aop_text(text)
 
     assert summary["terminated_normally"] is True
     assert summary["energy_hartree"] == -75.3100135471
@@ -54,16 +46,31 @@ Current Geometry(angstroms):
     assert summary["final_atom_count"] == 3
 
 
-def test_known_parser_diagnosis_detects_zero_image_case() -> None:
-    module = _load_module()
+def test_parse_geometry_series_falls_back_to_final_geometry() -> None:
+    text = """
+Final Geometry(angstroms):
 
-    diagnosis = module.known_parser_diagnosis(
+  2
+  H            0.00000000    0.00000000    0.00000000
+  H            0.00000000    0.00000000    0.74000000
+
+ Final Energy:      -1.1000000000
+"""
+    geometry_series = _parse_geometry_series(text)
+
+    assert len(geometry_series) == 1
+    assert geometry_series[0][0] == ["H", "H"]
+    assert geometry_series[0][1][1] == [0.0, 0.0, 0.74]
+
+
+def test_known_parser_diagnosis_detects_parser_failure_after_normal_termination() -> None:
+    diagnosis = known_parser_diagnosis(
         IndexError("list index out of range"),
         {
             "terminated_normally": True,
-            "current_geometry_blocks": 0,
+            "energy_hartree": -55.87,
         },
     )
 
     assert diagnosis is not None
-    assert "parser mismatch" in diagnosis
+    assert "compatibility problem" in diagnosis

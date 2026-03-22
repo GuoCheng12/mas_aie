@@ -9,6 +9,7 @@ export AIE_MAS_AMESP_BIN="${AIE_MAS_AMESP_ROOT}/Bin/amesp"
 
 # Keep the explicit command form for newer ASE versions.
 export ASE_AMESP_COMMAND="${AIE_MAS_AMESP_BIN} PREFIX.aip PREFIX.aop"
+export AMESP_COMMAND="${AIE_MAS_AMESP_BIN} "
 
 # Amesp manual recommends a large OpenMP stack.
 export KMP_STACKSIZE="4g"

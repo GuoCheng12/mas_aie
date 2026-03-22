@@ -3,14 +3,18 @@ from __future__ import annotations
 
 import argparse
 import os
-import re
 import sys
 from pathlib import Path
-from typing import Any
 
 
 def project_root() -> Path:
     return Path(__file__).resolve().parents[1]
+
+
+def ensure_project_import_path(root: Path) -> None:
+    src_path = str(root / "src")
+    if src_path not in sys.path:
+        sys.path.insert(0, src_path)
 
 
 def configure_environment(root: Path) -> dict[str, str]:
@@ -29,6 +33,7 @@ def configure_environment(root: Path) -> dict[str, str]:
     os.environ.setdefault("AIE_MAS_AMESP_BIN", str(amesp_bin))
     os.environ.setdefault("KMP_STACKSIZE", "4g")
     os.environ.setdefault("ASE_AMESP_COMMAND", f"{amesp_bin} PREFIX.aip PREFIX.aop")
+    os.environ.setdefault("AMESP_COMMAND", f"{amesp_bin} ")
 
     return {
         "project_root": str(root),
@@ -57,67 +62,6 @@ def ensure_import_path(pyamesp_root: str) -> None:
         sys.path.insert(0, pyamesp_root)
 
 
-def parse_aop_summary(text: str) -> dict[str, Any]:
-    energy_match = re.findall(r"Final Energy:\s*([-+0-9.Ee]+)", text)
-    if not energy_match:
-        energy_match = re.findall(r"ETot =\s*([-+0-9.Ee]+)\s*Ekin", text)
-
-    dipole_match = re.findall(
-        r"Dipole moment \(.*?\):\s*X=\s*([-+0-9.Ee]+)\s*Y=\s*([-+0-9.Ee]+)\s*Z=\s*([-+0-9.Ee]+)\s*Tot=\s*([-+0-9.Ee]+)",
-        text,
-        re.S,
-    )
-    force_match = re.findall(
-        r"Cartesian Force \(.*?\):\n\s*x\s*y\s*z\n(.*?)\n\s*\n",
-        text,
-        re.S,
-    )
-    current_geometries = re.findall(
-        r"Current Geometry\(angstroms\):\n\s*x\s*y\s*z\n(.*?)\n\s*\n",
-        text,
-        re.S,
-    )
-    final_geometry_match = re.findall(
-        r"Final Geometry\(angstroms\):\s*\n\s*\n\s*(\d+)\n(.*?)\n\s*Final Energy:",
-        text,
-        re.S,
-    )
-
-    forces_shape = None
-    if force_match:
-        rows = [line for line in force_match[-1].splitlines() if line.strip()]
-        forces_shape = (len(rows), 3)
-
-    final_atom_count = None
-    if final_geometry_match:
-        final_atom_count = int(final_geometry_match[-1][0])
-
-    return {
-        "terminated_normally": "Normal termination of Amesp!" in text,
-        "energy_hartree": float(energy_match[-1]) if energy_match else None,
-        "dipole_debye": tuple(float(value) for value in dipole_match[-1])
-        if dipole_match
-        else None,
-        "forces_shape": forces_shape,
-        "current_geometry_blocks": len(current_geometries),
-        "final_atom_count": final_atom_count,
-    }
-
-
-def known_parser_diagnosis(exc: BaseException, summary: dict[str, Any]) -> str | None:
-    if not isinstance(exc, IndexError):
-        return None
-    if not summary.get("terminated_normally"):
-        return None
-    if summary.get("current_geometry_blocks", 0) != 0:
-        return None
-    return (
-        "Amesp execution completed, but PyAmesp.read_results() indexed an empty parsed "
-        "image list. This indicates a parser mismatch for the current .aop layout, not "
-        "an Amesp runtime failure."
-    )
-
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Minimal PyAmesp smoke test.")
     parser.add_argument("--label", default="nh3_py")
@@ -134,8 +78,11 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     root = project_root()
+    ensure_project_import_path(root)
     env_info = configure_environment(root)
     ensure_import_path(env_info["pyamesp_root"])
+
+    from aie_mas.compat.pyamesp import known_parser_diagnosis, patch_pyamesp, summarize_aop_text
 
     print(f"project_root: {env_info['project_root']}")
     print(f"amesp_bin: {env_info['amesp_bin']}")
@@ -146,10 +93,12 @@ def main() -> int:
 
     try:
         from ase.build import molecule
-        from PyAmesp import Amesp
+        pyamesp_module = patch_pyamesp()
+        Amesp = pyamesp_module.Amesp
     except Exception as exc:
         print(f"import_status: failed ({type(exc).__name__}: {exc})")
         return 2
+    print("pyamesp_patch_status: compat_applied")
 
     workdir = args.workdir or (root / "var" / "runtime" / "pyamesp_smoke")
     workdir.mkdir(parents=True, exist_ok=True)
@@ -204,7 +153,7 @@ def main() -> int:
     if not aop_path.exists():
         return 2
 
-    summary = parse_aop_summary(aop_path.read_text(encoding="utf-8", errors="replace"))
+    summary = summarize_aop_text(aop_path.read_text(encoding="utf-8", errors="replace"))
     print(f"terminated_normally: {summary['terminated_normally']}")
     print(f"energy_hartree: {summary['energy_hartree']}")
     print(f"dipole_debye: {summary['dipole_debye']}")
