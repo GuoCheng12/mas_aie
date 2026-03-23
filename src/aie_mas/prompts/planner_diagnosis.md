@@ -93,6 +93,6 @@ The diagnosis must explicitly include:
 task_instruction rules:
 - required when action is macro, microscopic, or verifier
 - should describe only that specialized agent's local task
-- must stay within current mock capability
+- must stay within current specialized-agent capability
 - must not ask the agent to decide the global mechanism
 - must not ask the agent to choose the next system-level action

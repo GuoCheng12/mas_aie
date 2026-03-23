@@ -7,7 +7,13 @@ from typing import Optional
 
 import typer
 
-from aie_mas.config import AieMasConfig, ExecutionProfile, PlannerBackend, ToolBackend
+from aie_mas.config import (
+    AieMasConfig,
+    ExecutionProfile,
+    MicroscopicBackend,
+    PlannerBackend,
+    ToolBackend,
+)
 from aie_mas.graph.builder import build_graph, invoke_graph
 from aie_mas.graph.state import AieMasState
 
@@ -24,6 +30,12 @@ def build_runtime_config(
     planner_api_key: Optional[str] = None,
     planner_temperature: Optional[float] = None,
     planner_timeout_seconds: Optional[float] = None,
+    microscopic_backend: Optional[MicroscopicBackend] = None,
+    microscopic_base_url: Optional[str] = None,
+    microscopic_model: Optional[str] = None,
+    microscopic_api_key: Optional[str] = None,
+    microscopic_temperature: Optional[float] = None,
+    microscopic_timeout_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -45,6 +57,12 @@ def build_runtime_config(
         planner_api_key=planner_api_key,
         planner_temperature=planner_temperature,
         planner_timeout_seconds=planner_timeout_seconds,
+        microscopic_backend=microscopic_backend,
+        microscopic_base_url=microscopic_base_url,
+        microscopic_model=microscopic_model,
+        microscopic_api_key=microscopic_api_key,
+        microscopic_temperature=microscopic_temperature,
+        microscopic_timeout_seconds=microscopic_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -70,6 +88,12 @@ def run_case_workflow(
     planner_api_key: Optional[str] = None,
     planner_temperature: Optional[float] = None,
     planner_timeout_seconds: Optional[float] = None,
+    microscopic_backend: Optional[MicroscopicBackend] = None,
+    microscopic_base_url: Optional[str] = None,
+    microscopic_model: Optional[str] = None,
+    microscopic_api_key: Optional[str] = None,
+    microscopic_temperature: Optional[float] = None,
+    microscopic_timeout_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -91,6 +115,12 @@ def run_case_workflow(
         planner_api_key=planner_api_key,
         planner_temperature=planner_temperature,
         planner_timeout_seconds=planner_timeout_seconds,
+        microscopic_backend=microscopic_backend,
+        microscopic_base_url=microscopic_base_url,
+        microscopic_model=microscopic_model,
+        microscopic_api_key=microscopic_api_key,
+        microscopic_temperature=microscopic_temperature,
+        microscopic_timeout_seconds=microscopic_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -151,6 +181,30 @@ def main(
         None,
         help="Planner LLM timeout in seconds.",
     ),
+    microscopic_backend: Optional[str] = typer.Option(
+        None,
+        help="Microscopic reasoning backend: mock or openai_sdk.",
+    ),
+    microscopic_base_url: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible microscopic base URL.",
+    ),
+    microscopic_model: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible microscopic model name.",
+    ),
+    microscopic_api_key: Optional[str] = typer.Option(
+        None,
+        help="OpenAI-compatible microscopic API key.",
+    ),
+    microscopic_temperature: Optional[float] = typer.Option(
+        None,
+        help="Microscopic LLM temperature.",
+    ),
+    microscopic_timeout_seconds: Optional[float] = typer.Option(
+        None,
+        help="Microscopic LLM timeout in seconds.",
+    ),
     prompts_dir: Optional[Path] = typer.Option(
         None,
         help="Optional prompt directory.",
@@ -202,6 +256,12 @@ def main(
         planner_api_key=planner_api_key,
         planner_temperature=planner_temperature,
         planner_timeout_seconds=planner_timeout_seconds,
+        microscopic_backend=microscopic_backend,
+        microscopic_base_url=microscopic_base_url,
+        microscopic_model=microscopic_model,
+        microscopic_api_key=microscopic_api_key,
+        microscopic_temperature=microscopic_temperature,
+        microscopic_timeout_seconds=microscopic_timeout_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,

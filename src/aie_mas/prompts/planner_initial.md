@@ -77,6 +77,6 @@ agent_task_instructions must provide separate natural-language instructions for:
 These instructions should:
 - define the local task for the specialized agent
 - stay within that agent's local scope
-- stay within current mock capability
+- stay within current specialized-agent capability
 - not ask the agent to decide the global mechanism
 - not ask the agent to choose the system-level next action

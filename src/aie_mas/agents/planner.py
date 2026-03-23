@@ -81,9 +81,9 @@ def _default_initial_agent_task_instructions(
             f"current macro capability. Hypothesis uncertainty to keep in mind: {hypothesis_uncertainty_note}"
         ),
         "microscopic": (
-            f"Run the first-round fixed S0/S1 microscopic proxy task for the current working hypothesis "
-            f"'{current_hypothesis}'. Report local excited-state proxy results only, and do not attempt "
-            f"mechanism discrimination beyond current mock capability. Capability note: {capability_assessment}"
+            f"Run the first-round fixed S0/S1 microscopic baseline task for the current working hypothesis "
+            f"'{current_hypothesis}'. Report local microscopic results only, and do not attempt "
+            f"mechanism discrimination beyond current microscopic capability. Capability note: {capability_assessment}"
         ),
     }
 
@@ -94,7 +94,7 @@ def _default_follow_up_task_instruction(
     payload: dict[str, Any],
 ) -> str | None:
     main_gap = payload.get("main_gap") or "clarify the unresolved signal."
-    capability_assessment = payload.get("capability_assessment") or "Stay within current mock agent capability."
+    capability_assessment = payload.get("capability_assessment") or "Stay within current specialized-agent capability."
     contraction_reason = payload.get("contraction_reason") or ""
     if action == "macro":
         return (
@@ -107,7 +107,7 @@ def _default_follow_up_task_instruction(
         return (
             f"Collect additional microscopic evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
-            f"Keep the task bounded to current mock microscopic proxy capability. "
+            f"Keep the task bounded to current microscopic capability. "
             f"{contraction_reason or capability_assessment}"
         )
     if action == "verifier":
@@ -148,9 +148,9 @@ def _mock_initial_hypothesis_setup() -> tuple[list[HypothesisEntry], str, float,
         "Use planner_backend='openai_sdk' when you want the Planner to form the hypothesis pool through LLM reasoning."
     )
     capability_assessment = (
-        "Current specialized agents can only collect low-cost structural signals, S0/S1 proxy results, and mock "
-        "verifier evidence. They cannot directly prove a final photophysical mechanism, so the Planner must keep "
-        "the early hypothesis conservative."
+        "Current specialized agents can only collect low-cost structural signals, bounded S0/S1 microscopic evidence, "
+        "and mock verifier evidence. They cannot directly prove a final photophysical mechanism, so the Planner must "
+        "keep the early hypothesis conservative."
     )
     return hypothesis_pool, current_hypothesis, confidence, hypothesis_uncertainty_note, capability_assessment
 
@@ -277,9 +277,11 @@ class MockPlannerBackend:
         macro_results = macro_report.get("structured_results", {})
         micro_results = microscopic_report.get("structured_results", {})
         macro_task_understanding = str(macro_report.get("task_understanding") or "").strip()
+        macro_reasoning_summary = str(macro_report.get("reasoning_summary") or "").strip()
         macro_execution_plan = str(macro_report.get("execution_plan") or "").strip()
         macro_result_summary = str(macro_report.get("result_summary") or "").strip()
         micro_task_understanding = str(microscopic_report.get("task_understanding") or "").strip()
+        micro_reasoning_summary = str(microscopic_report.get("reasoning_summary") or "").strip()
         micro_execution_plan = str(microscopic_report.get("execution_plan") or "").strip()
         micro_result_summary = str(microscopic_report.get("result_summary") or "").strip()
         local_uncertainty_bits = _collect_local_uncertainties(macro_report, microscopic_report)
@@ -324,6 +326,8 @@ class MockPlannerBackend:
                 support_score += 0.08
             if macro_task_understanding:
                 evidence_bits.append(f"macro task understanding: {macro_task_understanding}")
+            if macro_reasoning_summary and macro_reasoning_summary != "Reasoning summary was not provided.":
+                evidence_bits.append(f"macro reasoning summary: {macro_reasoning_summary}")
             if macro_execution_plan:
                 evidence_bits.append(f"macro execution plan: {macro_execution_plan}")
             if macro_result_summary:
@@ -343,10 +347,16 @@ class MockPlannerBackend:
                 support_score += 0.07
             if micro_task_understanding:
                 evidence_bits.append(f"microscopic task understanding: {micro_task_understanding}")
+            if micro_reasoning_summary and micro_reasoning_summary != "Reasoning summary was not provided.":
+                evidence_bits.append(f"microscopic reasoning summary: {micro_reasoning_summary}")
             if micro_execution_plan:
                 evidence_bits.append(f"microscopic execution plan: {micro_execution_plan}")
             if micro_result_summary:
                 evidence_bits.append(f"microscopic agent summary: {micro_result_summary}")
+        if local_uncertainty_bits:
+            evidence_bits.append(
+                "remaining local uncertainty: " + " ".join(local_uncertainty_bits)
+            )
 
         confidence = round(min(0.89, confidence + support_score), 3)
         evidence_impact = "strengthens" if support_score >= 0.22 else "is still insufficient for"
@@ -390,7 +400,7 @@ class MockPlannerBackend:
 
         if capability_limit_triggered:
             capability_assessment = (
-                "Recent evidence suggests the current specialized agents are close to their practical mock capability "
+                "Recent evidence suggests the current specialized agents are close to their practical current capability "
                 "limit for this gap. They can summarize structural and S0/S1 proxy trends, but they are not adding "
                 "enough discriminative information to resolve the present uncertainty safely."
             )
@@ -707,7 +717,7 @@ class MockPlannerBackend:
                 "The combination of neutral verifier evidence and recent repeated local uncertainty indicates that the "
                 "current specialized agents are close to their practical limit for this case."
                 if repeated_local_uncertainties or repeated_main_gaps
-                else "Verifier evidence is neutral, but one bounded internal follow-up is still available within current mock capability."
+                else "Verifier evidence is neutral, but one bounded internal follow-up is still available within current microscopic capability."
             )
             stagnation_detected = bool(
                 repeated_local_uncertainties or repeated_main_gaps or stagnation_round_ids

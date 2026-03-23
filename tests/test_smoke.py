@@ -45,6 +45,7 @@ def test_minimal_workflow_smoke(tmp_path: Path) -> None:
     assert state.macro_reports[0].execution_plan
     assert state.macro_reports[0].result_summary
     assert state.microscopic_reports[0].task_understanding
+    assert state.microscopic_reports[0].reasoning_summary
     assert state.microscopic_reports[0].execution_plan
     assert state.microscopic_reports[0].task_received != "Run fixed first-stage S0/S1 optimization."
     assert "current working hypothesis" in state.macro_reports[0].task_received
@@ -78,6 +79,7 @@ def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
     assert first_round["working_memory"]["main_gap"]
     assert first_round["working_memory"]["agent_reports"]
     assert first_round["working_memory"]["agent_reports"][0]["task_understanding"]
+    assert first_round["working_memory"]["agent_reports"][0]["reasoning_summary"]
     assert first_round["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
     assert "local_uncertainty_summary" in first_round["working_memory"]
 
@@ -136,6 +138,7 @@ def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> N
     assert summary_payload["rounds"][0]["planner"]["selected_next_action"] in {"microscopic", "verifier"}
     assert summary_payload["rounds"][0]["planner"]["capability_assessment"]
     assert summary_payload["rounds"][0]["working_memory"]["agent_reports"]
+    assert summary_payload["rounds"][0]["working_memory"]["agent_reports"][0]["reasoning_summary"]
     assert summary_payload["rounds"][0]["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
     assert summary_payload["rounds"][0]["working_memory"]["evidence_summary"]
     assert full_state_payload["runtime_context"]["execution_profile"] == "local-dev"

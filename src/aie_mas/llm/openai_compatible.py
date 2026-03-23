@@ -1,23 +1,38 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Optional, Type
 
 from pydantic import BaseModel
 
 from aie_mas.config import AieMasConfig
 
 
-class OpenAICompatiblePlannerClient:
-    def __init__(self, config: AieMasConfig, client: Any | None = None) -> None:
-        self._config = config
+class OpenAICompatibleJsonSchemaClient:
+    def __init__(
+        self,
+        *,
+        base_url: str,
+        api_key: Optional[str],
+        model: str,
+        temperature: float,
+        timeout_seconds: float,
+        client: Any | None = None,
+        backend_label: str,
+    ) -> None:
+        self._base_url = base_url
+        self._api_key = api_key
+        self._model = model
+        self._temperature = temperature
+        self._timeout_seconds = timeout_seconds
         self._client = client
+        self._backend_label = backend_label
 
     def invoke_json_schema(
         self,
         *,
         messages: list[dict[str, str]],
-        response_model: type[BaseModel],
+        response_model: Type[BaseModel],
         schema_name: str,
     ) -> BaseModel:
         client = self._get_client()
@@ -37,9 +52,9 @@ class OpenAICompatiblePlannerClient:
         )
 
         request_kwargs = {
-            "model": self._config.planner_model,
+            "model": self._model,
             "messages": final_messages,
-            "temperature": self._config.planner_temperature,
+            "temperature": self._temperature,
             "response_format": response_format,
         }
 
@@ -61,14 +76,14 @@ class OpenAICompatiblePlannerClient:
             from openai import OpenAI
         except ImportError as exc:
             raise RuntimeError(
-                "The openai package is required for planner_backend='openai_sdk'. "
+                f"The openai package is required for {self._backend_label}. "
                 "Install the linux-runtime extra or add openai to your environment."
             ) from exc
 
         self._client = OpenAI(
-            base_url=self._config.planner_base_url,
-            api_key=self._config.planner_api_key or "EMPTY",
-            timeout=self._config.planner_timeout_seconds,
+            base_url=self._base_url,
+            api_key=self._api_key or "EMPTY",
+            timeout=self._timeout_seconds,
         )
         return self._client
 
@@ -100,11 +115,11 @@ class OpenAICompatiblePlannerClient:
             start = candidate.find("{")
             end = candidate.rfind("}")
             if start == -1 or end == -1 or end <= start:
-                raise ValueError(f"Planner response did not contain JSON: {raw_text!r}")
+                raise ValueError(f"LLM response did not contain JSON: {raw_text!r}")
             payload = json.loads(candidate[start : end + 1])
 
         if not isinstance(payload, dict):
-            raise ValueError(f"Planner response must be a JSON object: {payload!r}")
+            raise ValueError(f"LLM response must be a JSON object: {payload!r}")
         return payload
 
     def _strip_code_fence(self, raw_text: str) -> str:
@@ -112,3 +127,29 @@ class OpenAICompatiblePlannerClient:
         if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
             return "\n".join(lines[1:-1]).strip()
         return raw_text
+
+
+class OpenAICompatiblePlannerClient(OpenAICompatibleJsonSchemaClient):
+    def __init__(self, config: AieMasConfig, client: Any | None = None) -> None:
+        super().__init__(
+            base_url=config.planner_base_url,
+            api_key=config.planner_api_key,
+            model=config.planner_model,
+            temperature=config.planner_temperature,
+            timeout_seconds=config.planner_timeout_seconds,
+            client=client,
+            backend_label="planner_backend='openai_sdk'",
+        )
+
+
+class OpenAICompatibleMicroscopicClient(OpenAICompatibleJsonSchemaClient):
+    def __init__(self, config: AieMasConfig, client: Any | None = None) -> None:
+        super().__init__(
+            base_url=str(config.microscopic_base_url),
+            api_key=config.microscopic_api_key,
+            model=str(config.microscopic_model),
+            temperature=float(config.microscopic_temperature),
+            timeout_seconds=float(config.microscopic_timeout_seconds),
+            client=client,
+            backend_label="microscopic_backend='openai_sdk'",
+        )

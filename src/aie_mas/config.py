@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 ExecutionProfile = Literal["local-dev", "linux-prod"]
 ToolBackend = Literal["mock", "real"]
 PlannerBackend = Literal["mock", "openai_sdk"]
+MicroscopicBackend = Literal["mock", "openai_sdk"]
 
 
 def _default_project_root() -> Path:
@@ -22,10 +23,16 @@ class AieMasConfig(BaseModel):
     enable_long_term_memory: bool = False
     planner_backend: Optional[PlannerBackend] = None
     planner_base_url: str = "http://34.13.73.248:3888/v1"
-    planner_model: str = "gpt-4.1-mini"
+    planner_model: str = "gpt-5.2"
     planner_api_key: Optional[str] = None
     planner_temperature: float = 0.0
     planner_timeout_seconds: float = 120.0
+    microscopic_backend: Optional[MicroscopicBackend] = None
+    microscopic_base_url: Optional[str] = None
+    microscopic_model: Optional[str] = None
+    microscopic_api_key: Optional[str] = None
+    microscopic_temperature: Optional[float] = None
+    microscopic_timeout_seconds: Optional[float] = None
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
     memory_dir: Optional[Path] = None
@@ -52,6 +59,10 @@ class AieMasConfig(BaseModel):
             "planner_base_url": "AIE_MAS_OPENAI_BASE_URL",
             "planner_model": "AIE_MAS_OPENAI_MODEL",
             "planner_api_key": "AIE_MAS_OPENAI_API_KEY",
+            "microscopic_backend": "AIE_MAS_MICROSCOPIC_BACKEND",
+            "microscopic_base_url": "AIE_MAS_MICROSCOPIC_BASE_URL",
+            "microscopic_model": "AIE_MAS_MICROSCOPIC_MODEL",
+            "microscopic_api_key": "AIE_MAS_MICROSCOPIC_API_KEY",
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
             "data_dir": "AIE_MAS_DATA_DIR",
             "memory_dir": "AIE_MAS_MEMORY_DIR",
@@ -94,6 +105,14 @@ class AieMasConfig(BaseModel):
             env_values["planner_temperature"] = float(os.getenv("AIE_MAS_OPENAI_TEMPERATURE", "0.0"))
         if os.getenv("AIE_MAS_OPENAI_TIMEOUT"):
             env_values["planner_timeout_seconds"] = float(os.getenv("AIE_MAS_OPENAI_TIMEOUT", "120.0"))
+        if os.getenv("AIE_MAS_MICROSCOPIC_TEMPERATURE"):
+            env_values["microscopic_temperature"] = float(
+                os.getenv("AIE_MAS_MICROSCOPIC_TEMPERATURE", "0.0")
+            )
+        if os.getenv("AIE_MAS_MICROSCOPIC_TIMEOUT"):
+            env_values["microscopic_timeout_seconds"] = float(
+                os.getenv("AIE_MAS_MICROSCOPIC_TIMEOUT", "120.0")
+            )
 
         for key, value in overrides.items():
             if value is not None:
@@ -106,6 +125,18 @@ class AieMasConfig(BaseModel):
 
         if self.planner_backend is None:
             self.planner_backend = "mock" if self.execution_profile == "local-dev" else "openai_sdk"
+        if self.microscopic_backend is None:
+            self.microscopic_backend = self.planner_backend
+        if self.microscopic_base_url is None:
+            self.microscopic_base_url = self.planner_base_url
+        if self.microscopic_model is None:
+            self.microscopic_model = "gpt-4.1-mini"
+        if self.microscopic_api_key is None:
+            self.microscopic_api_key = self.planner_api_key
+        if self.microscopic_temperature is None:
+            self.microscopic_temperature = self.planner_temperature
+        if self.microscopic_timeout_seconds is None:
+            self.microscopic_timeout_seconds = self.planner_timeout_seconds
 
         if self.prompts_dir is None:
             self.prompts_dir = Path("src") / "aie_mas" / "prompts"
@@ -134,6 +165,10 @@ class AieMasConfig(BaseModel):
         self.external_search_binary_path = self._resolve_optional_path(
             self.external_search_binary_path
         )
+        if self.amesp_binary_path is None:
+            default_amesp_bin = (self.project_root / "third_party" / "Amesp" / "Bin" / "amesp").resolve()
+            if default_amesp_bin.exists():
+                self.amesp_binary_path = default_amesp_bin
 
     def ensure_runtime_dirs(self) -> None:
         runtime_dirs = [self.data_dir, self.report_dir, self.log_dir, self.runtime_dir, self.tools_work_dir]
@@ -144,11 +179,7 @@ class AieMasConfig(BaseModel):
                 path.mkdir(parents=True, exist_ok=True)
 
     def assert_supported_runtime(self) -> None:
-        if self.tool_backend == "real":
-            raise NotImplementedError(
-                "The real tool backend is reserved for future Linux wrappers and is not "
-                "implemented in the current first-stage code. Use tool_backend='mock' for now."
-            )
+        return None
 
     def runtime_context(self) -> dict[str, Any]:
         return {
@@ -159,6 +190,12 @@ class AieMasConfig(BaseModel):
             "planner_base_url": self.planner_base_url,
             "planner_model": self.planner_model,
             "planner_api_key_configured": bool(self.planner_api_key),
+            "microscopic_backend": self.microscopic_backend,
+            "microscopic_base_url": self.microscopic_base_url,
+            "microscopic_model": self.microscopic_model,
+            "microscopic_api_key_configured": bool(self.microscopic_api_key),
+            "microscopic_temperature": self.microscopic_temperature,
+            "microscopic_timeout_seconds": self.microscopic_timeout_seconds,
             "project_root": str(self.project_root),
             "prompts_dir": str(self.prompts_dir),
             "data_dir": str(self.data_dir),

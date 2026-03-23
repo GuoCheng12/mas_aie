@@ -88,5 +88,5 @@ task_instruction rules:
 - required when action is macro or microscopic
 - optional and usually empty when action is finalize
 - must stay within the selected specialized agent's local task scope
-- must stay within current mock capability
+- must stay within current specialized-agent capability
 - must not ask that agent to decide the global mechanism or next system action

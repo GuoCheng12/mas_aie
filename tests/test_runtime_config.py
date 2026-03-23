@@ -16,6 +16,8 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_OPENAI_BASE_URL", "http://34.13.73.248:3888/v1")
     monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
+    monkeypatch.setenv("AIE_MAS_MICROSCOPIC_BACKEND", "openai_sdk")
+    monkeypatch.setenv("AIE_MAS_MICROSCOPIC_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
     monkeypatch.setenv("AIE_MAS_REPORT_DIR", "runtime_reports")
@@ -30,8 +32,11 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.tool_backend == "mock"
     assert config.enable_long_term_memory is True
     assert config.planner_backend == "openai_sdk"
+    assert config.microscopic_backend == "openai_sdk"
     assert config.planner_base_url == "http://34.13.73.248:3888/v1"
     assert config.planner_model == "gpt-4.1-mini"
+    assert config.microscopic_base_url == "http://34.13.73.248:3888/v1"
+    assert config.microscopic_model == "gpt-4.1-mini"
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
     assert config.report_dir == (tmp_path / "runtime_reports").resolve()
@@ -60,15 +65,16 @@ def test_config_skips_memory_dir_when_long_term_memory_is_disabled(tmp_path: Pat
     assert not config.memory_dir.exists()
 
 
-def test_real_backend_is_reserved_for_future_linux_wrappers(tmp_path: Path) -> None:
+def test_real_backend_can_build_graph_with_real_microscopic_support(tmp_path: Path) -> None:
     config = AieMasConfig(
         project_root=tmp_path,
         execution_profile="linux-prod",
         tool_backend="real",
     )
 
-    with pytest.raises(NotImplementedError):
-        build_graph(config)
+    graph = build_graph(config)
+
+    assert graph is not None
 
 
 def test_normalize_graph_result_accepts_langgraph_dict_output() -> None:
@@ -92,3 +98,11 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
 
     assert local_config.planner_backend == "mock"
     assert linux_config.planner_backend == "openai_sdk"
+    assert local_config.microscopic_backend == "mock"
+    assert linux_config.microscopic_backend == "openai_sdk"
+    assert local_config.planner_model == "gpt-5.2"
+    assert linux_config.planner_model == "gpt-5.2"
+    assert local_config.microscopic_model == "gpt-4.1-mini"
+    assert linux_config.microscopic_model == "gpt-4.1-mini"
+    assert local_config.microscopic_base_url == local_config.planner_base_url
+    assert linux_config.microscopic_base_url == linux_config.planner_base_url

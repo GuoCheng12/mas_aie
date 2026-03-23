@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize"]
 PendingAgent = Literal["macro", "microscopic", "verifier"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
+MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_vertical_excitation"]
+MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
 
 
 class HypothesisEntry(BaseModel):
@@ -20,12 +22,14 @@ class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
     task_understanding: str = "Task understanding was not provided."
+    reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str = "Execution plan was not provided."
     result_summary: str = "Result summary was not provided."
     remaining_local_uncertainty: str = "Remaining local uncertainty was not provided."
     tool_calls: list[str] = Field(default_factory=list)
     raw_results: dict[str, Any] = Field(default_factory=dict)
     structured_results: dict[str, Any] = Field(default_factory=dict)
+    generated_artifacts: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
     planner_readable_report: str
 
@@ -34,9 +38,11 @@ class WorkingMemoryAgentEntry(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
     task_understanding: str
+    reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str
     result_summary: str
     remaining_local_uncertainty: str
+    generated_artifacts: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
 
 
@@ -97,6 +103,27 @@ class MicroscopicTaskSpec(BaseModel):
     task_label: str
     objective: str
     target_property: Optional[str] = None
+
+
+class MicroscopicExecutionStep(BaseModel):
+    step_id: str
+    step_type: MicroscopicPlanStepType
+    description: str
+    input_source: str
+    keywords: list[str] = Field(default_factory=list)
+    expected_outputs: list[str] = Field(default_factory=list)
+
+
+class MicroscopicExecutionPlan(BaseModel):
+    plan_version: str = "amesp_baseline_v1"
+    local_goal: str
+    requested_deliverables: list[str] = Field(default_factory=list)
+    structure_source: MicroscopicStructureSource
+    supported_scope: list[str] = Field(default_factory=list)
+    unsupported_requests: list[str] = Field(default_factory=list)
+    steps: list[MicroscopicExecutionStep] = Field(default_factory=list)
+    expected_outputs: list[str] = Field(default_factory=list)
+    failure_reporting: str
 
 
 class CaseMemoryEntry(BaseModel):

@@ -29,9 +29,11 @@ class WorkingMemoryManager:
                 agent_name=report.agent_name,
                 task_received=report.task_received,
                 task_understanding=report.task_understanding,
+                reasoning_summary=report.reasoning_summary,
                 execution_plan=report.execution_plan,
                 result_summary=report.result_summary,
                 remaining_local_uncertainty=report.remaining_local_uncertainty,
+                generated_artifacts=dict(report.generated_artifacts),
                 status=report.status,
             )
             for report in state.active_round_reports

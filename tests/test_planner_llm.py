@@ -274,6 +274,7 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
                 "agent_name": "macro",
                 "task_received": "macro task",
                 "task_understanding": "macro understanding",
+                "reasoning_summary": "macro reasoning summary",
                 "execution_plan": "macro execution plan",
                 "result_summary": "macro result summary",
                 "remaining_local_uncertainty": "macro uncertainty",
@@ -319,5 +320,6 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     assert '"action_taken": "macro, microscopic"' in message_payload
     assert '"diagnosis_summary": "The same verifier gap remains."' in message_payload
     assert '"task_understanding": "macro understanding"' in message_payload
+    assert '"reasoning_summary": "macro reasoning summary"' in message_payload
     assert '"execution_plan": "macro execution plan"' in message_payload
     assert '"repeated_main_gaps"' in message_payload

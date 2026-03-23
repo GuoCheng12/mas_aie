@@ -22,6 +22,7 @@ def test_targeted_microscopic_task_interface_is_available() -> None:
 
     assert report.task_received == task_spec.objective
     assert report.task_understanding
+    assert report.reasoning_summary
     assert report.execution_plan
     assert report.result_summary
     assert report.remaining_local_uncertainty

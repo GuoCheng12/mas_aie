@@ -27,7 +27,10 @@ class AieMasWorkflow:
             s0_tool=toolset.s0_tool,
             s1_tool=toolset.s1_tool,
             targeted_tool=toolset.targeted_micro_tool,
+            amesp_tool=toolset.amesp_micro_tool,
             prompts=self.prompts,
+            tools_work_dir=self.config.tools_work_dir,
+            config=self.config,
         )
         self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool, prompts=self.prompts)
         self.working_memory = WorkingMemoryManager()
@@ -159,6 +162,14 @@ class AieMasWorkflow:
             task_received=task_instruction,
             task_spec=task_spec,
             current_hypothesis=state.current_hypothesis or "unknown",
+            recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
+            available_artifacts=(
+                dict(state.microscopic_reports[-1].generated_artifacts)
+                if state.microscopic_reports
+                else {}
+            ),
+            case_id=state.case_id,
+            round_index=state.round_idx + 1,
         )
         state.microscopic_reports.append(report)
         state.active_round_reports.append(report)

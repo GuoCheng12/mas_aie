@@ -120,7 +120,11 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
 
         assert "Remaining local uncertainty:" in state.working_memory[0].evidence_summary
         assert any(
-            "baseline S0/S1 proxy run still cannot determine external consistency or final mechanism"
+            "baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in entry.evidence_summary
+            or "bounded baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in entry.evidence_summary
+            or "targeted micro follow-up still cannot establish verifier-aligned mechanism selection"
             in entry.evidence_summary
             or "the evidence cards still need Planner-level synthesis before any mechanism decision"
             in entry.evidence_summary
@@ -131,7 +135,11 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
             for diagnosis in state.planner_diagnosis_history
         )
         assert any(
-            "the baseline S0/S1 proxy run still cannot determine external consistency or final mechanism"
+            "baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in diagnosis
+            or "bounded baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in diagnosis
+            or "targeted micro follow-up still cannot establish verifier-aligned mechanism selection"
             in diagnosis
             or "the evidence cards still need Planner-level synthesis before any mechanism decision"
             in diagnosis
@@ -181,7 +189,7 @@ def test_low_information_case_shows_capability_limited_contraction(tmp_path: Pat
         for entry in state.working_memory
     )
     assert any(
-        entry.capability_assessment and "practical mock capability limit" in entry.capability_assessment.lower()
+        entry.capability_assessment and "practical current capability limit" in entry.capability_assessment.lower()
         for entry in state.working_memory
     )
     assert state.finalize is False
