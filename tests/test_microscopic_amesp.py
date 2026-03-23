@@ -279,7 +279,13 @@ def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_pat
 
     assert "% npara 20" in s0_input
     assert "% maxcore 12000" in s0_input
-    assert "! atb1 opt" in s0_input
+    assert "! atb opt force" in s0_input
+    assert ">opt" in s0_input
+    assert "maxcyc 2000" in s0_input
+    assert "gediis off" in s0_input
+    assert "maxstep 0.3" in s0_input
+    assert ">scf" in s0_input
+    assert "vshift 500" in s0_input
     assert "! b3lyp sto-3g td RICOSX" in s1_input
     assert "nstates 1" in s1_input
     assert "tout 1" in s1_input

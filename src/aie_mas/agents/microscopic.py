@@ -650,7 +650,7 @@ class MicroscopicAgent:
                 step_type="s0_optimization",
                 description="Run a real low-cost Amesp aTB S0 geometry optimization on the prepared 3D structure.",
                 input_source=structure_source,
-                keywords=["atb1", "opt"],
+                keywords=["atb", "opt", "force", "maxcyc 2000", "gediis off", "maxstep 0.3", "vshift 500"],
                 expected_outputs=[
                     "low-cost final S0 energy",
                     "low-cost final geometry",

@@ -206,7 +206,7 @@ class AmespBaselineMicroscopicTool:
             label=f"{label}_s0",
             workdir=workdir,
             keywords=self._build_s0_keywords(),
-            block_lines=[("ope", ["out 1"])],
+            block_lines=self._build_s0_block_lines(),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -356,7 +356,13 @@ class AmespBaselineMicroscopicTool:
         return (Path(__file__).resolve().parents[3] / "third_party" / "Amesp" / "Bin" / "amesp").resolve()
 
     def _build_s0_keywords(self) -> list[str]:
-        return ["atb1", "opt"]
+        return ["atb", "opt", "force"]
+
+    def _build_s0_block_lines(self) -> list[tuple[str, list[str]]]:
+        return [
+            ("opt", ["maxcyc 2000", "gediis off", "maxstep 0.3"]),
+            ("scf", ["maxcyc 2000", "vshift 500"]),
+        ]
 
     def _build_s1_keywords(self) -> list[str]:
         keywords = ["b3lyp", "sto-3g", "td"]
