@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, TypedDict
 
 from aie_mas.agents.planner import PlannerAgent
 from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
@@ -14,9 +14,22 @@ from aie_mas.tools.factory import build_toolset
 from aie_mas.utils.prompts import PromptRepository
 
 
+class GraphProgressEvent(TypedDict):
+    node: str
+    round: int
+    agent: str
+    case_id: Optional[str]
+    current_hypothesis: Optional[str]
+
+
 class AieMasWorkflow:
-    def __init__(self, config: Optional[AieMasConfig] = None) -> None:
+    def __init__(
+        self,
+        config: Optional[AieMasConfig] = None,
+        progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+    ) -> None:
         self.config = config or AieMasConfig()
+        self.progress_callback = progress_callback
         self.config.ensure_runtime_dirs()
         self.config.assert_supported_runtime()
         self.prompts = PromptRepository(self.config.prompts_dir)
@@ -42,16 +55,25 @@ class AieMasWorkflow:
 
     def build(self):
         graph = StateGraph(AieMasState)
-        graph.add_node("ingest_user_query", self.ingest_user_query)
-        graph.add_node("planner_initial", self.planner_initial)
-        graph.add_node("run_macro", self.run_macro)
-        graph.add_node("run_microscopic", self.run_microscopic)
-        graph.add_node("planner_diagnosis", self.planner_diagnosis)
-        graph.add_node("run_verifier", self.run_verifier)
-        graph.add_node("planner_reweight_or_finalize", self.planner_reweight_or_finalize)
-        graph.add_node("update_working_memory", self.update_working_memory)
-        graph.add_node("update_long_term_memory", self.update_long_term_memory)
-        graph.add_node("final_output", self.final_output)
+        graph.add_node("ingest_user_query", self._with_progress("ingest_user_query", self.ingest_user_query))
+        graph.add_node("planner_initial", self._with_progress("planner_initial", self.planner_initial))
+        graph.add_node("run_macro", self._with_progress("run_macro", self.run_macro))
+        graph.add_node("run_microscopic", self._with_progress("run_microscopic", self.run_microscopic))
+        graph.add_node("planner_diagnosis", self._with_progress("planner_diagnosis", self.planner_diagnosis))
+        graph.add_node("run_verifier", self._with_progress("run_verifier", self.run_verifier))
+        graph.add_node(
+            "planner_reweight_or_finalize",
+            self._with_progress("planner_reweight_or_finalize", self.planner_reweight_or_finalize),
+        )
+        graph.add_node(
+            "update_working_memory",
+            self._with_progress("update_working_memory", self.update_working_memory),
+        )
+        graph.add_node(
+            "update_long_term_memory",
+            self._with_progress("update_long_term_memory", self.update_long_term_memory),
+        )
+        graph.add_node("final_output", self._with_progress("final_output", self.final_output))
 
         graph.set_entry_point("ingest_user_query")
         graph.add_edge("ingest_user_query", "planner_initial")
@@ -309,9 +331,55 @@ class AieMasWorkflow:
             target_property=state.latest_conflict_status or "micro_consistency",
         )
 
+    def _with_progress(
+        self,
+        node_name: str,
+        func: Callable[[AieMasState], AieMasState],
+    ) -> Callable[[AieMasState], AieMasState]:
+        def _wrapped(state: AieMasState) -> AieMasState:
+            self._emit_progress(node_name, state)
+            return func(state)
 
-def build_graph(config: Optional[AieMasConfig] = None):
-    return AieMasWorkflow(config).build()
+        return _wrapped
+
+    def _emit_progress(self, node_name: str, state: AieMasState) -> None:
+        if self.progress_callback is None:
+            return
+        event: GraphProgressEvent = {
+            "node": node_name,
+            "round": self._node_round(node_name, state),
+            "agent": self._node_agent(node_name),
+            "case_id": state.case_id,
+            "current_hypothesis": state.current_hypothesis,
+        }
+        self.progress_callback(event)
+
+    def _node_round(self, node_name: str, state: AieMasState) -> int:
+        if node_name == "ingest_user_query":
+            return 0
+        return state.round_idx + 1
+
+    def _node_agent(self, node_name: str) -> str:
+        mapping = {
+            "ingest_user_query": "system",
+            "planner_initial": "planner",
+            "planner_diagnosis": "planner",
+            "planner_reweight_or_finalize": "planner",
+            "run_macro": "macro",
+            "run_microscopic": "microscopic",
+            "run_verifier": "verifier",
+            "update_working_memory": "memory",
+            "update_long_term_memory": "memory",
+            "final_output": "final",
+        }
+        return mapping.get(node_name, "system")
+
+
+def build_graph(
+    config: Optional[AieMasConfig] = None,
+    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+):
+    return AieMasWorkflow(config, progress_callback=progress_callback).build()
 
 
 def normalize_graph_result(result: Any) -> AieMasState:
@@ -326,8 +394,11 @@ def invoke_graph(graph: Any, initial_state: AieMasState) -> AieMasState:
     return normalize_graph_result(graph.invoke(initial_state))
 
 
-def get_runner(config: Optional[AieMasConfig] = None) -> Callable[[AieMasState], AieMasState]:
-    graph = build_graph(config)
+def get_runner(
+    config: Optional[AieMasConfig] = None,
+    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+) -> Callable[[AieMasState], AieMasState]:
+    graph = build_graph(config, progress_callback=progress_callback)
 
     def _runner(initial_state: AieMasState) -> AieMasState:
         return invoke_graph(graph, initial_state)

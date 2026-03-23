@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
+from typing import Callable, Optional
 
 import typer
 
@@ -14,7 +15,7 @@ from aie_mas.config import (
     PlannerBackend,
     ToolBackend,
 )
-from aie_mas.graph.builder import build_graph, invoke_graph
+from aie_mas.graph.builder import GraphProgressEvent, build_graph, invoke_graph
 from aie_mas.graph.state import AieMasState
 
 app = typer.Typer(add_completion=False)
@@ -104,6 +105,7 @@ def run_case_workflow(
     atb_binary_path: Optional[Path] = None,
     amesp_binary_path: Optional[Path] = None,
     external_search_binary_path: Optional[Path] = None,
+    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
 ) -> AieMasState:
     config = build_runtime_config(
         execution_profile=execution_profile,
@@ -132,7 +134,7 @@ def run_case_workflow(
         amesp_binary_path=amesp_binary_path,
         external_search_binary_path=external_search_binary_path,
     )
-    graph = build_graph(config)
+    graph = build_graph(config, progress_callback=progress_callback)
     initial_state = AieMasState(user_query=user_query, smiles=smiles)
     return invoke_graph(graph, initial_state)
 
@@ -245,6 +247,11 @@ def main(
         None,
         help="Optional external search tool path for future verifier integration.",
     ),
+    show_progress: bool = typer.Option(
+        True,
+        "--show-progress/--hide-progress",
+        help="Print live workflow progress with round and agent information.",
+    ),
 ) -> None:
     config = build_runtime_config(
         execution_profile=execution_profile,
@@ -273,7 +280,8 @@ def main(
         amesp_binary_path=amesp_binary_path,
         external_search_binary_path=external_search_binary_path,
     )
-    graph = build_graph(config)
+    progress_callback = render_progress_event if show_progress and sys.stderr.isatty() else None
+    graph = build_graph(config, progress_callback=progress_callback)
     state = invoke_graph(graph, AieMasState(user_query=user_query, smiles=smiles))
     report_paths = write_run_report(config, state)
     payload = {
@@ -398,6 +406,19 @@ def render_terminal_summary(
         f"full_state_file: {report_paths['full_state_path']}",
     ]
     typer.echo("\n".join(lines))
+
+
+def render_progress_event(event: GraphProgressEvent) -> None:
+    round_label = "setup" if event["round"] == 0 else str(event["round"])
+    parts = [
+        "progress",
+        f"round={round_label}",
+        f"agent={event['agent']}",
+        f"node={event['node']}",
+    ]
+    if event.get("case_id"):
+        parts.append(f"case_id={event['case_id']}")
+    typer.echo(" ".join(parts), err=True)
 
 
 def cli() -> None:

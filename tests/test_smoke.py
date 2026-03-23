@@ -52,6 +52,48 @@ def test_minimal_workflow_smoke(tmp_path: Path) -> None:
     assert state.finalize is True
 
 
+def test_run_case_workflow_emits_progress_events_with_round_and_agent(tmp_path: Path) -> None:
+    events: list[dict[str, object]] = []
+
+    state = run_case_workflow(
+        smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        execution_profile="local-dev",
+        tool_backend="mock",
+        data_dir=tmp_path / "data_progress",
+        memory_dir=tmp_path / "memory_progress",
+        log_dir=tmp_path / "log_progress",
+        runtime_dir=tmp_path / "runtime_progress",
+        progress_callback=events.append,
+    )
+
+    assert state.final_answer is not None
+    assert events
+    assert events[0]["node"] == "ingest_user_query"
+    assert events[0]["round"] == 0
+    assert events[0]["agent"] == "system"
+    assert any(
+        event["node"] == "run_macro" and event["round"] == 1 and event["agent"] == "macro"
+        for event in events
+    )
+    assert any(
+        event["node"] == "run_microscopic"
+        and event["round"] == 1
+        and event["agent"] == "microscopic"
+        for event in events
+    )
+    assert any(
+        event["node"] == "planner_diagnosis"
+        and event["round"] == 1
+        and event["agent"] == "planner"
+        for event in events
+    )
+    assert any(event["node"] == "update_working_memory" and event["agent"] == "memory" for event in events)
+    assert any(event["node"] == "run_verifier" and event["agent"] == "verifier" for event in events)
+    assert events[-1]["node"] == "final_output"
+    assert events[-1]["agent"] == "final"
+
+
 def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
     smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
     state = run_case_workflow(
