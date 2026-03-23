@@ -16,8 +16,8 @@ from aie_mas.config import (
     PlannerBackend,
     ToolBackend,
 )
-from aie_mas.graph.builder import GraphProgressEvent, build_graph, invoke_graph
-from aie_mas.graph.state import AieMasState
+from aie_mas.graph.builder import build_graph, invoke_graph
+from aie_mas.graph.state import AieMasState, WorkflowProgressEvent
 
 app = typer.Typer(add_completion=False)
 
@@ -106,7 +106,7 @@ def run_case_workflow(
     atb_binary_path: Optional[Path] = None,
     amesp_binary_path: Optional[Path] = None,
     external_search_binary_path: Optional[Path] = None,
-    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
 ) -> AieMasState:
     config = build_runtime_config(
         execution_profile=execution_profile,
@@ -435,9 +435,7 @@ def render_terminal_summary(
     typer.echo("\n".join(lines))
 
 
-def render_progress_event(event: GraphProgressEvent) -> None:
-    if event["phase"] != "start":
-        return
+def render_progress_event(event: WorkflowProgressEvent) -> None:
     round_label = "setup" if event["round"] == 0 else str(event["round"])
     parts = [
         "progress",
@@ -448,17 +446,24 @@ def render_progress_event(event: GraphProgressEvent) -> None:
     ]
     if event.get("case_id"):
         parts.append(f"case_id={event['case_id']}")
+    if event["phase"] == "probe":
+        probe_stage = event["details"].get("probe_stage")
+        probe_status = event["details"].get("probe_status")
+        if probe_stage:
+            parts.append(f"stage={probe_stage}")
+        if probe_status:
+            parts.append(f"status={probe_status}")
     typer.echo(" ".join(parts), err=True)
 
 
 def compose_progress_callbacks(
-    *callbacks: Optional[Callable[[GraphProgressEvent], None]],
-) -> Optional[Callable[[GraphProgressEvent], None]]:
+    *callbacks: Optional[Callable[[WorkflowProgressEvent], None]],
+) -> Optional[Callable[[WorkflowProgressEvent], None]]:
     active_callbacks = [callback for callback in callbacks if callback is not None]
     if not active_callbacks:
         return None
 
-    def _composed(event: GraphProgressEvent) -> None:
+    def _composed(event: WorkflowProgressEvent) -> None:
         for callback in active_callbacks:
             callback(event)
 
@@ -483,7 +488,7 @@ class LiveRunTracer:
         self._live_status_path = report_dir / "live_status.md"
         self._write_status_file()
 
-    def handle_event(self, event: GraphProgressEvent) -> None:
+    def handle_event(self, event: WorkflowProgressEvent) -> None:
         serializable_event = {
             "phase": event["phase"],
             "round": event["round"],
@@ -524,6 +529,28 @@ class LiveRunTracer:
                     f"- current_hypothesis: {current_event.get('current_hypothesis')}",
                 ]
             )
+        probe_events = [event for event in self._events if event["phase"] == "probe"]
+        lines.extend(["", "## Probe Trace"])
+        if not probe_events:
+            lines.append("")
+            lines.append("No microscopic probe events have been recorded yet.")
+        else:
+            for event in probe_events[-20:]:
+                round_label = "setup" if event["round"] == 0 else str(event["round"])
+                details = event.get("details") or {}
+                stage = details.get("probe_stage", "unknown")
+                status = details.get("probe_status", "unknown")
+                lines.extend(
+                    [
+                        "",
+                        f"- round={round_label} stage={stage} status={status}",
+                    ]
+                )
+                for key, value in details.items():
+                    if key in {"probe_stage", "probe_status"}:
+                        continue
+                    rendered_value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    lines.append(f"  {key}: {rendered_value}")
         lines.extend(["", "## Round Trace"])
 
         end_events = [event for event in self._events if event["phase"] == "end"]

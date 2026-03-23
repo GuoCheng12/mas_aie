@@ -45,8 +45,20 @@ class _FakeClient:
 class _SuccessfulAmespTool:
     name = "amesp_baseline_microscopic"
 
-    def execute(self, *, plan, smiles, label, workdir, available_artifacts):
-        del smiles, label, workdir, available_artifacts
+    def execute(
+        self,
+        *,
+        plan,
+        smiles,
+        label,
+        workdir,
+        available_artifacts,
+        progress_callback=None,
+        round_index=1,
+        case_id=None,
+        current_hypothesis=None,
+    ):
+        del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
         return type(
             "RunResult",
             (),

@@ -152,6 +152,7 @@ def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
 def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) -> None:
     amesp_bin = tmp_path / "amesp"
     amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    progress_events: list[dict[str, object]] = []
     tool = AmespBaselineMicroscopicTool(
         amesp_bin=amesp_bin,
         structure_preparer=_fake_structure_preparer,
@@ -169,6 +170,10 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         label="fake_case",
         workdir=tmp_path / "workdir",
         available_artifacts={},
+        progress_callback=progress_events.append,
+        round_index=1,
+        case_id="case123",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
     )
 
     assert result.s0.final_energy_hartree == -55.7914717877
@@ -179,13 +184,43 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert "prepared_xyz_path" in result.generated_artifacts
     assert Path(result.generated_artifacts["s0_aop_path"]).exists()
     assert Path(result.generated_artifacts["s1_aop_path"]).exists()
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "structure_prep"
+        and event["details"].get("probe_status") == "end"
+        for event in progress_events
+    )
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "s0_optimization"
+        and event["details"].get("probe_status") == "end"
+        for event in progress_events
+    )
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "s1_vertical_excitation"
+        and event["details"].get("probe_status") == "end"
+        for event in progress_events
+    )
 
 
 class _SuccessfulAmespTool:
     name = "amesp_baseline_microscopic"
 
-    def execute(self, *, plan, smiles, label, workdir, available_artifacts):
-        del plan, smiles, label, workdir, available_artifacts
+    def execute(
+        self,
+        *,
+        plan,
+        smiles,
+        label,
+        workdir,
+        available_artifacts,
+        progress_callback=None,
+        round_index=1,
+        case_id=None,
+        current_hypothesis=None,
+    ):
+        del plan, smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
         return AmespBaselineRunResult(
             structure=PreparedStructure(
                 input_smiles="C1=CCCCC1",
@@ -230,9 +265,11 @@ class _SuccessfulAmespTool:
 
 
 def test_real_microscopic_agent_builds_understanding_and_execution_plan(tmp_path: Path) -> None:
+    progress_events: list[dict[str, object]] = []
     agent = MicroscopicAgent(
         amesp_tool=_SuccessfulAmespTool(),
         tools_work_dir=tmp_path / "tools",
+        progress_callback=progress_events.append,
     )
     task_spec = MicroscopicTaskSpec(
         mode="baseline_s0_s1",
@@ -264,13 +301,37 @@ def test_real_microscopic_agent_builds_understanding_and_execution_plan(tmp_path
     assert report.structured_results["s1"]["first_oscillator_strength"] == 0.245
     assert "Amesp baseline workflow" in report.task_understanding
     assert "s1 vertical excitation" in report.execution_plan.lower()
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "reasoning"
+        and event["details"].get("probe_status") == "start"
+        for event in progress_events
+    )
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "execution_plan"
+        and event["details"].get("probe_status") == "end"
+        for event in progress_events
+    )
 
 
 class _FailingAmespTool:
     name = "amesp_baseline_microscopic"
 
-    def execute(self, *, plan, smiles, label, workdir, available_artifacts):
-        del plan, smiles, label, workdir, available_artifacts
+    def execute(
+        self,
+        *,
+        plan,
+        smiles,
+        label,
+        workdir,
+        available_artifacts,
+        progress_callback=None,
+        round_index=1,
+        case_id=None,
+        current_hypothesis=None,
+    ):
+        del plan, smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
         raise AmespExecutionError(
             "subprocess_failed",
             "The S1 TDDFT step failed after the S0 optimization completed.",

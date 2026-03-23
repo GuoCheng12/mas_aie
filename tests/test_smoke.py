@@ -156,9 +156,16 @@ def test_live_run_tracer_writes_live_trace_and_status_files(tmp_path: Path) -> N
         and line["details"].get("agent_reports")
         for line in trace_lines
     )
+    assert any(
+        line["phase"] == "probe"
+        and line["details"].get("probe_stage") == "reasoning"
+        for line in trace_lines
+    )
 
     live_status_text = live_status_path.read_text(encoding="utf-8")
     assert "# Live Run Status" in live_status_text
+    assert "## Probe Trace" in live_status_text
+    assert "stage=reasoning" in live_status_text
     assert "Round 1 | planner | planner_initial" in live_status_text
     assert "Round 1 | microscopic | run_microscopic" in live_status_text
     assert "result_summary" in live_status_text

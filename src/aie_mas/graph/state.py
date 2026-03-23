@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, Optional
+from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 
@@ -9,6 +9,17 @@ PendingAgent = Literal["macro", "microscopic", "verifier"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_vertical_excitation"]
 MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
+WorkflowProgressPhase = Literal["start", "probe", "end"]
+
+
+class WorkflowProgressEvent(TypedDict):
+    phase: WorkflowProgressPhase
+    node: str
+    round: int
+    agent: str
+    case_id: Optional[str]
+    current_hypothesis: Optional[str]
+    details: dict[str, Any]
 
 
 class HypothesisEntry(BaseModel):

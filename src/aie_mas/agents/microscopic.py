@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Literal, Optional, Protocol
+from typing import Any, Callable, Literal, Optional, Protocol
 
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from aie_mas.graph.state import (
     MicroscopicExecutionPlan,
     MicroscopicExecutionStep,
     MicroscopicTaskSpec,
+    WorkflowProgressEvent,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
 from aie_mas.tools.amesp import AmespBaselineMicroscopicTool, AmespExecutionError
@@ -163,6 +164,7 @@ class MicroscopicAgent:
         tools_work_dir: Optional[Path] = None,
         config: Optional[AieMasConfig] = None,
         llm_client: Optional[OpenAICompatibleMicroscopicClient] = None,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
     ) -> None:
         self._s0_tool = s0_tool or MockS0OptimizationTool()
         self._s1_tool = s1_tool or MockS1OptimizationTool()
@@ -172,6 +174,7 @@ class MicroscopicAgent:
         self._tools_work_dir = tools_work_dir
         self._config = config or AieMasConfig()
         self._reasoning_backend = self._build_reasoning_backend(self._config, llm_client)
+        self._progress_callback = progress_callback
 
     def run(
         self,
@@ -192,6 +195,20 @@ class MicroscopicAgent:
         )
         recent_rounds_context = recent_rounds_context or []
         available_artifacts = available_artifacts or {}
+        resolved_case_id = case_id or "ad_hoc_case"
+
+        self._emit_probe(
+            round_index=round_index,
+            case_id=resolved_case_id,
+            current_hypothesis=current_hypothesis,
+            stage="reasoning",
+            status="start",
+            details={
+                "task_instruction": task_received,
+                "task_mode": task_spec.mode,
+                "task_label": task_spec.task_label,
+            },
+        )
 
         reasoning_payload = self._build_reasoning_payload(
             current_hypothesis=current_hypothesis,
@@ -202,11 +219,33 @@ class MicroscopicAgent:
         )
         rendered_prompt = self._prompts.render("microscopic_reasoning", reasoning_payload)
         reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
+        self._emit_probe(
+            round_index=round_index,
+            case_id=resolved_case_id,
+            current_hypothesis=current_hypothesis,
+            stage="reasoning",
+            status="end",
+            details={
+                "reasoning_backend": self._config.microscopic_backend,
+                "task_understanding": reasoning.task_understanding,
+                "reasoning_summary": reasoning.reasoning_summary,
+                "capability_limit_note": reasoning.capability_limit_note,
+                "expected_outputs": reasoning.expected_outputs,
+            },
+        )
         plan = self._normalize_execution_plan(
             task_received=task_received,
             task_spec=task_spec,
             available_artifacts=available_artifacts,
             reasoning=reasoning,
+        )
+        self._emit_probe(
+            round_index=round_index,
+            case_id=resolved_case_id,
+            current_hypothesis=current_hypothesis,
+            stage="execution_plan",
+            status="end",
+            details=plan.model_dump(mode="json"),
         )
 
         if self._amesp_tool is not None:
@@ -219,7 +258,7 @@ class MicroscopicAgent:
                 plan=plan,
                 recent_rounds_context=recent_rounds_context,
                 available_artifacts=available_artifacts,
-                case_id=case_id or "ad_hoc_case",
+                case_id=resolved_case_id,
                 round_index=round_index,
             )
         return self._run_mock(
@@ -281,6 +320,10 @@ class MicroscopicAgent:
                 label=label,
                 workdir=workdir,
                 available_artifacts=available_artifacts,
+                progress_callback=self._progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
             )
             structured_results = {
                 "backend": "amesp",
@@ -466,6 +509,33 @@ class MicroscopicAgent:
             status="success",
             planner_readable_report=rendered["planner_readable_report"],
         )
+
+    def _emit_probe(
+        self,
+        *,
+        round_index: int,
+        case_id: Optional[str],
+        current_hypothesis: Optional[str],
+        stage: str,
+        status: str,
+        details: dict[str, Any],
+    ) -> None:
+        if self._progress_callback is None:
+            return
+        event: WorkflowProgressEvent = {
+            "phase": "probe",
+            "node": "run_microscopic",
+            "round": round_index,
+            "agent": "microscopic",
+            "case_id": case_id,
+            "current_hypothesis": current_hypothesis,
+            "details": {
+                "probe_stage": stage,
+                "probe_status": status,
+                **details,
+            },
+        }
+        self._progress_callback(event)
 
     def _build_reasoning_backend(
         self,

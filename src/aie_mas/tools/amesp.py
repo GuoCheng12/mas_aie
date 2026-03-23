@@ -16,7 +16,7 @@ from aie_mas.chem.structure_prep import (
     StructurePrepRequest,
     prepare_structure_from_smiles,
 )
-from aie_mas.graph.state import MicroscopicExecutionPlan
+from aie_mas.graph.state import MicroscopicExecutionPlan, WorkflowProgressEvent
 
 if TYPE_CHECKING:  # pragma: no cover
     from ase import Atoms
@@ -127,6 +127,10 @@ class AmespBaselineMicroscopicTool:
         label: str,
         workdir: Path,
         available_artifacts: dict[str, Any] | None = None,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
+        round_index: int = 1,
+        case_id: Optional[str] = None,
+        current_hypothesis: Optional[str] = None,
     ) -> AmespBaselineRunResult:
         if not self._amesp_bin.exists():
             raise AmespExecutionError(
@@ -138,11 +142,39 @@ class AmespBaselineMicroscopicTool:
         generated_artifacts: dict[str, Any] = {}
         raw_results: dict[str, Any] = {}
 
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage="structure_prep",
+            status="start",
+            details={
+                "workdir": str(workdir),
+                "structure_source": plan.structure_source,
+            },
+        )
         atoms, prepared = self._resolve_structure(
             smiles=smiles,
             label=label,
             workdir=workdir,
             available_artifacts=available_artifacts,
+        )
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage="structure_prep",
+            status="end",
+            details={
+                "prepared_xyz_path": str(prepared.xyz_path),
+                "prepared_sdf_path": str(prepared.sdf_path),
+                "prepared_summary_path": str(prepared.summary_path),
+                "atom_count": prepared.atom_count,
+                "charge": prepared.charge,
+                "multiplicity": prepared.multiplicity,
+            },
         )
         generated_artifacts.update(
             {
@@ -165,6 +197,10 @@ class AmespBaselineMicroscopicTool:
             multiplicity=prepared.multiplicity,
             symbols=symbols,
             coordinates=initial_positions,
+            progress_callback=progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
         )
         raw_results["s0_optimization"] = s0_outcome.model_dump(mode="json")
         generated_artifacts.update(
@@ -199,6 +235,15 @@ class AmespBaselineMicroscopicTool:
             geometry_xyz_path=str(s0_xyz_path),
             rmsd_from_prepared_structure_angstrom=_compute_rmsd(initial_positions, s0_coordinates),
         )
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage="s0_parse",
+            status="end",
+            details=s0_result.model_dump(mode="json"),
+        )
 
         try:
             s1_outcome, s1_text = self._run_step(
@@ -211,6 +256,10 @@ class AmespBaselineMicroscopicTool:
                 multiplicity=prepared.multiplicity,
                 symbols=s0_symbols,
                 coordinates=s0_coordinates,
+                progress_callback=progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
             )
         except AmespExecutionError as exc:
             partial_structured = {
@@ -262,6 +311,15 @@ class AmespBaselineMicroscopicTool:
             first_excitation_energy_ev=excited_states[0].excitation_energy_ev,
             first_oscillator_strength=excited_states[0].oscillator_strength,
             state_count=len(excited_states),
+        )
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage="s1_parse",
+            status="end",
+            details=s1_result.model_dump(mode="json"),
         )
 
         return AmespBaselineRunResult(
@@ -335,6 +393,10 @@ class AmespBaselineMicroscopicTool:
         multiplicity: int,
         symbols: Sequence[str],
         coordinates: Sequence[Sequence[float]],
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
+        round_index: int = 1,
+        case_id: Optional[str] = None,
+        current_hypothesis: Optional[str] = None,
     ) -> tuple[AmespStepOutcome, str]:
         aip_path = workdir / f"{label}.aip"
         aop_path = workdir / f"{label}.aop"
@@ -348,6 +410,19 @@ class AmespBaselineMicroscopicTool:
             symbols=symbols,
             coordinates=coordinates,
             block_lines=block_lines,
+        )
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage=step_id,
+            status="start",
+            details={
+                "aip_path": str(aip_path),
+                "aop_path": str(aop_path),
+                "keywords": list(keywords),
+            },
         )
 
         _raise_stack_limit()
@@ -365,6 +440,20 @@ class AmespBaselineMicroscopicTool:
         elapsed = round(time.perf_counter() - start, 4)
         stdout_path.write_text(completed.stdout or "", encoding="utf-8")
         stderr_path.write_text(completed.stderr or "", encoding="utf-8")
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage=f"{step_id}_subprocess",
+            status="end",
+            details={
+                "exit_code": completed.returncode,
+                "elapsed_seconds": elapsed,
+                "stdout_path": str(stdout_path),
+                "stderr_path": str(stderr_path),
+            },
+        )
 
         mo_path = workdir / f"{label}.mo"
         outcome = AmespStepOutcome(
@@ -403,7 +492,44 @@ class AmespBaselineMicroscopicTool:
                 generated_artifacts=outcome.model_dump(mode="json"),
                 raw_results={"stdout": completed.stdout, "stderr": completed.stderr},
             )
+        self._emit_probe(
+            progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+            stage=step_id,
+            status="end",
+            details=outcome.model_dump(mode="json"),
+        )
         return outcome, aop_text
+
+    def _emit_probe(
+        self,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]],
+        *,
+        round_index: int,
+        case_id: Optional[str],
+        current_hypothesis: Optional[str],
+        stage: str,
+        status: str,
+        details: dict[str, Any],
+    ) -> None:
+        if progress_callback is None:
+            return
+        event: WorkflowProgressEvent = {
+            "phase": "probe",
+            "node": "run_microscopic",
+            "round": round_index,
+            "agent": "microscopic",
+            "case_id": case_id,
+            "current_hypothesis": current_hypothesis,
+            "details": {
+                "probe_stage": stage,
+                "probe_status": status,
+                **details,
+            },
+        }
+        progress_callback(event)
 
 
 def _write_amesp_input(

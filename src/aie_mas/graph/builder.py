@@ -1,34 +1,29 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Literal, Optional, TypedDict
+from typing import Any, Callable, Literal, Optional
 
 from aie_mas.agents.planner import PlannerAgent
 from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
 from aie_mas.compat.langgraph import END, StateGraph
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import AieMasState, MicroscopicTaskSpec, PlannerDecision
+from aie_mas.graph.state import (
+    AieMasState,
+    MicroscopicTaskSpec,
+    PlannerDecision,
+    WorkflowProgressEvent,
+)
 from aie_mas.memory.long_term import LongTermMemoryStore
 from aie_mas.memory.working import WorkingMemoryManager
 from aie_mas.tools.factory import build_toolset
 from aie_mas.utils.prompts import PromptRepository
 
 
-class GraphProgressEvent(TypedDict):
-    phase: Literal["start", "end"]
-    node: str
-    round: int
-    agent: str
-    case_id: Optional[str]
-    current_hypothesis: Optional[str]
-    details: dict[str, Any]
-
-
 class AieMasWorkflow:
     def __init__(
         self,
         config: Optional[AieMasConfig] = None,
-        progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
     ) -> None:
         self.config = config or AieMasConfig()
         self.progress_callback = progress_callback
@@ -46,6 +41,7 @@ class AieMasWorkflow:
             prompts=self.prompts,
             tools_work_dir=self.config.tools_work_dir,
             config=self.config,
+            progress_callback=self.progress_callback,
         )
         self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool, prompts=self.prompts)
         self.working_memory = WorkingMemoryManager()
@@ -354,7 +350,7 @@ class AieMasWorkflow:
     ) -> None:
         if self.progress_callback is None:
             return
-        event: GraphProgressEvent = {
+        event: WorkflowProgressEvent = {
             "phase": phase,
             "node": node_name,
             "round": self._node_round(node_name, state, phase),
@@ -468,7 +464,7 @@ class AieMasWorkflow:
 
 def build_graph(
     config: Optional[AieMasConfig] = None,
-    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
 ):
     return AieMasWorkflow(config, progress_callback=progress_callback).build()
 
@@ -487,7 +483,7 @@ def invoke_graph(graph: Any, initial_state: AieMasState) -> AieMasState:
 
 def get_runner(
     config: Optional[AieMasConfig] = None,
-    progress_callback: Optional[Callable[[GraphProgressEvent], None]] = None,
+    progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
 ) -> Callable[[AieMasState], AieMasState]:
     graph = build_graph(config, progress_callback=progress_callback)
 
