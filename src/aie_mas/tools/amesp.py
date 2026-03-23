@@ -205,7 +205,7 @@ class AmespBaselineMicroscopicTool:
             step_id="s0_optimization",
             label=f"{label}_s0",
             workdir=workdir,
-            keywords=self._build_keywords("opt"),
+            keywords=self._build_s0_keywords(),
             block_lines=[("ope", ["out 1"])],
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
@@ -264,7 +264,7 @@ class AmespBaselineMicroscopicTool:
                 step_id="s1_vertical_excitation",
                 label=f"{label}_s1",
                 workdir=workdir,
-                keywords=self._build_keywords("td"),
+                keywords=self._build_s1_keywords(),
                 block_lines=[
                     ("ope", ["out 1"]),
                     ("posthf", [f"nstates {self._s1_nstates}", f"tout {self._td_tout}"]),
@@ -355,8 +355,11 @@ class AmespBaselineMicroscopicTool:
             return Path(env_bin).expanduser().resolve()
         return (Path(__file__).resolve().parents[3] / "third_party" / "Amesp" / "Bin" / "amesp").resolve()
 
-    def _build_keywords(self, job_keyword: str) -> list[str]:
-        keywords = ["b3lyp", "sto-3g", job_keyword]
+    def _build_s0_keywords(self) -> list[str]:
+        return ["atb1", "opt"]
+
+    def _build_s1_keywords(self) -> list[str]:
+        keywords = ["b3lyp", "sto-3g", "td"]
         if self._use_ricosx:
             keywords.append("RICOSX")
         return keywords

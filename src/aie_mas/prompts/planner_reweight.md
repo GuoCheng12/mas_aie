@@ -53,6 +53,7 @@ Important rules:
   - switch after strong conflict
   - finalize when verifier support is sufficient
 - Do not ask specialized agents to decide the global mechanism or next system action.
+- If a bounded microscopic follow-up is chosen, keep it low-cost and conservative rather than expanding into a heavy exhaustive geometry-optimization agenda.
 
 Output requirements:
 Return:
@@ -89,4 +90,5 @@ task_instruction rules:
 - optional and usually empty when action is finalize
 - must stay within the selected specialized agent's local task scope
 - must stay within current specialized-agent capability
+- if action is microscopic, the task must stay low-cost and bounded
 - must not ask that agent to decide the global mechanism or next system action

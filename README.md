@@ -187,9 +187,13 @@ Microscopic specialized-agent 的局部 reasoning LLM 也支持独立配置：
 
 - Planner 仍然是唯一全局推理者
 - Microscopic 的 LLM 只负责局部 task understanding / execution planning
-- Microscopic 当前真实执行层只接 Amesp baseline workflow
+- Microscopic 当前真实执行层只接 Amesp low-cost baseline workflow
 - Macro / Verifier 当前仍保持 mock specialized agent
 - real Amesp baseline 默认会写入 `% npara`、`% maxcore`，并启用 `RICOSX`
+- 第一轮 microscopic baseline 现在优先走：
+  - `aTB1` S0 geometry optimization
+  - bounded `B3LYP/STO-3G` S1 vertical excitation
+- Planner 的分发应默认遵守 baseline-first 的成本约束，不应把第一轮 microscopic 扩成重 DFT geometry optimization agenda
 - 默认 baseline 速度优先配置是：
   - `AIE_MAS_AMESP_NPARA=min(20, cpu_count)`
   - `AIE_MAS_AMESP_MAXCORE_MB=12000`

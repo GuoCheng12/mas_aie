@@ -82,8 +82,8 @@ class MockMicroscopicReasoningBackend:
             else "No prior microscopic round context is available."
         )
         capability_limit_note = (
-            "Current microscopic capability is bounded to Amesp baseline execution only: structure preparation or reuse, "
-            "S0 optimization, and S1 vertical excitation. No global mechanism judgment is allowed."
+            "Current microscopic capability is bounded to a low-cost Amesp baseline only: structure preparation or "
+            "reuse, low-cost S0 optimization, and bounded S1 vertical excitation. No global mechanism judgment is allowed."
         )
         if unsupported_requests:
             capability_limit_note = (
@@ -97,8 +97,8 @@ class MockMicroscopicReasoningBackend:
             )
 
         expected_outputs = [
-            "S0 optimized geometry",
-            "S0 final energy",
+            "Low-cost S0 optimized geometry",
+            "Low-cost S0 final energy",
             "S0 dipole",
             "S0 Mulliken charges",
             "S0 HOMO-LUMO gap",
@@ -118,8 +118,8 @@ class MockMicroscopicReasoningBackend:
             reasoning_summary=reasoning_summary,
             execution_plan=MicroscopicReasoningPlanDraft(
                 local_goal=(
-                    "Collect bounded microscopic evidence through the Amesp baseline workflow and return only local results."
-                ),
+                "Collect bounded low-cost microscopic evidence through the Amesp baseline workflow and return only local results."
+            ),
                 requested_deliverables=requested_deliverables,
                 structure_strategy=structure_strategy,
                 step_sequence=["structure_prep", "s0_optimization", "s1_vertical_excitation"],
@@ -612,7 +612,7 @@ class MicroscopicAgent:
             requested_deliverables=requested_deliverables,
             structure_source=structure_source,  # type: ignore[arg-type]
             supported_scope=[
-                "S0 geometry optimization",
+                "low-cost aTB S0 geometry optimization",
                 "Mulliken charge extraction",
                 "dipole extraction",
                 "HOMO-LUMO gap extraction",
@@ -648,12 +648,12 @@ class MicroscopicAgent:
             return MicroscopicExecutionStep(
                 step_id="s0_optimization",
                 step_type="s0_optimization",
-                description="Run a real Amesp S0 geometry optimization on the prepared 3D structure.",
+                description="Run a real low-cost Amesp aTB S0 geometry optimization on the prepared 3D structure.",
                 input_source=structure_source,
-                keywords=["b3lyp", "sto-3g", "opt"],
+                keywords=["atb1", "opt"],
                 expected_outputs=[
-                    "final S0 energy",
-                    "final geometry",
+                    "low-cost final S0 energy",
+                    "low-cost final geometry",
                     "dipole",
                     "Mulliken charges",
                     "HOMO-LUMO gap",
@@ -663,11 +663,17 @@ class MicroscopicAgent:
             step_id="s1_vertical_excitation",
             step_type="s1_vertical_excitation",
             description=(
-                "Run a real Amesp S1 vertical excitation (TDDFT) calculation at the S0 optimized geometry "
-                "to characterize the first singlet excited-state manifold."
+                "Run a bounded real Amesp S1 vertical excitation calculation at the best available S0 geometry "
+                "to characterize the first singlet excited-state manifold without escalating to heavy excited-state optimization."
             ),
             input_source="S0 optimized geometry",
-            keywords=["b3lyp", "sto-3g", "td", "nstates 3", "tout 2"],
+            keywords=[
+                "b3lyp",
+                "sto-3g",
+                "td",
+                f"nstates {self._config.amesp_s1_nstates}",
+                f"tout {self._config.amesp_td_tout}",
+            ],
             expected_outputs=["excited-state energies", "oscillator strengths"],
         )
 
@@ -706,12 +712,16 @@ class MicroscopicAgent:
             "tool_backend": self._config.tool_backend,
             "amesp_binary_path": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
             "supports_real_amesp": self._amesp_tool is not None,
+            "baseline_policy": (
+                "baseline-first must stay low-cost; do not default to heavy exhaustive DFT geometry optimization for large systems"
+            ),
             "supported_scope": [
                 "structure preparation or reuse",
-                "S0 optimization",
-                "S1 vertical excitation",
+                "low-cost aTB S0 optimization",
+                "bounded S1 vertical excitation",
             ],
             "unsupported_scope": [
+                "heavy full-DFT geometry optimization as a default first-round baseline",
                 "excited-state optimization",
                 "scan",
                 "TS",
@@ -731,7 +741,7 @@ class MicroscopicAgent:
         lower_instruction = task_received.lower()
         deliverables: list[str] = []
         if any(token in lower_instruction for token in ("s0", "ground-state", "ground state", "opt")):
-            deliverables.append("S0 geometry optimization")
+            deliverables.append("low-cost aTB S0 geometry optimization")
         if any(token in lower_instruction for token in ("s1", "excited", "oscillator", "vertical")):
             deliverables.append("S1 vertical excitation characterization")
         if "dipole" in lower_instruction:
@@ -741,7 +751,7 @@ class MicroscopicAgent:
         if not deliverables:
             deliverables.extend(
                 [
-                    "S0 geometry optimization",
+                    "low-cost aTB S0 geometry optimization",
                     "S1 vertical excitation characterization",
                 ]
             )
@@ -756,6 +766,7 @@ class MicroscopicAgent:
         unsupported: list[str] = []
         keyword_mapping = {
             "torsion scan": ("scan", "torsion"),
+            "heavy full-DFT geometry optimization": ("full dft", "exhaustive geometry optimization"),
             "transition-state optimization": ("transition state", "ts"),
             "IRC": ("irc",),
             "solvent model": ("solvent", "cpcm", "cosmo"),
@@ -786,8 +797,8 @@ class MicroscopicAgent:
 
     def _capability_scope_text(self) -> str:
         return (
-            "Current microscopic capability is limited to a real Amesp baseline workflow: S0 geometry optimization "
-            "plus S1 vertical excitation analysis."
+            "Current microscopic capability is limited to a real low-cost Amesp baseline workflow: aTB S0 geometry "
+            "optimization plus bounded S1 vertical excitation analysis."
         )
 
     def _structure_source_note(
@@ -800,9 +811,9 @@ class MicroscopicAgent:
         if available_artifacts.get("prepared_xyz_path"):
             return (
                 "A previous prepared structure was referenced but is not reusable from disk, so a fresh 3D structure "
-                "will be generated from the input SMILES."
+                "will be generated from the input SMILES before the low-cost baseline run."
             )
-        return "Prepare a fresh 3D structure from the input SMILES before running Amesp."
+        return "Prepare a fresh 3D structure from the input SMILES before running the low-cost Amesp baseline."
 
     def _unsupported_requests_note(self, unsupported_requests: list[str]) -> str:
         if not unsupported_requests:
@@ -815,7 +826,7 @@ class MicroscopicAgent:
         task_mode: str,
     ) -> str:
         limitation_bits = [
-            "this bounded Amesp baseline run does not execute excited-state optimization",
+            "this bounded low-cost Amesp baseline run does not execute excited-state optimization",
             "it does not adjudicate the global mechanism",
         ]
         if unsupported_requests:
@@ -824,7 +835,7 @@ class MicroscopicAgent:
             )
         if task_mode == "targeted_follow_up":
             limitation_bits.append(
-                "the requested targeted microscopic follow-up is conservatively contracted to the same baseline S0/S1 workflow"
+                "the requested targeted microscopic follow-up is conservatively contracted to the same low-cost baseline S0/S1 workflow"
             )
         return ". ".join(limitation_bits) + "."
 
@@ -835,11 +846,11 @@ class MicroscopicAgent:
         s0 = structured_results["s0"]
         s1 = structured_results["s1"]
         return (
-            f"S0 optimization finished with final_energy_hartree={s0['final_energy_hartree']}, "
+            f"Low-cost S0 optimization finished with final_energy_hartree={s0['final_energy_hartree']}, "
             f"homo_lumo_gap_ev={s0['homo_lumo_gap_ev']}, "
             f"rmsd_from_prepared_structure_angstrom={s0['rmsd_from_prepared_structure_angstrom']}, "
             f"and {len(s0['mulliken_charges'])} Mulliken charges. "
-            f"S1 vertical excitation returned first_excitation_energy_ev={s1['first_excitation_energy_ev']} "
+            f"Bounded S1 vertical excitation returned first_excitation_energy_ev={s1['first_excitation_energy_ev']} "
             f"and first_oscillator_strength={s1['first_oscillator_strength']} across {s1['state_count']} states."
         )
 
@@ -865,4 +876,4 @@ class MicroscopicAgent:
                 "the targeted micro follow-up still cannot establish verifier-aligned mechanism selection "
                 f"without Planner-level synthesis. {capability_limit_note}"
             )
-        return f"the bounded baseline S0/S1 run still cannot determine external consistency or final mechanism. {capability_limit_note}"
+        return f"the bounded low-cost baseline S0/S1 run still cannot determine external consistency or final mechanism. {capability_limit_note}"

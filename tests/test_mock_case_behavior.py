@@ -122,6 +122,8 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
         assert any(
             "baseline S0/S1 run still cannot determine external consistency or final mechanism"
             in entry.evidence_summary
+            or "low-cost baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in entry.evidence_summary
             or "bounded baseline S0/S1 run still cannot determine external consistency or final mechanism"
             in entry.evidence_summary
             or "targeted micro follow-up still cannot establish verifier-aligned mechanism selection"
@@ -136,6 +138,8 @@ def test_mock_cases_preserve_specialized_reports_and_diverge_in_workflow_behavio
         )
         assert any(
             "baseline S0/S1 run still cannot determine external consistency or final mechanism"
+            in diagnosis
+            or "low-cost baseline S0/S1 run still cannot determine external consistency or final mechanism"
             in diagnosis
             or "bounded baseline S0/S1 run still cannot determine external consistency or final mechanism"
             in diagnosis

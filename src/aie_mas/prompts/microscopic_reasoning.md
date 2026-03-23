@@ -20,8 +20,12 @@ Current implementation boundary:
 - Only Amesp baseline workflow is available as the real execution path.
 - The baseline workflow is limited to:
   - structure reuse or SMILES-to-3D preparation
-  - S0 geometry optimization
-  - S1 vertical excitation analysis
+  - low-cost S0 optimization using Amesp aTB
+  - bounded S1 vertical excitation analysis
+- Baseline-first policy:
+  - prioritize fast, usable microscopic evidence
+  - control computational cost on large systems
+  - do not expand the first-round baseline into heavy exhaustive DFT geometry optimization
 - Do not invent unsupported Amesp workflows as executable steps.
 - If the request mentions unsupported tasks such as scan, TS, IRC, solvent, SOC, NAC, AIMD, or broad targeted follow-up, keep them in `unsupported_requests` and conservatively contract the execution plan back to the bounded baseline workflow.
 

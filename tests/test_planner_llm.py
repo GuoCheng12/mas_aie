@@ -98,6 +98,9 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
+    prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "runtime_context" in prompt_payload
+    assert "low-cost" in prompt_payload.lower()
 
 
 def test_openai_initial_hypothesis_pool_is_model_driven(tmp_path: Path) -> None:

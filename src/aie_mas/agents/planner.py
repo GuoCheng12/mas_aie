@@ -81,8 +81,9 @@ def _default_initial_agent_task_instructions(
             f"current macro capability. Hypothesis uncertainty to keep in mind: {hypothesis_uncertainty_note}"
         ),
         "microscopic": (
-            f"Run the first-round fixed S0/S1 microscopic baseline task for the current working hypothesis "
-            f"'{current_hypothesis}'. Report local microscopic results only, and do not attempt "
+            f"Run the first-round low-cost S0/S1 microscopic baseline task for the current working hypothesis "
+            f"'{current_hypothesis}'. Prioritize semi-empirical or otherwise low-cost bounded evidence collection, "
+            f"not heavy exhaustive geometry optimization. Report local microscopic results only, and do not attempt "
             f"mechanism discrimination beyond current microscopic capability. Capability note: {capability_assessment}"
         ),
     }
@@ -107,7 +108,7 @@ def _default_follow_up_task_instruction(
         return (
             f"Collect additional microscopic evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
-            f"Keep the task bounded to current microscopic capability. "
+            f"Keep the task low-cost and bounded to current microscopic capability. "
             f"{contraction_reason or capability_assessment}"
         )
     if action == "verifier":
@@ -148,9 +149,10 @@ def _mock_initial_hypothesis_setup() -> tuple[list[HypothesisEntry], str, float,
         "Use planner_backend='openai_sdk' when you want the Planner to form the hypothesis pool through LLM reasoning."
     )
     capability_assessment = (
-        "Current specialized agents can only collect low-cost structural signals, bounded S0/S1 microscopic evidence, "
-        "and mock verifier evidence. They cannot directly prove a final photophysical mechanism, so the Planner must "
-        "keep the early hypothesis conservative."
+        "Current specialized agents can only collect low-cost structural signals, low-cost bounded S0/S1 microscopic "
+        "evidence, and mock verifier evidence. The first-round microscopic baseline should prioritize computational "
+        "efficiency plus usable local evidence rather than heavy exhaustive geometry optimization. They cannot directly "
+        "prove a final photophysical mechanism, so the Planner must keep the early hypothesis conservative."
     )
     return hypothesis_pool, current_hypothesis, confidence, hypothesis_uncertainty_note, capability_assessment
 
@@ -246,8 +248,8 @@ class MockPlannerBackend:
             f"The leading working hypothesis is {current_hypothesis}. "
             f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
             "This remains preliminary because only the user query and raw SMILES are available so far. "
-            "The first round should therefore collect both macro structural evidence and microscopic S0/S1 "
-            f"optimization evidence before any external verification or finalization. Capability note: "
+            "The first round should therefore collect both macro structural evidence and low-cost microscopic S0/S1 "
+            f"baseline evidence before any external verification or finalization. Capability note: "
             f"{capability_assessment}"
         )
         return {
@@ -1136,7 +1138,19 @@ class PlannerAgent:
         self._backend = self._build_backend(config, llm_client)
 
     def plan_initial(self, state: AieMasState) -> dict[str, Any]:
-        payload = {"user_query": state.user_query, "smiles": state.smiles}
+        payload = {
+            "user_query": state.user_query,
+            "smiles": state.smiles,
+            "runtime_context": {
+                "microscopic_baseline_policy": (
+                    "first-round microscopic work must stay low-cost and bounded; do not default to heavy exhaustive "
+                    "DFT geometry optimization for large systems"
+                ),
+                "microscopic_supported_scope": (
+                    "SMILES-to-3D preparation, low-cost Amesp aTB S0 optimization, bounded S1 vertical excitation"
+                ),
+            },
+        }
         rendered_prompt = self._prompts.render("planner_initial", payload)
         return self._backend.plan_initial(rendered_prompt, payload)
 

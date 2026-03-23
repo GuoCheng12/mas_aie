@@ -54,6 +54,7 @@ Important rules:
 - If the current rounds indicate capability-limited stagnation or low information gain, you may trigger Verifier now to break the deadlock.
 - If internal evidence is still informative, choose the most informative next step between Macro or Microscopic.
 - If continuing the same action is unlikely to shrink the gap, do not blindly repeat it; prefer verifier or a more conservative bounded follow-up.
+- When choosing Microscopic, keep the task low-cost and bounded; do not escalate to a heavy exhaustive geometry-optimization agenda by default.
 - Do not finalize unless verifier handling has already been addressed and the evidence chain is strong enough.
 
 Output requirements:
@@ -94,5 +95,6 @@ task_instruction rules:
 - required when action is macro, microscopic, or verifier
 - should describe only that specialized agent's local task
 - must stay within current specialized-agent capability
+- if action is microscopic, the instruction must explicitly respect low-cost baseline-first execution
 - must not ask the agent to decide the global mechanism
 - must not ask the agent to choose the next system-level action

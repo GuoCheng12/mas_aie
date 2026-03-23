@@ -17,13 +17,16 @@ Your task in this initial stage is to:
 6. State the current capability boundary of the specialized agents.
 7. Decide the first-round action plan.
 8. Provide specialized natural-language task instructions for the first-round Macro and Microscopic agents.
+9. Keep the first-round microscopic task explicitly low-cost and bounded.
 
 System rules:
 - The system works in a single-leading-hypothesis mode.
 - The first round must include:
   - Macro Agent
   - Microscopic Agent
-- Microscopic Agent first-round task is fixed to basic S0/S1 optimization.
+- Microscopic Agent first-round task is fixed to a low-cost baseline S0/S1 evidence-collection workflow.
+- The system prioritizes efficiency plus sufficient local evidence, not expensive first-round exhaustive calculation.
+- Do not dispatch a heavy full-DFT geometry-optimization agenda as the default first-round microscopic task.
 - Do not finalize in the initial stage.
 - Do not call Verifier as the only initial action; the first round must obtain internal evidence first.
 - Do not ask specialized agents to make global mechanism judgments or next-step decisions.
@@ -32,6 +35,7 @@ System rules:
 You will be given:
 - user_query
 - smiles
+- runtime_context
 
 Output requirements:
 Return a structured decision containing:
@@ -64,6 +68,7 @@ The diagnosis should explain:
 - why this is only an initial working hypothesis
 - what uncertainty is already visible in the leading hypothesis
 - what the current specialized agents can and cannot realistically do
+- why the current microscopic baseline must stay low-cost and bounded
 - why the first round should gather both macro and microscopic evidence
 
 The action should indicate that the first round runs macro and microscopic evidence collection.
@@ -78,5 +83,6 @@ These instructions should:
 - define the local task for the specialized agent
 - stay within that agent's local scope
 - stay within current specialized-agent capability
+- keep the first-round microscopic task low-cost and bounded
 - not ask the agent to decide the global mechanism
 - not ask the agent to choose the system-level next action
