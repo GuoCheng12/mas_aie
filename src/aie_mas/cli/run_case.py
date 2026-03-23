@@ -43,6 +43,7 @@ def build_runtime_config(
     amesp_use_ricosx: Optional[bool] = None,
     amesp_s1_nstates: Optional[int] = None,
     amesp_td_tout: Optional[int] = None,
+    amesp_probe_interval_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -75,6 +76,7 @@ def build_runtime_config(
         amesp_use_ricosx=amesp_use_ricosx,
         amesp_s1_nstates=amesp_s1_nstates,
         amesp_td_tout=amesp_td_tout,
+        amesp_probe_interval_seconds=amesp_probe_interval_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -111,6 +113,7 @@ def run_case_workflow(
     amesp_use_ricosx: Optional[bool] = None,
     amesp_s1_nstates: Optional[int] = None,
     amesp_td_tout: Optional[int] = None,
+    amesp_probe_interval_seconds: Optional[float] = None,
     prompts_dir: Optional[Path] = None,
     data_dir: Optional[Path] = None,
     memory_dir: Optional[Path] = None,
@@ -144,6 +147,7 @@ def run_case_workflow(
         amesp_use_ricosx=amesp_use_ricosx,
         amesp_s1_nstates=amesp_s1_nstates,
         amesp_td_tout=amesp_td_tout,
+        amesp_probe_interval_seconds=amesp_probe_interval_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -249,6 +253,10 @@ def main(
         None,
         help="TD output threshold written to the Amesp posthf block.",
     ),
+    amesp_probe_interval_seconds: Optional[float] = typer.Option(
+        None,
+        help="Seconds between live microscopic Amesp subprocess heartbeat events.",
+    ),
     prompts_dir: Optional[Path] = typer.Option(
         None,
         help="Optional prompt directory.",
@@ -316,6 +324,7 @@ def main(
         amesp_use_ricosx=amesp_use_ricosx,
         amesp_s1_nstates=amesp_s1_nstates,
         amesp_td_tout=amesp_td_tout,
+        amesp_probe_interval_seconds=amesp_probe_interval_seconds,
         prompts_dir=prompts_dir,
         data_dir=data_dir,
         memory_dir=memory_dir,
@@ -499,6 +508,13 @@ def render_progress_event(event: WorkflowProgressEvent) -> None:
             parts.append(f"stage={probe_stage}")
         if probe_status:
             parts.append(f"status={probe_status}")
+        if probe_status == "running":
+            if event["details"].get("elapsed_seconds") is not None:
+                parts.append(f"elapsed={event['details']['elapsed_seconds']}s")
+            if event["details"].get("aop_size_bytes") is not None:
+                parts.append(f"aop_bytes={event['details']['aop_size_bytes']}")
+            if event["details"].get("pid") is not None:
+                parts.append(f"pid={event['details']['pid']}")
     typer.echo(" ".join(parts), err=True)
 
 

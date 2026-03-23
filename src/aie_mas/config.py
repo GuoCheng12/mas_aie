@@ -38,6 +38,7 @@ class AieMasConfig(BaseModel):
     amesp_use_ricosx: bool = True
     amesp_s1_nstates: int = 1
     amesp_td_tout: int = 1
+    amesp_probe_interval_seconds: float = 15.0
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
     memory_dir: Optional[Path] = None
@@ -128,6 +129,10 @@ class AieMasConfig(BaseModel):
             env_values["amesp_s1_nstates"] = int(os.getenv("AIE_MAS_AMESP_S1_NSTATES", "1"))
         if os.getenv("AIE_MAS_AMESP_TD_TOUT"):
             env_values["amesp_td_tout"] = int(os.getenv("AIE_MAS_AMESP_TD_TOUT", "1"))
+        if os.getenv("AIE_MAS_AMESP_PROBE_INTERVAL"):
+            env_values["amesp_probe_interval_seconds"] = float(
+                os.getenv("AIE_MAS_AMESP_PROBE_INTERVAL", "15.0")
+            )
 
         for key, value in overrides.items():
             if value is not None:
@@ -223,6 +228,7 @@ class AieMasConfig(BaseModel):
             "amesp_use_ricosx": self.amesp_use_ricosx,
             "amesp_s1_nstates": self.amesp_s1_nstates,
             "amesp_td_tout": self.amesp_td_tout,
+            "amesp_probe_interval_seconds": self.amesp_probe_interval_seconds,
             "project_root": str(self.project_root),
             "prompts_dir": str(self.prompts_dir),
             "data_dir": str(self.data_dir),

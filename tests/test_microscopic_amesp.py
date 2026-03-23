@@ -168,6 +168,29 @@ def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
     return _runner
 
 
+class _FakePopenWithHeartbeat:
+    def __init__(self, cmd, cwd, env, stdout, stderr, text):
+        del env, stdout, stderr, text
+        self._cmd = cmd
+        self._workdir = Path(cwd)
+        self._aop_path = self._workdir / Path(cmd[2]).name
+        self.pid = 4321
+        self._poll_count = 0
+
+    def poll(self):
+        self._poll_count += 1
+        if self._poll_count == 1:
+            self._aop_path.write_text("SCF iteration in progress\n", encoding="utf-8")
+            return None
+        label = Path(self._cmd[1]).stem
+        if label.endswith("_s0"):
+            self._aop_path.write_text(S0_AOP_TEXT, encoding="utf-8")
+        else:
+            self._aop_path.write_text(S1_AOP_TEXT, encoding="utf-8")
+        (self._workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+        return 0
+
+
 def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) -> None:
     amesp_bin = tmp_path / "amesp"
     amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -260,6 +283,50 @@ def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_pat
     assert "! b3lyp sto-3g td RICOSX" in s1_input
     assert "nstates 1" in s1_input
     assert "tout 1" in s1_input
+
+
+def test_amesp_baseline_tool_emits_subprocess_heartbeat_events(tmp_path: Path, monkeypatch) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    progress_events: list[dict[str, object]] = []
+    monkeypatch.setattr("aie_mas.tools.amesp.time.sleep", lambda _: None)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        npara=4,
+        maxcore_mb=2000,
+        use_ricosx=True,
+        s1_nstates=1,
+        td_tout=1,
+        probe_interval_seconds=0.0,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_popen_factory=_FakePopenWithHeartbeat,
+    )
+
+    tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run baseline S0/S1 Amesp workflow.",
+            requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return a partial or failed local report if Amesp fails.",
+        ),
+        smiles="N",
+        label="heartbeat_case",
+        workdir=tmp_path / "workdir",
+        available_artifacts={},
+        progress_callback=progress_events.append,
+    )
+
+    assert any(
+        event["details"].get("probe_stage") == "s0_optimization_subprocess"
+        and event["details"].get("probe_status") == "start"
+        for event in progress_events
+    )
+    assert any(
+        event["details"].get("probe_stage") == "s0_optimization_subprocess"
+        and event["details"].get("probe_status") == "running"
+        and event["details"].get("aop_tail") == "SCF iteration in progress"
+        for event in progress_events
+    )
 
 
 class _SuccessfulAmespTool:

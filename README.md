@@ -181,6 +181,7 @@ Microscopic specialized-agent 的局部 reasoning LLM 也支持独立配置：
 - `amesp_use_ricosx` / `AIE_MAS_AMESP_USE_RICOSX`
 - `amesp_s1_nstates` / `AIE_MAS_AMESP_S1_NSTATES`
 - `amesp_td_tout` / `AIE_MAS_AMESP_TD_TOUT`
+- `amesp_probe_interval_seconds` / `AIE_MAS_AMESP_PROBE_INTERVAL`
 
 说明：
 
@@ -195,6 +196,10 @@ Microscopic specialized-agent 的局部 reasoning LLM 也支持独立配置：
   - `AIE_MAS_AMESP_USE_RICOSX=1`
   - `AIE_MAS_AMESP_S1_NSTATES=1`
   - `AIE_MAS_AMESP_TD_TOUT=1`
+- real Amesp 子进程会按 `AIE_MAS_AMESP_PROBE_INTERVAL` 周期写 heartbeat 到：
+  - 终端 live progress
+  - `live_trace.jsonl`
+  - `live_status.md`
 
 如果不显式指定，默认会落在项目根目录下的跨平台相对路径：
 

@@ -117,8 +117,10 @@ class AmespBaselineMicroscopicTool:
         use_ricosx: bool = False,
         s1_nstates: int = 1,
         td_tout: int = 1,
+        probe_interval_seconds: float = 15.0,
         structure_preparer: Callable[[StructurePrepRequest], tuple["Atoms", PreparedStructure]] = prepare_structure_from_smiles,
-        subprocess_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
+        subprocess_runner: Optional[Callable[..., subprocess.CompletedProcess[str]]] = None,
+        subprocess_popen_factory: Optional[Callable[..., Any]] = None,
     ) -> None:
         self._amesp_bin = self._resolve_amesp_bin(amesp_bin)
         self._npara = max(1, int(npara))
@@ -126,8 +128,10 @@ class AmespBaselineMicroscopicTool:
         self._use_ricosx = bool(use_ricosx)
         self._s1_nstates = max(1, int(s1_nstates))
         self._td_tout = max(1, int(td_tout))
+        self._probe_interval_seconds = max(0.0, float(probe_interval_seconds))
         self._structure_preparer = structure_preparer
         self._subprocess_runner = subprocess_runner
+        self._subprocess_popen_factory = subprocess_popen_factory or subprocess.Popen
 
     def execute(
         self,
@@ -454,16 +458,32 @@ class AmespBaselineMicroscopicTool:
         env.setdefault("KMP_STACKSIZE", "4g")
 
         start = time.perf_counter()
-        completed = self._subprocess_runner(
-            [str(self._amesp_bin), str(aip_path.name), str(aop_path.name)],
-            cwd=str(workdir),
-            env=env,
-            capture_output=True,
-            text=True,
-        )
+        if self._subprocess_runner is not None:
+            completed = self._subprocess_runner(
+                [str(self._amesp_bin), str(aip_path.name), str(aop_path.name)],
+                cwd=str(workdir),
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+        else:
+            completed = self._run_subprocess_with_heartbeat(
+                cmd=[str(self._amesp_bin), str(aip_path.name), str(aop_path.name)],
+                workdir=workdir,
+                env=env,
+                stdout_path=stdout_path,
+                stderr_path=stderr_path,
+                aop_path=aop_path,
+                step_id=step_id,
+                progress_callback=progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+            )
         elapsed = round(time.perf_counter() - start, 4)
-        stdout_path.write_text(completed.stdout or "", encoding="utf-8")
-        stderr_path.write_text(completed.stderr or "", encoding="utf-8")
+        if self._subprocess_runner is not None:
+            stdout_path.write_text(completed.stdout or "", encoding="utf-8")
+            stderr_path.write_text(completed.stderr or "", encoding="utf-8")
         self._emit_probe(
             progress_callback,
             round_index=round_index,
@@ -526,6 +546,79 @@ class AmespBaselineMicroscopicTool:
             details=outcome.model_dump(mode="json"),
         )
         return outcome, aop_text
+
+    def _run_subprocess_with_heartbeat(
+        self,
+        *,
+        cmd: list[str],
+        workdir: Path,
+        env: dict[str, str],
+        stdout_path: Path,
+        stderr_path: Path,
+        aop_path: Path,
+        step_id: str,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]],
+        round_index: int,
+        case_id: Optional[str],
+        current_hypothesis: Optional[str],
+    ) -> subprocess.CompletedProcess[str]:
+        with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open(
+            "w", encoding="utf-8"
+        ) as stderr_handle:
+            process = self._subprocess_popen_factory(
+                cmd,
+                cwd=str(workdir),
+                env=env,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+                text=True,
+            )
+            self._emit_probe(
+                progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+                stage=f"{step_id}_subprocess",
+                status="start",
+                details={
+                    "pid": getattr(process, "pid", None),
+                    "stdout_path": str(stdout_path),
+                    "stderr_path": str(stderr_path),
+                },
+            )
+
+            start = time.perf_counter()
+            next_probe_at = start + self._probe_interval_seconds
+            return_code: Optional[int] = None
+            while return_code is None:
+                return_code = process.poll()
+                if return_code is not None:
+                    break
+                now = time.perf_counter()
+                if now >= next_probe_at:
+                    self._emit_probe(
+                        progress_callback,
+                        round_index=round_index,
+                        case_id=case_id,
+                        current_hypothesis=current_hypothesis,
+                        stage=f"{step_id}_subprocess",
+                        status="running",
+                        details={
+                            "pid": getattr(process, "pid", None),
+                            "elapsed_seconds": round(now - start, 2),
+                            **_build_runtime_probe_details(
+                                aop_path=aop_path,
+                                stdout_path=stdout_path,
+                                stderr_path=stderr_path,
+                            ),
+                        },
+                    )
+                    next_probe_at = now + self._probe_interval_seconds
+                time.sleep(0.5)
+
+        stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
+        stderr_text = stderr_path.read_text(encoding="utf-8", errors="replace")
+        return subprocess.CompletedProcess(cmd, int(return_code), stdout=stdout_text, stderr=stderr_text)
 
     def _emit_probe(
         self,
@@ -615,6 +708,37 @@ def _raise_stack_limit() -> None:
         _ = soft
     except Exception:
         return
+
+
+def _build_runtime_probe_details(
+    *,
+    aop_path: Path,
+    stdout_path: Path,
+    stderr_path: Path,
+) -> dict[str, Any]:
+    details: dict[str, Any] = {
+        "aop_exists": aop_path.exists(),
+        "aop_size_bytes": aop_path.stat().st_size if aop_path.exists() else 0,
+        "stdout_size_bytes": stdout_path.stat().st_size if stdout_path.exists() else 0,
+        "stderr_size_bytes": stderr_path.stat().st_size if stderr_path.exists() else 0,
+    }
+    aop_tail = _read_last_nonempty_line(aop_path)
+    if aop_tail is not None:
+        details["aop_tail"] = aop_tail
+    return details
+
+
+def _read_last_nonempty_line(path: Path, *, max_bytes: int = 4096) -> str | None:
+    if not path.exists() or path.stat().st_size == 0:
+        return None
+    with path.open("rb") as handle:
+        handle.seek(max(-max_bytes, -path.stat().st_size), os.SEEK_END)
+        chunk = handle.read().decode("utf-8", errors="replace")
+    for line in reversed(chunk.splitlines()):
+        stripped = line.strip()
+        if stripped:
+            return stripped[:200]
+    return None
 
 
 def _parse_final_energy(text: str) -> float:

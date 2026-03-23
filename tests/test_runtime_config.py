@@ -23,6 +23,7 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_AMESP_USE_RICOSX", "1")
     monkeypatch.setenv("AIE_MAS_AMESP_S1_NSTATES", "1")
     monkeypatch.setenv("AIE_MAS_AMESP_TD_TOUT", "1")
+    monkeypatch.setenv("AIE_MAS_AMESP_PROBE_INTERVAL", "5")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
     monkeypatch.setenv("AIE_MAS_REPORT_DIR", "runtime_reports")
@@ -47,6 +48,7 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.amesp_use_ricosx is True
     assert config.amesp_s1_nstates == 1
     assert config.amesp_td_tout == 1
+    assert config.amesp_probe_interval_seconds == 5.0
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
     assert config.report_dir == (tmp_path / "runtime_reports").resolve()
@@ -122,6 +124,8 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.amesp_use_ricosx is True
     assert local_config.amesp_s1_nstates == 1
     assert linux_config.amesp_s1_nstates == 1
+    assert local_config.amesp_probe_interval_seconds == 15.0
+    assert linux_config.amesp_probe_interval_seconds == 15.0
 
 
 def test_linux_real_defaults_cap_parallelism_for_amesp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

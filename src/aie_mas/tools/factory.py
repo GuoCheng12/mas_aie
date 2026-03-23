@@ -38,6 +38,7 @@ def build_toolset(config: AieMasConfig) -> ToolSet:
                 use_ricosx=config.amesp_use_ricosx,
                 s1_nstates=config.amesp_s1_nstates,
                 td_tout=config.amesp_td_tout,
+                probe_interval_seconds=config.amesp_probe_interval_seconds,
             ),
         )
 
