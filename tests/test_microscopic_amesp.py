@@ -58,7 +58,9 @@ Normal termination of Amesp!
 
 S1_AOP_TEXT = """
 ========= Excitation energies and oscillator strengths =========
+State    1 : E =    3.8474 eV     322.276 nm      31032.13 cm-1
 E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.1234
+State    2 : E =    4.6637 eV     265.850 nm      37615.42 cm-1
 E(TD) =   -55.620000000      <S**2>= 0.000     f=  0.0100
 
 Final Geometry(angstroms):
@@ -221,6 +223,7 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert result.s0.final_energy_hartree == -55.7914717877
     assert result.s0.homo_lumo_gap_ev == 13.991547
     assert len(result.s0.mulliken_charges) == 4
+    assert result.s1.first_excitation_energy_ev == 3.8474
     assert result.s1.first_oscillator_strength == 0.1234
     assert result.s1.state_count == 2
     assert "prepared_xyz_path" in result.generated_artifacts
@@ -244,6 +247,28 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         and event["details"].get("probe_status") == "end"
         for event in progress_events
     )
+
+
+def test_parse_excited_states_prefers_reported_excitation_energy_over_total_energy_difference() -> None:
+    from aie_mas.tools.amesp import _parse_excited_states
+
+    text = """
+========= Excitation energies and oscillator strengths =========
+State    1 : E =    3.0587 eV     405.350 nm      24669.99 cm-1
+E(TD) =  -2708.578180955      <S**2>= 0.000     f=  1.0346
+"""
+
+    states = _parse_excited_states(
+        text,
+        reference_energy_hartree=-123.2527000504,
+    )
+
+    assert len(states) == 1
+    assert states[0].state_index == 1
+    assert states[0].total_energy_hartree == -2708.578180955
+    assert states[0].oscillator_strength == 1.0346
+    assert states[0].spin_square == 0.0
+    assert states[0].excitation_energy_ev == 3.0587
 
 
 def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_path: Path) -> None:

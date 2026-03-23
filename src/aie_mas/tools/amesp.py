@@ -829,12 +829,40 @@ def _parse_excited_states(
     *,
     reference_energy_hartree: float,
 ) -> list[AmespExcitedState]:
-    matches = re.findall(
+    state_matches = re.findall(
+        r"State\s+(\d+)\s*:\s*E\s*=\s*([-+]?\d+\.\d+)\s+eV",
+        text,
+    )
+    td_matches = re.findall(
         r"E\(TD\)\s*=\s*([-+]?\d+\.\d+)\s+<S\*\*2>=\s*([-+]?\d+\.\d+)\s+f=\s*([-+]?\d+\.\d+)",
         text,
     )
     states: list[AmespExcitedState] = []
-    for index, (energy, spin_square, oscillator) in enumerate(matches, start=1):
+    if state_matches:
+        for offset, (state_index, excitation_energy_ev) in enumerate(state_matches):
+            if offset < len(td_matches):
+                total_energy, spin_square, oscillator = td_matches[offset]
+                parsed_total_energy = float(total_energy)
+                parsed_spin_square: float | None = float(spin_square)
+                parsed_oscillator = float(oscillator)
+            else:
+                parsed_total_energy = reference_energy_hartree + (
+                    float(excitation_energy_ev) / 27.211386245988
+                )
+                parsed_spin_square = None
+                parsed_oscillator = 0.0
+            states.append(
+                AmespExcitedState(
+                    state_index=int(state_index),
+                    total_energy_hartree=parsed_total_energy,
+                    oscillator_strength=parsed_oscillator,
+                    spin_square=parsed_spin_square,
+                    excitation_energy_ev=round(float(excitation_energy_ev), 6),
+                )
+            )
+        return states
+
+    for index, (energy, spin_square, oscillator) in enumerate(td_matches, start=1):
         total_energy = float(energy)
         excitation_energy_ev = (total_energy - reference_energy_hartree) * 27.211386245988
         states.append(
