@@ -176,6 +176,11 @@ Microscopic specialized-agent 的局部 reasoning LLM 也支持独立配置：
 - `microscopic_api_key` / `AIE_MAS_MICROSCOPIC_API_KEY`
 - `microscopic_temperature` / `AIE_MAS_MICROSCOPIC_TEMPERATURE`
 - `microscopic_timeout_seconds` / `AIE_MAS_MICROSCOPIC_TIMEOUT`
+- `amesp_npara` / `AIE_MAS_AMESP_NPARA`
+- `amesp_maxcore_mb` / `AIE_MAS_AMESP_MAXCORE_MB`
+- `amesp_use_ricosx` / `AIE_MAS_AMESP_USE_RICOSX`
+- `amesp_s1_nstates` / `AIE_MAS_AMESP_S1_NSTATES`
+- `amesp_td_tout` / `AIE_MAS_AMESP_TD_TOUT`
 
 说明：
 
@@ -183,6 +188,13 @@ Microscopic specialized-agent 的局部 reasoning LLM 也支持独立配置：
 - Microscopic 的 LLM 只负责局部 task understanding / execution planning
 - Microscopic 当前真实执行层只接 Amesp baseline workflow
 - Macro / Verifier 当前仍保持 mock specialized agent
+- real Amesp baseline 默认会写入 `% npara`、`% maxcore`，并启用 `RICOSX`
+- 默认 baseline 速度优先配置是：
+  - `AIE_MAS_AMESP_NPARA=min(20, cpu_count)`
+  - `AIE_MAS_AMESP_MAXCORE_MB=12000`
+  - `AIE_MAS_AMESP_USE_RICOSX=1`
+  - `AIE_MAS_AMESP_S1_NSTATES=1`
+  - `AIE_MAS_AMESP_TD_TOUT=1`
 
 如果不显式指定，默认会落在项目根目录下的跨平台相对路径：
 

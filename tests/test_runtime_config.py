@@ -18,6 +18,11 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_MICROSCOPIC_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_MICROSCOPIC_MODEL", "gpt-4.1-mini")
+    monkeypatch.setenv("AIE_MAS_AMESP_NPARA", "22")
+    monkeypatch.setenv("AIE_MAS_AMESP_MAXCORE_MB", "24000")
+    monkeypatch.setenv("AIE_MAS_AMESP_USE_RICOSX", "1")
+    monkeypatch.setenv("AIE_MAS_AMESP_S1_NSTATES", "1")
+    monkeypatch.setenv("AIE_MAS_AMESP_TD_TOUT", "1")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
     monkeypatch.setenv("AIE_MAS_REPORT_DIR", "runtime_reports")
@@ -37,6 +42,11 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.planner_model == "gpt-4.1-mini"
     assert config.microscopic_base_url == "http://34.13.73.248:3888/v1"
     assert config.microscopic_model == "gpt-4.1-mini"
+    assert config.amesp_npara == 22
+    assert config.amesp_maxcore_mb == 24000
+    assert config.amesp_use_ricosx is True
+    assert config.amesp_s1_nstates == 1
+    assert config.amesp_td_tout == 1
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
     assert config.report_dir == (tmp_path / "runtime_reports").resolve()
@@ -106,3 +116,17 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.microscopic_model == "gpt-4.1-mini"
     assert local_config.microscopic_base_url == local_config.planner_base_url
     assert linux_config.microscopic_base_url == linux_config.planner_base_url
+    assert local_config.amesp_maxcore_mb == 2000
+    assert linux_config.amesp_maxcore_mb == 12000
+    assert local_config.amesp_use_ricosx is True
+    assert linux_config.amesp_use_ricosx is True
+    assert local_config.amesp_s1_nstates == 1
+    assert linux_config.amesp_s1_nstates == 1
+
+
+def test_linux_real_defaults_cap_parallelism_for_amesp(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("aie_mas.config.os.cpu_count", lambda: 22)
+
+    config = AieMasConfig(project_root=tmp_path, execution_profile="linux-prod")
+
+    assert config.amesp_npara == 20

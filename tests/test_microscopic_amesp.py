@@ -149,6 +149,25 @@ def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
     return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
 
 
+def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
+    def _runner(cmd, cwd, env, capture_output, text):
+        del env, capture_output, text
+        workdir = Path(cwd)
+        aip_name = Path(cmd[1]).name
+        aop_name = Path(cmd[2]).name
+        label = Path(aip_name).stem
+        captured_inputs[label] = (workdir / aip_name).read_text(encoding="utf-8")
+        if label.endswith("_s0"):
+            aop_text = S0_AOP_TEXT
+        else:
+            aop_text = S1_AOP_TEXT
+        (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+        (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+    return _runner
+
+
 def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) -> None:
     amesp_bin = tmp_path / "amesp"
     amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
@@ -202,6 +221,45 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         and event["details"].get("probe_status") == "end"
         for event in progress_events
     )
+
+
+def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_path: Path) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    captured_inputs: dict[str, str] = {}
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        npara=20,
+        maxcore_mb=12000,
+        use_ricosx=True,
+        s1_nstates=1,
+        td_tout=1,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_build_fake_subprocess_with_aip_capture(captured_inputs),
+    )
+
+    tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run baseline S0/S1 Amesp workflow.",
+            requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return a partial or failed local report if Amesp fails.",
+        ),
+        smiles="N",
+        label="fast_case",
+        workdir=tmp_path / "workdir",
+        available_artifacts={},
+    )
+
+    s0_input = captured_inputs["fast_case_s0"]
+    s1_input = captured_inputs["fast_case_s1"]
+
+    assert "% npara 20" in s0_input
+    assert "% maxcore 12000" in s0_input
+    assert "! b3lyp sto-3g opt RICOSX" in s0_input
+    assert "! b3lyp sto-3g td RICOSX" in s1_input
+    assert "nstates 1" in s1_input
+    assert "tout 1" in s1_input
 
 
 class _SuccessfulAmespTool:

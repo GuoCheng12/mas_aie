@@ -33,6 +33,11 @@ def build_toolset(config: AieMasConfig) -> ToolSet:
             verifier_tool=MockVerifierEvidenceTool(),
             amesp_micro_tool=AmespBaselineMicroscopicTool(
                 amesp_bin=config.amesp_binary_path,
+                npara=config.amesp_npara,
+                maxcore_mb=config.amesp_maxcore_mb,
+                use_ricosx=config.amesp_use_ricosx,
+                s1_nstates=config.amesp_s1_nstates,
+                td_tout=config.amesp_td_tout,
             ),
         )
 

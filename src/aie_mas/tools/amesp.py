@@ -112,10 +112,20 @@ class AmespBaselineMicroscopicTool:
         self,
         *,
         amesp_bin: Path | None = None,
+        npara: int = 1,
+        maxcore_mb: int = 1000,
+        use_ricosx: bool = False,
+        s1_nstates: int = 1,
+        td_tout: int = 1,
         structure_preparer: Callable[[StructurePrepRequest], tuple["Atoms", PreparedStructure]] = prepare_structure_from_smiles,
         subprocess_runner: Callable[..., subprocess.CompletedProcess[str]] = subprocess.run,
     ) -> None:
         self._amesp_bin = self._resolve_amesp_bin(amesp_bin)
+        self._npara = max(1, int(npara))
+        self._maxcore_mb = max(1000, int(maxcore_mb))
+        self._use_ricosx = bool(use_ricosx)
+        self._s1_nstates = max(1, int(s1_nstates))
+        self._td_tout = max(1, int(td_tout))
         self._structure_preparer = structure_preparer
         self._subprocess_runner = subprocess_runner
 
@@ -191,7 +201,7 @@ class AmespBaselineMicroscopicTool:
             step_id="s0_optimization",
             label=f"{label}_s0",
             workdir=workdir,
-            keywords=["b3lyp", "sto-3g", "opt"],
+            keywords=self._build_keywords("opt"),
             block_lines=[("ope", ["out 1"])],
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
@@ -250,8 +260,11 @@ class AmespBaselineMicroscopicTool:
                 step_id="s1_vertical_excitation",
                 label=f"{label}_s1",
                 workdir=workdir,
-                keywords=["b3lyp", "sto-3g", "td"],
-                block_lines=[("ope", ["out 1"]), ("posthf", ["nstates 3", "tout 2"])],
+                keywords=self._build_keywords("td"),
+                block_lines=[
+                    ("ope", ["out 1"]),
+                    ("posthf", [f"nstates {self._s1_nstates}", f"tout {self._td_tout}"]),
+                ],
                 charge=prepared.charge,
                 multiplicity=prepared.multiplicity,
                 symbols=s0_symbols,
@@ -338,6 +351,12 @@ class AmespBaselineMicroscopicTool:
             return Path(env_bin).expanduser().resolve()
         return (Path(__file__).resolve().parents[3] / "third_party" / "Amesp" / "Bin" / "amesp").resolve()
 
+    def _build_keywords(self, job_keyword: str) -> list[str]:
+        keywords = ["b3lyp", "sto-3g", job_keyword]
+        if self._use_ricosx:
+            keywords.append("RICOSX")
+        return keywords
+
     def _resolve_structure(
         self,
         *,
@@ -410,6 +429,8 @@ class AmespBaselineMicroscopicTool:
             symbols=symbols,
             coordinates=coordinates,
             block_lines=block_lines,
+            npara=self._npara,
+            maxcore_mb=self._maxcore_mb,
         )
         self._emit_probe(
             progress_callback,
@@ -422,6 +443,9 @@ class AmespBaselineMicroscopicTool:
                 "aip_path": str(aip_path),
                 "aop_path": str(aop_path),
                 "keywords": list(keywords),
+                "npara": self._npara,
+                "maxcore_mb": self._maxcore_mb,
+                "use_ricosx": self._use_ricosx,
             },
         )
 
@@ -541,8 +565,10 @@ def _write_amesp_input(
     symbols: Sequence[str],
     coordinates: Sequence[Sequence[float]],
     block_lines: Sequence[tuple[str, Sequence[str]]],
+    npara: int,
+    maxcore_mb: int,
 ) -> None:
-    lines = [f"! {' '.join(keywords)}"]
+    lines = [f"% npara {npara}", f"% maxcore {maxcore_mb}", f"! {' '.join(keywords)}"]
     if len(symbols) != len(coordinates):
         raise AmespExecutionError(
             "structure_unavailable",

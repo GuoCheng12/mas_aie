@@ -33,6 +33,11 @@ class AieMasConfig(BaseModel):
     microscopic_api_key: Optional[str] = None
     microscopic_temperature: Optional[float] = None
     microscopic_timeout_seconds: Optional[float] = None
+    amesp_npara: Optional[int] = None
+    amesp_maxcore_mb: Optional[int] = None
+    amesp_use_ricosx: bool = True
+    amesp_s1_nstates: int = 1
+    amesp_td_tout: int = 1
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
     memory_dir: Optional[Path] = None
@@ -63,6 +68,8 @@ class AieMasConfig(BaseModel):
             "microscopic_base_url": "AIE_MAS_MICROSCOPIC_BASE_URL",
             "microscopic_model": "AIE_MAS_MICROSCOPIC_MODEL",
             "microscopic_api_key": "AIE_MAS_MICROSCOPIC_API_KEY",
+            "amesp_npara": "AIE_MAS_AMESP_NPARA",
+            "amesp_maxcore_mb": "AIE_MAS_AMESP_MAXCORE_MB",
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
             "data_dir": "AIE_MAS_DATA_DIR",
             "memory_dir": "AIE_MAS_MEMORY_DIR",
@@ -113,6 +120,14 @@ class AieMasConfig(BaseModel):
             env_values["microscopic_timeout_seconds"] = float(
                 os.getenv("AIE_MAS_MICROSCOPIC_TIMEOUT", "120.0")
             )
+        if os.getenv("AIE_MAS_AMESP_USE_RICOSX"):
+            env_values["amesp_use_ricosx"] = cls._parse_bool(
+                os.getenv("AIE_MAS_AMESP_USE_RICOSX", "1")
+            )
+        if os.getenv("AIE_MAS_AMESP_S1_NSTATES"):
+            env_values["amesp_s1_nstates"] = int(os.getenv("AIE_MAS_AMESP_S1_NSTATES", "1"))
+        if os.getenv("AIE_MAS_AMESP_TD_TOUT"):
+            env_values["amesp_td_tout"] = int(os.getenv("AIE_MAS_AMESP_TD_TOUT", "1"))
 
         for key, value in overrides.items():
             if value is not None:
@@ -137,6 +152,13 @@ class AieMasConfig(BaseModel):
             self.microscopic_temperature = self.planner_temperature
         if self.microscopic_timeout_seconds is None:
             self.microscopic_timeout_seconds = self.planner_timeout_seconds
+        if self.amesp_npara is None:
+            if self.execution_profile == "linux-prod":
+                self.amesp_npara = max(1, min(20, os.cpu_count() or 1))
+            else:
+                self.amesp_npara = 4
+        if self.amesp_maxcore_mb is None:
+            self.amesp_maxcore_mb = 12000 if self.execution_profile == "linux-prod" else 2000
 
         if self.prompts_dir is None:
             self.prompts_dir = Path("src") / "aie_mas" / "prompts"
@@ -196,6 +218,11 @@ class AieMasConfig(BaseModel):
             "microscopic_api_key_configured": bool(self.microscopic_api_key),
             "microscopic_temperature": self.microscopic_temperature,
             "microscopic_timeout_seconds": self.microscopic_timeout_seconds,
+            "amesp_npara": self.amesp_npara,
+            "amesp_maxcore_mb": self.amesp_maxcore_mb,
+            "amesp_use_ricosx": self.amesp_use_ricosx,
+            "amesp_s1_nstates": self.amesp_s1_nstates,
+            "amesp_td_tout": self.amesp_td_tout,
             "project_root": str(self.project_root),
             "prompts_dir": str(self.prompts_dir),
             "data_dir": str(self.data_dir),
