@@ -5,7 +5,14 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from aie_mas.cli.run_case import app, build_summary_payload, run_case_workflow
+from aie_mas.cli.run_case import (
+    LiveRunTracer,
+    app,
+    build_summary_payload,
+    prepare_report_paths,
+    run_case_workflow,
+)
+from aie_mas.config import AieMasConfig
 
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts"
@@ -92,6 +99,70 @@ def test_run_case_workflow_emits_progress_events_with_round_and_agent(tmp_path: 
     assert any(event["node"] == "run_verifier" and event["agent"] == "verifier" for event in events)
     assert events[-1]["node"] == "final_output"
     assert events[-1]["agent"] == "final"
+    assert any(event["phase"] == "end" and event["details"] for event in events)
+
+
+def test_live_run_tracer_writes_live_trace_and_status_files(tmp_path: Path) -> None:
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="local-dev",
+        tool_backend="mock",
+        data_dir=tmp_path / "data_live",
+        memory_dir=tmp_path / "memory_live",
+        report_dir=tmp_path / "reports_live",
+        log_dir=tmp_path / "log_live",
+        runtime_dir=tmp_path / "runtime_live",
+    )
+    case_id = "livecase123456"
+    report_paths = prepare_report_paths(config, case_id)
+    tracer = LiveRunTracer(
+        report_dir=report_paths["report_dir"],
+        case_id=case_id,
+        smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
+        user_query="Assess the likely AIE mechanism for this molecule.",
+    )
+
+    state = run_case_workflow(
+        smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        execution_profile="local-dev",
+        tool_backend="mock",
+        data_dir=config.data_dir,
+        memory_dir=config.memory_dir,
+        log_dir=config.log_dir,
+        runtime_dir=config.runtime_dir,
+        report_dir=config.report_dir,
+        progress_callback=tracer.handle_event,
+    )
+
+    assert state.final_answer is not None
+    live_trace_path = report_paths["live_trace_path"]
+    live_status_path = report_paths["live_status_path"]
+
+    assert live_trace_path.exists()
+    assert live_status_path.exists()
+
+    trace_lines = [json.loads(line) for line in live_trace_path.read_text(encoding="utf-8").splitlines()]
+    assert trace_lines
+    assert any(
+        line["phase"] == "end"
+        and line["node"] == "run_microscopic"
+        and line["details"].get("task_understanding")
+        for line in trace_lines
+    )
+    assert any(
+        line["phase"] == "end"
+        and line["node"] == "update_working_memory"
+        and line["details"].get("agent_reports")
+        for line in trace_lines
+    )
+
+    live_status_text = live_status_path.read_text(encoding="utf-8")
+    assert "# Live Run Status" in live_status_text
+    assert "Round 1 | planner | planner_initial" in live_status_text
+    assert "Round 1 | microscopic | run_microscopic" in live_status_text
+    assert "result_summary" in live_status_text
+    assert "remaining_local_uncertainty" in live_status_text
 
 
 def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:

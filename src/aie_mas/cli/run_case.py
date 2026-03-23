@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Optional
@@ -280,10 +281,21 @@ def main(
         amesp_binary_path=amesp_binary_path,
         external_search_binary_path=external_search_binary_path,
     )
-    progress_callback = render_progress_event if show_progress and sys.stderr.isatty() else None
+    case_id = uuid.uuid4().hex[:12]
+    report_paths = prepare_report_paths(config, case_id)
+    tracer = LiveRunTracer(
+        report_dir=report_paths["report_dir"],
+        case_id=case_id,
+        smiles=smiles,
+        user_query=user_query,
+    )
+    progress_callback = compose_progress_callbacks(
+        render_progress_event if show_progress and sys.stderr.isatty() else None,
+        tracer.handle_event,
+    )
     graph = build_graph(config, progress_callback=progress_callback)
-    state = invoke_graph(graph, AieMasState(user_query=user_query, smiles=smiles))
-    report_paths = write_run_report(config, state)
+    state = invoke_graph(graph, AieMasState(case_id=case_id, user_query=user_query, smiles=smiles))
+    report_paths = write_run_report(config, state, report_paths=report_paths)
     payload = {
         "runtime_context": config.runtime_context(),
         "summary": build_summary_payload(state, report_paths["report_dir"]),
@@ -364,14 +376,29 @@ def build_full_state_payload(
     }
 
 
-def write_run_report(config: AieMasConfig, state: AieMasState) -> dict[str, Path]:
+def prepare_report_paths(config: AieMasConfig, case_id: str) -> dict[str, Path]:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-    case_id = state.case_id or "unknown-case"
     report_dir = config.report_dir / f"{timestamp}_{case_id}"
     report_dir.mkdir(parents=True, exist_ok=True)
+    return {
+        "report_dir": report_dir,
+        "summary_path": report_dir / "summary.json",
+        "full_state_path": report_dir / "full_state.json",
+        "live_trace_path": report_dir / "live_trace.jsonl",
+        "live_status_path": report_dir / "live_status.md",
+    }
 
-    summary_path = report_dir / "summary.json"
-    full_state_path = report_dir / "full_state.json"
+
+def write_run_report(
+    config: AieMasConfig,
+    state: AieMasState,
+    report_paths: Optional[dict[str, Path]] = None,
+) -> dict[str, Path]:
+    if report_paths is None:
+        report_paths = prepare_report_paths(config, state.case_id or "unknown-case")
+    report_dir = report_paths["report_dir"]
+    summary_path = report_paths["summary_path"]
+    full_state_path = report_paths["full_state_path"]
     summary_payload = build_summary_payload(state, report_dir)
     full_state_payload = build_full_state_payload(config, state, report_dir)
 
@@ -384,9 +411,7 @@ def write_run_report(config: AieMasConfig, state: AieMasState) -> dict[str, Path
         encoding="utf-8",
     )
     return {
-        "report_dir": report_dir,
-        "summary_path": summary_path,
-        "full_state_path": full_state_path,
+        **report_paths,
     }
 
 
@@ -402,6 +427,8 @@ def render_terminal_summary(
         f"finalize: {summary['finalize']}",
         f"rounds: {summary['working_memory_rounds']}",
         f"report_dir: {summary['report_dir']}",
+        f"live_trace_file: {report_paths['live_trace_path']}",
+        f"live_status_file: {report_paths['live_status_path']}",
         f"summary_file: {report_paths['summary_path']}",
         f"full_state_file: {report_paths['full_state_path']}",
     ]
@@ -409,9 +436,12 @@ def render_terminal_summary(
 
 
 def render_progress_event(event: GraphProgressEvent) -> None:
+    if event["phase"] != "start":
+        return
     round_label = "setup" if event["round"] == 0 else str(event["round"])
     parts = [
         "progress",
+        f"phase={event['phase']}",
         f"round={round_label}",
         f"agent={event['agent']}",
         f"node={event['node']}",
@@ -419,6 +449,106 @@ def render_progress_event(event: GraphProgressEvent) -> None:
     if event.get("case_id"):
         parts.append(f"case_id={event['case_id']}")
     typer.echo(" ".join(parts), err=True)
+
+
+def compose_progress_callbacks(
+    *callbacks: Optional[Callable[[GraphProgressEvent], None]],
+) -> Optional[Callable[[GraphProgressEvent], None]]:
+    active_callbacks = [callback for callback in callbacks if callback is not None]
+    if not active_callbacks:
+        return None
+
+    def _composed(event: GraphProgressEvent) -> None:
+        for callback in active_callbacks:
+            callback(event)
+
+    return _composed
+
+
+class LiveRunTracer:
+    def __init__(
+        self,
+        *,
+        report_dir: Path,
+        case_id: str,
+        smiles: str,
+        user_query: str,
+    ) -> None:
+        self._report_dir = report_dir
+        self._case_id = case_id
+        self._smiles = smiles
+        self._user_query = user_query
+        self._events: list[dict[str, object]] = []
+        self._live_trace_path = report_dir / "live_trace.jsonl"
+        self._live_status_path = report_dir / "live_status.md"
+        self._write_status_file()
+
+    def handle_event(self, event: GraphProgressEvent) -> None:
+        serializable_event = {
+            "phase": event["phase"],
+            "round": event["round"],
+            "node": event["node"],
+            "agent": event["agent"],
+            "case_id": event.get("case_id"),
+            "current_hypothesis": event.get("current_hypothesis"),
+            "details": event.get("details", {}),
+        }
+        self._events.append(serializable_event)
+        self._live_trace_path.write_text(
+            "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in self._events),
+            encoding="utf-8",
+        )
+        self._write_status_file()
+
+    def _write_status_file(self) -> None:
+        lines = [
+            "# Live Run Status",
+            "",
+            f"- case_id: {self._case_id}",
+            f"- smiles: {self._smiles}",
+            f"- report_dir: {self._report_dir}",
+            f"- events_recorded: {len(self._events)}",
+            "",
+            "## Current Position",
+        ]
+        current_event = self._events[-1] if self._events else None
+        if current_event is None:
+            lines.append("- status: initialized")
+        else:
+            lines.extend(
+                [
+                    f"- phase: {current_event['phase']}",
+                    f"- round: {current_event['round']}",
+                    f"- agent: {current_event['agent']}",
+                    f"- node: {current_event['node']}",
+                    f"- current_hypothesis: {current_event.get('current_hypothesis')}",
+                ]
+            )
+        lines.extend(["", "## Round Trace"])
+
+        end_events = [event for event in self._events if event["phase"] == "end"]
+        if not end_events:
+            lines.append("")
+            lines.append("No completed node output has been recorded yet.")
+        else:
+            for event in end_events:
+                round_label = "setup" if event["round"] == 0 else str(event["round"])
+                lines.extend(
+                    [
+                        "",
+                        f"### Round {round_label} | {event['agent']} | {event['node']}",
+                    ]
+                )
+                details = event.get("details") or {}
+                if not details:
+                    lines.append("")
+                    lines.append("No structured details were recorded for this node.")
+                    continue
+                for key, value in details.items():
+                    rendered_value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+                    lines.extend(["", f"- {key}: {rendered_value}"])
+
+        self._live_status_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def cli() -> None:

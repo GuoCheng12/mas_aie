@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Any, Callable, Optional, TypedDict
+from typing import Any, Callable, Literal, Optional, TypedDict
 
 from aie_mas.agents.planner import PlannerAgent
 from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
@@ -15,11 +15,13 @@ from aie_mas.utils.prompts import PromptRepository
 
 
 class GraphProgressEvent(TypedDict):
+    phase: Literal["start", "end"]
     node: str
     round: int
     agent: str
     case_id: Optional[str]
     current_hypothesis: Optional[str]
+    details: dict[str, Any]
 
 
 class AieMasWorkflow:
@@ -337,26 +339,42 @@ class AieMasWorkflow:
         func: Callable[[AieMasState], AieMasState],
     ) -> Callable[[AieMasState], AieMasState]:
         def _wrapped(state: AieMasState) -> AieMasState:
-            self._emit_progress(node_name, state)
-            return func(state)
+            self._emit_progress("start", node_name, state)
+            updated_state = func(state)
+            self._emit_progress("end", node_name, updated_state)
+            return updated_state
 
         return _wrapped
 
-    def _emit_progress(self, node_name: str, state: AieMasState) -> None:
+    def _emit_progress(
+        self,
+        phase: Literal["start", "end"],
+        node_name: str,
+        state: AieMasState,
+    ) -> None:
         if self.progress_callback is None:
             return
         event: GraphProgressEvent = {
+            "phase": phase,
             "node": node_name,
-            "round": self._node_round(node_name, state),
+            "round": self._node_round(node_name, state, phase),
             "agent": self._node_agent(node_name),
             "case_id": state.case_id,
             "current_hypothesis": state.current_hypothesis,
+            "details": self._progress_details(node_name, state, phase),
         }
         self.progress_callback(event)
 
-    def _node_round(self, node_name: str, state: AieMasState) -> int:
+    def _node_round(
+        self,
+        node_name: str,
+        state: AieMasState,
+        phase: Literal["start", "end"],
+    ) -> int:
         if node_name == "ingest_user_query":
             return 0
+        if phase == "end" and node_name in {"update_working_memory", "update_long_term_memory", "final_output"}:
+            return state.round_idx
         return state.round_idx + 1
 
     def _node_agent(self, node_name: str) -> str:
@@ -373,6 +391,79 @@ class AieMasWorkflow:
             "final_output": "final",
         }
         return mapping.get(node_name, "system")
+
+    def _progress_details(
+        self,
+        node_name: str,
+        state: AieMasState,
+        phase: Literal["start", "end"],
+    ) -> dict[str, Any]:
+        if phase == "start":
+            details: dict[str, Any] = {}
+            if node_name == "run_macro":
+                details["task_instruction"] = state.pending_agent_instructions.get("macro")
+            elif node_name == "run_microscopic":
+                details["task_instruction"] = state.pending_agent_instructions.get("microscopic")
+                details["task_spec"] = (
+                    state.next_microscopic_task.model_dump(mode="json")
+                    if state.next_microscopic_task
+                    else None
+                )
+            elif node_name == "run_verifier":
+                details["task_instruction"] = state.pending_agent_instructions.get("verifier")
+            elif node_name.startswith("planner") and state.current_hypothesis:
+                details["current_hypothesis"] = state.current_hypothesis
+            return details
+
+        if node_name in {"planner_initial", "planner_diagnosis", "planner_reweight_or_finalize"}:
+            if state.last_planner_decision is None:
+                return {}
+            return {
+                "diagnosis": state.last_planner_decision.diagnosis,
+                "action": state.last_planner_decision.action,
+                "confidence": state.last_planner_decision.confidence,
+                "task_instruction": state.last_planner_decision.task_instruction,
+                "agent_task_instructions": dict(state.last_planner_decision.agent_task_instructions),
+                "hypothesis_uncertainty_note": state.last_planner_decision.hypothesis_uncertainty_note,
+                "capability_assessment": state.last_planner_decision.capability_assessment,
+            }
+        if node_name == "run_macro" and state.macro_reports:
+            report = state.macro_reports[-1]
+            return self._report_details(report)
+        if node_name == "run_microscopic" and state.microscopic_reports:
+            report = state.microscopic_reports[-1]
+            return self._report_details(report)
+        if node_name == "run_verifier" and state.verifier_reports:
+            report = state.verifier_reports[-1]
+            return self._report_details(report)
+        if node_name == "update_working_memory" and state.working_memory:
+            entry = state.working_memory[-1]
+            return {
+                "round_id": entry.round_id,
+                "action_taken": entry.action_taken,
+                "main_gap": entry.main_gap,
+                "next_action": entry.next_action,
+                "evidence_summary": entry.evidence_summary,
+                "diagnosis_summary": entry.diagnosis_summary,
+                "local_uncertainty_summary": entry.local_uncertainty_summary,
+                "agent_reports": [agent_entry.model_dump(mode="json") for agent_entry in entry.agent_reports],
+            }
+        if node_name == "final_output" and state.final_answer is not None:
+            return dict(state.final_answer)
+        return {}
+
+    def _report_details(self, report: Any) -> dict[str, Any]:
+        return {
+            "agent_name": report.agent_name,
+            "status": report.status,
+            "task_received": report.task_received,
+            "task_understanding": report.task_understanding,
+            "reasoning_summary": report.reasoning_summary,
+            "execution_plan": report.execution_plan,
+            "result_summary": report.result_summary,
+            "remaining_local_uncertainty": report.remaining_local_uncertainty,
+            "generated_artifacts": dict(report.generated_artifacts),
+        }
 
 
 def build_graph(
