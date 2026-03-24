@@ -300,8 +300,8 @@ class MacroAgent:
         if plan.unsupported_requests:
             unsupported = "; ".join(plan.unsupported_requests)
             return (
-                "partial",
-                "Task only partially completed. The agent returned bounded macro evidence, but it could not "
+                "contracted",
+                "Task was completed only in a capability-limited contracted form. The agent returned bounded macro evidence, but it could not "
                 f"complete unsupported parts of the Planner instruction: {unsupported}.",
             )
         return (

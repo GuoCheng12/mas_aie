@@ -36,7 +36,7 @@ class HypothesisEntry(BaseModel):
 class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
-    task_completion_status: Literal["completed", "partial", "failed"] = "completed"
+    task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
     task_completion: str = "Task completion was not provided."
     task_understanding: str = "Task understanding was not provided."
     reasoning_summary: str = "Reasoning summary was not provided."
@@ -62,7 +62,7 @@ class VerifierEvidenceCard(BaseModel):
 class WorkingMemoryAgentEntry(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
-    task_completion_status: Literal["completed", "partial", "failed"] = "completed"
+    task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
     task_completion: str = "Task completion was not provided."
     task_understanding: str
     reasoning_summary: str = "Reasoning summary was not provided."
@@ -272,6 +272,9 @@ class AieMasState(BaseModel):
     long_term_memory_path: Optional[str] = None
 
     last_planner_decision: Optional[PlannerDecision] = None
+    last_planner_raw_response: Optional[dict[str, Any]] = None
+    last_planner_normalized_response: Optional[dict[str, Any]] = None
+    planner_response_history: list[dict[str, Any]] = Field(default_factory=list)
     final_answer: Optional[dict[str, Any]] = None
     state_snapshot: Optional[dict[str, Any]] = None
     finalize: bool = False

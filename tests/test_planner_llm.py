@@ -95,6 +95,9 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert "microscopic" in result["decision"].agent_task_instructions
     assert result["decision"].hypothesis_uncertainty_note
     assert result["decision"].capability_assessment
+    assert result["raw_response"]["action"] == "macro_and_microscopic"
+    assert result["raw_response"]["diagnosis"] == "The first round should gather macro and microscopic evidence."
+    assert result["normalized_response"]["decision"]["action"] == "macro_and_microscopic"
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
@@ -343,6 +346,8 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     result = planner.plan_diagnosis(state)
 
     assert result["decision"].action == "microscopic"
+    assert result["raw_response"]["action"] == "microscopic"
+    assert result["normalized_response"]["decision"]["action"] == "microscopic"
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "shared_structure_status" in message_payload
     assert "shared_structure_context" in message_payload
@@ -354,3 +359,42 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     assert '"reasoning_summary": "macro reasoning summary"' in message_payload
     assert '"execution_plan": "macro execution plan"' in message_payload
     assert '"repeated_main_gaps"' in message_payload
+
+
+def test_workflow_stores_planner_raw_and_normalized_responses(tmp_path: Path) -> None:
+    from aie_mas.graph.builder import AieMasWorkflow
+    from aie_mas.graph.state import PlannerDecision
+
+    config = AieMasConfig(project_root=tmp_path, execution_profile="local-dev", prompts_dir=PROMPTS_DIR)
+    workflow = AieMasWorkflow(config)
+    decision = PlannerDecision(
+        diagnosis="mock diagnosis",
+        action="macro_and_microscopic",
+        current_hypothesis="mock hypothesis",
+        confidence=0.55,
+        planned_agents=["macro", "microscopic"],
+        task_instruction="dispatch",
+        agent_task_instructions={"macro": "macro task", "microscopic": "micro task"},
+    )
+    workflow.planner.plan_initial = lambda state: {  # type: ignore[method-assign]
+        "hypothesis_pool": [],
+        "decision": decision,
+        "raw_response": {"action": "macro_and_microscopic", "diagnosis": "raw diagnosis"},
+        "normalized_response": {"decision": decision.model_dump(mode="json")},
+    }
+
+    state = AieMasState(
+        user_query="Assess the likely AIE mechanism for this molecule.",
+        smiles="C1=CC=CC=C1",
+    )
+
+    updated = workflow.planner_initial(state)
+
+    assert updated.last_planner_raw_response == {
+        "action": "macro_and_microscopic",
+        "diagnosis": "raw diagnosis",
+    }
+    assert updated.last_planner_normalized_response == {
+        "decision": decision.model_dump(mode="json"),
+    }
+    assert updated.planner_response_history[-1]["node"] == "planner_initial"

@@ -53,14 +53,18 @@ Important rules:
 - Stay focused on the current leading hypothesis.
 - Do not switch hypothesis in this stage unless the system is in a verifier-after stage.
 - Macro, Microscopic, and Verifier reports are local result reports only; they do not contain the final interpretation.
+- Specialized agents may return `completed`, `contracted`, `partial`, or `failed` task-completion status.
+- If an agent returns `contracted`, treat the missing requested deliverables as still unresolved. Do not describe the original instruction as fully completed.
+- If an agent returns `partial` or `failed`, treat that as execution loss or blockage, not as successful evidence collection.
 - Use recent_rounds_context and recent_capability_context to detect repeated unchanged gaps, repeated unresolved local uncertainty, and repeated low-information loops.
 - Use shared_structure_status and shared_structure_context to understand whether downstream follow-up can reuse existing 3D structure context or must degrade to fallback behavior.
 - If confidence is already high enough for a temporary conclusion, the next action must be Verifier.
-- If the current rounds indicate capability-limited stagnation or low information gain, you may trigger Verifier now to break the deadlock.
+- Verifier is not an exploratory search tool for finding new internal evidence. Do not call Verifier just because internal follow-up became difficult.
+- If the current rounds indicate capability-limited stagnation or low information gain, first consider a different indirect internal follow-up through Macro or Microscopic before considering any external verifier step.
 - If internal evidence is still informative, choose the most informative next step between Macro or Microscopic.
-- If continuing the same action is unlikely to shrink the gap, do not blindly repeat it; prefer verifier or a more conservative bounded follow-up.
+- If continuing the same action is unlikely to shrink the gap, do not blindly repeat it; prefer a different bounded internal follow-up, a different indirect signal, or a bounded final judgment with explicit uncertainty.
 - When choosing Microscopic, keep the task low-cost and bounded; do not escalate to a heavy exhaustive geometry-optimization agenda by default.
-- Do not finalize unless verifier handling has already been addressed and the evidence chain is strong enough.
+- You may finalize before verifier only when confidence is still below the verifier threshold and current specialized-agent capability is exhausted or repeated contracted/failed follow-ups are no longer adding meaningful information. In that case, finalize with explicit uncertainty and state that verifier was not used as an exploratory search tool.
 
 Output requirements:
 Return:
@@ -98,6 +102,7 @@ The diagnosis must explicitly include:
 
 task_instruction rules:
 - required when action is macro, microscopic, or verifier
+- optional and usually empty when action is finalize
 - should describe only that specialized agent's local task
 - must stay within current specialized-agent capability
 - should mention shared prepared structure reuse when action is macro or microscopic and the shared structure is available

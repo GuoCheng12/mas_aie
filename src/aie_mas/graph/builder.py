@@ -154,6 +154,7 @@ class AieMasWorkflow:
         state.latest_stagnation_assessment = decision.stagnation_assessment
         state.latest_contraction_reason = decision.contraction_reason
         state.capability_lesson_candidates = list(decision.capability_lesson_candidates)
+        self._record_planner_response(state, result, node_name="planner_initial")
         microscopic_instruction = (
             decision.agent_task_instructions.get("microscopic")
             or "Run fixed first-stage S0/S1 optimization."
@@ -241,7 +242,7 @@ class AieMasWorkflow:
 
     def planner_diagnosis(self, state: AieMasState) -> AieMasState:
         result = self.planner.plan_diagnosis(state)
-        return self._apply_planner_result(state, result)
+        return self._apply_planner_result(state, result, node_name="planner_diagnosis")
 
     def run_verifier(self, state: AieMasState) -> AieMasState:
         task_instruction = state.pending_agent_instructions.get(
@@ -261,7 +262,7 @@ class AieMasWorkflow:
 
     def planner_reweight_or_finalize(self, state: AieMasState) -> AieMasState:
         result = self.planner.plan_reweight_or_finalize(state)
-        return self._apply_planner_result(state, result)
+        return self._apply_planner_result(state, result, node_name="planner_reweight_or_finalize")
 
     def update_working_memory(self, state: AieMasState) -> AieMasState:
         return self.working_memory.append_round_summary(state)
@@ -314,7 +315,13 @@ class AieMasWorkflow:
             return "update_long_term_memory"
         return "final_output"
 
-    def _apply_planner_result(self, state: AieMasState, result: dict[str, object]) -> AieMasState:
+    def _apply_planner_result(
+        self,
+        state: AieMasState,
+        result: dict[str, object],
+        *,
+        node_name: str,
+    ) -> AieMasState:
         decision = result["decision"]
         state.last_planner_decision = decision  # type: ignore[assignment]
         state.current_hypothesis = decision.current_hypothesis  # type: ignore[union-attr]
@@ -346,7 +353,32 @@ class AieMasWorkflow:
         state.next_microscopic_task = self._build_next_microscopic_task(state, decision)
         state.planner_diagnosis_history.append(decision.diagnosis)  # type: ignore[union-attr]
         state.planner_action_history.append(decision.action)  # type: ignore[union-attr]
+        self._record_planner_response(state, result, node_name=node_name)
         return state
+
+    def _record_planner_response(
+        self,
+        state: AieMasState,
+        result: dict[str, object],
+        *,
+        node_name: str,
+    ) -> None:
+        raw_response = result.get("raw_response")
+        normalized_response = result.get("normalized_response")
+        state.last_planner_raw_response = (
+            dict(raw_response) if isinstance(raw_response, dict) else None
+        )
+        state.last_planner_normalized_response = (
+            dict(normalized_response) if isinstance(normalized_response, dict) else None
+        )
+        state.planner_response_history.append(
+            {
+                "node": node_name,
+                "round": state.round_idx + 1,
+                "raw_response": state.last_planner_raw_response,
+                "normalized_response": state.last_planner_normalized_response,
+            }
+        )
 
     def _build_next_microscopic_task(
         self,
@@ -475,6 +507,8 @@ class AieMasWorkflow:
                 "agent_task_instructions": dict(state.last_planner_decision.agent_task_instructions),
                 "hypothesis_uncertainty_note": state.last_planner_decision.hypothesis_uncertainty_note,
                 "capability_assessment": state.last_planner_decision.capability_assessment,
+                "planner_raw_response": state.last_planner_raw_response,
+                "planner_normalized_response": state.last_planner_normalized_response,
             }
         if node_name == "run_macro" and state.macro_reports:
             report = state.macro_reports[-1]

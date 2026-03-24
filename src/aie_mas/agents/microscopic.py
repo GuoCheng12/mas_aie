@@ -852,14 +852,14 @@ class MicroscopicAgent:
             unsupported = "; ".join(unsupported_requests)
             if task_mode == "targeted_follow_up":
                 return (
-                    "partial",
-                    "Task was only partially completed. The requested targeted microscopic follow-up could not be executed "
+                    "contracted",
+                    "Task was completed only in a capability-limited contracted form. The requested targeted microscopic follow-up could not be executed "
                     f"within current Amesp capability, so the agent returned contracted baseline S0/S1 evidence instead. "
                     f"Unsupported parts were: {unsupported}.",
                 )
             return (
-                "partial",
-                "Task was only partially completed. The agent returned bounded Amesp baseline evidence, but it could not "
+                "contracted",
+                "Task was completed only in a capability-limited contracted form. The agent returned bounded Amesp baseline evidence, but it could not "
                 f"execute unsupported parts of the Planner instruction: {unsupported}.",
             )
         return (

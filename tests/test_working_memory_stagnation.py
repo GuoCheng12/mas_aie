@@ -88,7 +88,7 @@ def test_recent_rounds_context_keeps_latest_action_gap_and_summaries() -> None:
     assert "repeated_local_uncertainty_signals" in context[2]
 
 
-def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
+def test_planner_marks_stagnation_and_finalizes_with_bounded_uncertainty(tmp_path: Path) -> None:
     planner = _build_planner(tmp_path)
     state = AieMasState(
         user_query="Assess the likely AIE mechanism for this molecule.",
@@ -156,8 +156,9 @@ def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
     result = planner.plan_diagnosis(state)
     decision = result["decision"]
 
-    assert decision.action == "verifier"
-    assert decision.needs_verifier is True
+    assert decision.action == "finalize"
+    assert decision.needs_verifier is False
+    assert decision.finalize is True
     assert decision.stagnation_detected is True
     assert decision.hypothesis_uncertainty_note
     assert decision.capability_assessment
@@ -166,4 +167,4 @@ def test_planner_marks_stagnation_and_triggers_verifier(tmp_path: Path) -> None:
     assert decision.capability_lesson_candidates
     assert "limited new information" in result["information_gain_assessment"]
     assert "not shrinking" in result["gap_trend"]
-    assert "stagnation" in result["main_gap"].lower()
+    assert "capability-limited" in result["main_gap"].lower()
