@@ -180,7 +180,6 @@ def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
         tool_backend="real",
-        planner_backend="mock",
         prompts_dir=PROMPTS_DIR,
         data_dir=tmp_path / "data",
         memory_dir=tmp_path / "memory",

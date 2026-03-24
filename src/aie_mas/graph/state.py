@@ -91,6 +91,7 @@ class PlannerDecision(BaseModel):
     task_instruction: Optional[str] = None
     agent_task_instructions: dict[PendingAgent, str] = Field(default_factory=dict)
     hypothesis_uncertainty_note: Optional[str] = None
+    final_hypothesis_rationale: Optional[str] = None
     capability_assessment: Optional[str] = None
     stagnation_assessment: Optional[str] = None
     contraction_reason: Optional[str] = None
@@ -113,6 +114,7 @@ class WorkingMemoryEntry(BaseModel):
     planner_task_instruction: Optional[str] = None
     planner_agent_task_instructions: dict[PendingAgent, str] = Field(default_factory=dict)
     hypothesis_uncertainty_note: Optional[str] = None
+    final_hypothesis_rationale: Optional[str] = None
     capability_assessment: Optional[str] = None
     stagnation_assessment: Optional[str] = None
     contraction_reason: Optional[str] = None
@@ -253,6 +255,7 @@ class AieMasState(BaseModel):
     latest_main_gap: Optional[str] = None
     latest_conflict_status: Optional[str] = None
     latest_hypothesis_uncertainty_note: Optional[str] = None
+    latest_final_hypothesis_rationale: Optional[str] = None
     latest_capability_assessment: Optional[str] = None
     latest_stagnation_assessment: Optional[str] = None
     latest_contraction_reason: Optional[str] = None

@@ -242,7 +242,6 @@ class MacroAgent:
     def _runtime_context_summary(self) -> dict[str, Any]:
         return {
             "macro_backend": self._config.macro_backend,
-            "tool_backend": self._config.tool_backend,
             "macro_model": self._config.macro_model,
             "macro_temperature": self._config.macro_temperature,
             "macro_timeout_seconds": self._config.macro_timeout_seconds,

@@ -90,7 +90,7 @@ class LongTermMemoryStore:
                 )
                 for candidate in state.capability_lesson_candidates
             ],
-            final_gt_source="mock_verifier_stub" if state.verifier_reports else None,
+            final_gt_source="deterministic_verifier_stub" if state.verifier_reports else None,
         )
         payload = self._read_json(self._case_path)
         payload.append(entry.model_dump(mode="json"))

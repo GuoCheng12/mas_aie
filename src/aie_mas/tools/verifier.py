@@ -6,8 +6,8 @@ from aie_mas.graph.state import VerifierEvidenceCard
 from aie_mas.utils.smiles import extract_smiles_features
 
 
-class MockVerifierEvidenceTool:
-    name = "mock_verifier_evidence_lookup"
+class DeterministicVerifierEvidenceTool:
+    name = "verifier_evidence_lookup"
 
     def invoke(self, smiles: str, current_hypothesis: str) -> dict[str, Any]:
         features = extract_smiles_features(smiles)
@@ -20,7 +20,7 @@ class MockVerifierEvidenceTool:
             evidence_cards.append(
                 VerifierEvidenceCard(
                     card_id="case-memory-restriction",
-                    source="mock_case_memory_card",
+                    source="case_memory_card",
                     observation=(
                         "Bulky aromatic fragments with branch points are frequently discussed in motion-restriction "
                         "explanations of aggregation-enhanced emission."
@@ -33,7 +33,7 @@ class MockVerifierEvidenceTool:
             evidence_cards.append(
                 VerifierEvidenceCard(
                     card_id="external-summary-ict",
-                    source="mock_external_summary_card",
+                    source="external_summary_card",
                     observation=(
                         "Hetero-atom-rich conjugated systems are often discussed alongside ICT-like excited-state "
                         "redistribution that can compete with purely restriction-driven stories."
@@ -46,7 +46,7 @@ class MockVerifierEvidenceTool:
             evidence_cards.append(
                 VerifierEvidenceCard(
                     card_id="mechanistic-note-aggregation",
-                    source="mock_mechanistic_note_card",
+                    source="mechanistic_note_card",
                     observation=(
                         "Large conjugated aromatic surfaces are frequently discussed in aggregate-state packing and "
                         "intermolecular-contact explanations of emission changes."
@@ -59,9 +59,9 @@ class MockVerifierEvidenceTool:
             evidence_cards.append(
                 VerifierEvidenceCard(
                     card_id="mechanistic-note-generic",
-                    source="mock_generic_note_card",
+                    source="generic_note_card",
                     observation=(
-                        "The current mock verifier retrieved only generic mechanistic context and did not surface a "
+                        "The current verifier retrieved only generic mechanistic context and did not surface a "
                         "more specific external explanation for this molecule."
                     ),
                     topic_tags=["mechanistic_note"],

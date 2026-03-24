@@ -7,8 +7,8 @@ from typing import Any, Literal, Optional
 from pydantic import BaseModel, Field
 
 ExecutionProfile = Literal["local-dev", "linux-prod"]
-ToolBackend = Literal["mock", "real"]
-PlannerBackend = Literal["mock", "openai_sdk"]
+ToolBackend = Literal["real"]
+PlannerBackend = Literal["openai_sdk"]
 MicroscopicBackend = Literal["openai_sdk"]
 MacroBackend = Literal["openai_sdk"]
 
@@ -20,7 +20,7 @@ def _default_project_root() -> Path:
 class AieMasConfig(BaseModel):
     project_root: Path = Field(default_factory=_default_project_root)
     execution_profile: ExecutionProfile = "local-dev"
-    tool_backend: ToolBackend = "mock"
+    tool_backend: ToolBackend = "real"
     enable_long_term_memory: bool = False
     planner_backend: Optional[PlannerBackend] = None
     planner_base_url: str = "http://34.13.73.248:3888/v1"
@@ -159,7 +159,7 @@ class AieMasConfig(BaseModel):
         self.project_root = self.project_root.expanduser().resolve()
 
         if self.planner_backend is None:
-            self.planner_backend = "mock" if self.execution_profile == "local-dev" else "openai_sdk"
+            self.planner_backend = "openai_sdk"
         if self.microscopic_backend is None:
             self.microscopic_backend = "openai_sdk"
         if self.microscopic_base_url is None:

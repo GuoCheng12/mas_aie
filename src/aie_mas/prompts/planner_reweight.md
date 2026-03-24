@@ -73,6 +73,7 @@ Return:
 - main_gap
 - conflict_status
 - hypothesis_uncertainty_note
+- final_hypothesis_rationale
 - capability_assessment
 - stagnation_assessment
 - contraction_reason
@@ -97,3 +98,10 @@ task_instruction rules:
 - must stay within current specialized-agent capability
 - if action is microscopic, the task must stay low-cost and bounded
 - must not ask that agent to decide the global mechanism or next system action
+
+final_hypothesis_rationale rules:
+- required when action is finalize
+- usually empty when action is not finalize
+- explain clearly why the finalized mechanism is the best-supported interpretation now
+- cite the evidence chain from this run, including how internal evidence and verifier evidence fit together
+- mention the strongest support and the main remaining caveat or uncertainty

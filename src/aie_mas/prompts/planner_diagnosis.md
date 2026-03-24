@@ -59,6 +59,7 @@ Return:
 - main_gap
 - conflict_status
 - hypothesis_uncertainty_note
+- final_hypothesis_rationale
 - capability_assessment
 - stagnation_assessment
 - contraction_reason
@@ -88,3 +89,10 @@ task_instruction rules:
 - if action is microscopic, the instruction must explicitly respect low-cost baseline-first execution
 - must not ask the agent to decide the global mechanism
 - must not ask the agent to choose the next system-level action
+
+final_hypothesis_rationale rules:
+- required when action is finalize
+- usually empty when action is not finalize
+- explain clearly why the current hypothesis is the best-supported mechanism now
+- refer to the evidence chain available in this run rather than giving a generic statement
+- mention the strongest supporting evidence and the main remaining caveat or uncertainty

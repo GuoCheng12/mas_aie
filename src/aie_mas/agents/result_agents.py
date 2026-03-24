@@ -5,7 +5,7 @@ from pathlib import Path
 from aie_mas.agents.macro import MacroAgent
 from aie_mas.agents.microscopic import MicroscopicAgent
 from aie_mas.graph.state import AgentReport
-from aie_mas.tools.verifier import MockVerifierEvidenceTool
+from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -16,10 +16,10 @@ def _default_prompt_repository() -> PromptRepository:
 class VerifierAgent:
     def __init__(
         self,
-        tool: MockVerifierEvidenceTool | None = None,
+        tool: DeterministicVerifierEvidenceTool | None = None,
         prompts: PromptRepository | None = None,
     ) -> None:
-        self._tool = tool or MockVerifierEvidenceTool()
+        self._tool = tool or DeterministicVerifierEvidenceTool()
         self._prompts = prompts or _default_prompt_repository()
 
     def run(self, smiles: str, current_hypothesis: str, task_received: str) -> AgentReport:

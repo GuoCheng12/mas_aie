@@ -283,6 +283,7 @@ class AieMasWorkflow:
             "action": decision.action if decision else None,
             "finalize": state.finalize,
             "hypothesis_uncertainty_note": state.latest_hypothesis_uncertainty_note,
+            "final_hypothesis_rationale": state.latest_final_hypothesis_rationale,
             "capability_assessment": state.latest_capability_assessment,
             "stagnation_assessment": state.latest_stagnation_assessment,
             "contraction_reason": state.latest_contraction_reason,
@@ -334,6 +335,9 @@ class AieMasWorkflow:
         state.latest_conflict_status = str(result["conflict_status"])
         state.latest_hypothesis_uncertainty_note = str(
             result.get("hypothesis_uncertainty_note") or decision.hypothesis_uncertainty_note or ""
+        ) or None
+        state.latest_final_hypothesis_rationale = str(
+            result.get("final_hypothesis_rationale") or decision.final_hypothesis_rationale or ""
         ) or None
         state.latest_capability_assessment = str(
             result.get("capability_assessment") or decision.capability_assessment or ""
@@ -506,6 +510,7 @@ class AieMasWorkflow:
                 "task_instruction": state.last_planner_decision.task_instruction,
                 "agent_task_instructions": dict(state.last_planner_decision.agent_task_instructions),
                 "hypothesis_uncertainty_note": state.last_planner_decision.hypothesis_uncertainty_note,
+                "final_hypothesis_rationale": state.last_planner_decision.final_hypothesis_rationale,
                 "capability_assessment": state.last_planner_decision.capability_assessment,
                 "planner_raw_response": state.last_planner_raw_response,
                 "planner_normalized_response": state.last_planner_normalized_response,

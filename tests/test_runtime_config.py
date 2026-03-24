@@ -12,7 +12,7 @@ from aie_mas.graph.state import AieMasState
 def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("AIE_MAS_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
-    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "real")
     monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_OPENAI_BASE_URL", "http://34.13.73.248:3888/v1")
     monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
@@ -37,7 +37,7 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     config.ensure_runtime_dirs()
 
     assert config.execution_profile == "linux-prod"
-    assert config.tool_backend == "mock"
+    assert config.tool_backend == "real"
     assert config.enable_long_term_memory is True
     assert config.planner_backend == "openai_sdk"
     assert config.microscopic_backend == "openai_sdk"
@@ -98,14 +98,14 @@ def test_normalize_graph_result_accepts_langgraph_dict_output() -> None:
     state = AieMasState(
         user_query="Assess the likely AIE mechanism for this molecule.",
         smiles="C1=CC=CC=C1",
-        final_answer={"current_hypothesis": "mock"},
+        final_answer={"current_hypothesis": "placeholder"},
         state_snapshot={"ok": True},
     )
 
     normalized = normalize_graph_result(state.model_dump(mode="json"))
 
     assert isinstance(normalized, AieMasState)
-    assert normalized.final_answer == {"current_hypothesis": "mock"}
+    assert normalized.final_answer == {"current_hypothesis": "placeholder"}
     assert normalized.state_snapshot == {"ok": True}
 
 
@@ -113,7 +113,7 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     local_config = AieMasConfig(project_root=tmp_path, execution_profile="local-dev")
     linux_config = AieMasConfig(project_root=tmp_path, execution_profile="linux-prod")
 
-    assert local_config.planner_backend == "mock"
+    assert local_config.planner_backend == "openai_sdk"
     assert linux_config.planner_backend == "openai_sdk"
     assert local_config.microscopic_backend == "openai_sdk"
     assert linux_config.microscopic_backend == "openai_sdk"

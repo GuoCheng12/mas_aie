@@ -202,7 +202,7 @@ def main(
     ),
     tool_backend: Optional[str] = typer.Option(
         None,
-        help="Tool backend: mock for verifier/planner-side validation, real for real Amesp execution.",
+        help="Tool backend: real.",
     ),
     enable_long_term_memory: Optional[bool] = typer.Option(
         None,
@@ -211,7 +211,7 @@ def main(
     ),
     planner_backend: Optional[str] = typer.Option(
         None,
-        help="Planner backend: mock or openai_sdk.",
+        help="Planner backend: openai_sdk.",
     ),
     planner_base_url: Optional[str] = typer.Option(
         None,
@@ -425,6 +425,7 @@ def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, obj
         "action": final_answer.get("action"),
         "finalize": state.finalize,
         "hypothesis_uncertainty_note": final_answer.get("hypothesis_uncertainty_note"),
+        "final_hypothesis_rationale": final_answer.get("final_hypothesis_rationale"),
         "capability_assessment": final_answer.get("capability_assessment"),
         "stagnation_assessment": final_answer.get("stagnation_assessment"),
         "contraction_reason": final_answer.get("contraction_reason"),
@@ -449,6 +450,7 @@ def build_rounds_payload(state: AieMasState) -> list[dict[str, object]]:
                     "task_instruction": entry.planner_task_instruction,
                     "agent_task_instructions": entry.planner_agent_task_instructions,
                     "hypothesis_uncertainty_note": entry.hypothesis_uncertainty_note,
+                    "final_hypothesis_rationale": entry.final_hypothesis_rationale,
                     "capability_assessment": entry.capability_assessment,
                     "stagnation_assessment": entry.stagnation_assessment,
                     "contraction_reason": entry.contraction_reason,

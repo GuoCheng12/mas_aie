@@ -33,7 +33,6 @@ def test_minimal_workflow_smoke(tmp_path: Path, install_specialized_test_doubles
         smiles=smiles,
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
-        tool_backend="mock",
         data_dir=tmp_path / "data",
         memory_dir=tmp_path / "memory",
         log_dir=tmp_path / "log",
@@ -71,7 +70,6 @@ def test_run_case_workflow_emits_progress_events_with_round_and_agent(
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
-        tool_backend="mock",
         data_dir=tmp_path / "data_progress",
         memory_dir=tmp_path / "memory_progress",
         log_dir=tmp_path / "log_progress",
@@ -115,7 +113,6 @@ def test_live_run_tracer_writes_live_trace_and_status_files(
     config = AieMasConfig(
         project_root=tmp_path,
         execution_profile="local-dev",
-        tool_backend="mock",
         data_dir=tmp_path / "data_live",
         memory_dir=tmp_path / "memory_live",
         report_dir=tmp_path / "reports_live",
@@ -135,7 +132,6 @@ def test_live_run_tracer_writes_live_trace_and_status_files(
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
-        tool_backend="mock",
         data_dir=config.data_dir,
         memory_dir=config.memory_dir,
         log_dir=config.log_dir,
@@ -188,7 +184,6 @@ def test_summary_payload_groups_information_by_round(tmp_path: Path, install_spe
         smiles=smiles,
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
-        tool_backend="mock",
         data_dir=tmp_path / "data_rounds",
         memory_dir=tmp_path / "memory_rounds",
         report_dir=tmp_path / "reports_rounds",
@@ -228,8 +223,6 @@ def test_cli_writes_report_files_and_prints_concise_summary(
             "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
             "--execution-profile",
             "local-dev",
-            "--tool-backend",
-            "mock",
             "--disable-long-term-memory",
             "--data-dir",
             str(tmp_path / "data_cli"),
@@ -264,6 +257,7 @@ def test_cli_writes_report_files_and_prints_concise_summary(
     assert str(summary_payload["finalize"]) == terminal_summary["finalize"]
     assert str(summary_payload["working_memory_rounds"]) == terminal_summary["rounds"]
     assert summary_payload["hypothesis_uncertainty_note"]
+    assert summary_payload["final_hypothesis_rationale"]
     assert summary_payload["capability_assessment"]
     assert summary_payload["report_dir"] == str(summary_path.parent)
     assert terminal_summary["report_dir"] == str(summary_path.parent)
@@ -276,7 +270,7 @@ def test_cli_writes_report_files_and_prints_concise_summary(
     assert summary_payload["rounds"][0]["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
     assert summary_payload["rounds"][0]["working_memory"]["evidence_summary"]
     assert full_state_payload["runtime_context"]["execution_profile"] == "local-dev"
-    assert full_state_payload["runtime_context"]["tool_backend"] == "mock"
+    assert full_state_payload["runtime_context"]["tool_backend"] == "real"
     assert full_state_payload["runtime_context"]["enable_long_term_memory"] is False
     assert full_state_payload["state_snapshot"]["case_id"] == summary_payload["case_id"]
 
@@ -295,8 +289,6 @@ def test_cli_can_enable_long_term_memory_for_a_run(
             "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
             "--execution-profile",
             "local-dev",
-            "--tool-backend",
-            "mock",
             "--enable-long-term-memory",
             "--data-dir",
             str(tmp_path / "data_cli_on"),
@@ -333,8 +325,8 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
     install_specialized_test_doubles()
     runner = CliRunner()
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
-    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
-    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "real")
+    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY", "1")
     monkeypatch.setenv("AIE_MAS_PROMPTS_DIR", str(PROMPTS_DIR))
     monkeypatch.setenv("AIE_MAS_DATA_DIR", str(tmp_path / "data_env"))
@@ -362,7 +354,7 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
 
     assert summary_payload["rounds"]
     assert full_state_payload["runtime_context"]["execution_profile"] == "linux-prod"
-    assert full_state_payload["runtime_context"]["tool_backend"] == "mock"
+    assert full_state_payload["runtime_context"]["tool_backend"] == "real"
     assert full_state_payload["runtime_context"]["enable_long_term_memory"] is True
     assert full_state_payload["runtime_context"]["report_dir"] == str(tmp_path / "reports_env")
 
@@ -376,8 +368,8 @@ def test_cli_uses_default_project_report_dir_when_unspecified(
     runner = CliRunner()
     monkeypatch.setenv("AIE_MAS_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "local-dev")
-    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
-    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "mock")
+    monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "real")
+    monkeypatch.setenv("AIE_MAS_PLANNER_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_PROMPTS_DIR", str(PROMPTS_DIR))
     monkeypatch.setenv("AIE_MAS_DATA_DIR", str(tmp_path / "data_default_report"))
     monkeypatch.setenv("AIE_MAS_LOG_DIR", str(tmp_path / "log_default_report"))

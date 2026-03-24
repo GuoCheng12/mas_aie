@@ -199,7 +199,7 @@ class MicroscopicAgent:
                 round_index=round_index,
             )
         raise RuntimeError(
-            "MicroscopicAgent requires an Amesp baseline tool; mock microscopic execution paths have been removed."
+            "MicroscopicAgent requires an Amesp baseline tool; no alternate execution path is available."
         )
 
     def _run_real(
@@ -671,7 +671,6 @@ class MicroscopicAgent:
     def _runtime_context_summary(self) -> dict[str, Any]:
         return {
             "microscopic_backend": self._config.microscopic_backend,
-            "tool_backend": self._config.tool_backend,
             "amesp_binary_path": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
             "supports_real_amesp": self._amesp_tool is not None,
             "baseline_policy": (

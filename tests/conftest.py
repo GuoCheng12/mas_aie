@@ -10,7 +10,7 @@ from aie_mas.agents.macro import MacroReasoningPlanDraft, MacroReasoningResponse
 from aie_mas.agents.microscopic import MicroscopicReasoningPlanDraft, MicroscopicReasoningResponse
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.graph import builder as graph_builder
-from aie_mas.graph.state import SharedStructureContext
+from aie_mas.graph.state import HypothesisEntry, PlannerDecision, SharedStructureContext
 from aie_mas.tools.amesp import (
     AmespBaselineRunResult,
     AmespExcitedState,
@@ -19,7 +19,7 @@ from aie_mas.tools.amesp import (
 )
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
-from aie_mas.tools.verifier import MockVerifierEvidenceTool
+from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
 from aie_mas.utils.smiles import extract_smiles_features
 
 
@@ -135,6 +135,196 @@ class TestMicroscopicReasoningBackend:
                 "do not escalate into a global mechanism decision."
             ),
         )
+
+
+class TestPlannerBackend:
+    def plan_initial(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        del rendered_prompt
+        hypothesis_pool = [
+            HypothesisEntry(
+                name="restriction of intramolecular motion (RIM)-dominated AIE",
+                confidence=0.7,
+                rationale="Test planner starts from a conservative restriction-based hypothesis.",
+                candidate_strength="strong",
+            ),
+            HypothesisEntry(
+                name="ICT-assisted emission with aggregation-enabled rigidification",
+                confidence=0.24,
+                rationale="Secondary test-only alternative.",
+                candidate_strength="weak",
+            ),
+        ]
+        task_instruction = "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis."
+        decision = PlannerDecision(
+            diagnosis="The first round should gather macro structural evidence and bounded microscopic S0/S1 evidence.",
+            action="macro_and_microscopic",
+            current_hypothesis=hypothesis_pool[0].name,
+            confidence=0.7,
+            planned_agents=["macro", "microscopic"],
+            task_instruction=task_instruction,
+            agent_task_instructions={
+                "macro": (
+                    f"Assess macro-level structural evidence relevant to the current working hypothesis "
+                    f"'{hypothesis_pool[0].name}'. Reuse the shared prepared structure context when available."
+                ),
+                "microscopic": (
+                    f"Run the first-round low-cost S0/S1 microscopic baseline task for the current working hypothesis "
+                    f"'{hypothesis_pool[0].name}'. Reuse the shared prepared structure context when available."
+                ),
+            },
+            hypothesis_uncertainty_note="The leading hypothesis is still provisional before internal evidence collection.",
+            capability_assessment="Current specialized agents can collect bounded internal evidence only.",
+            stagnation_assessment="No stagnation is present in the initial round.",
+        )
+        raw_response = {
+            "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
+            "current_hypothesis": decision.current_hypothesis,
+            "confidence": decision.confidence,
+            "diagnosis": decision.diagnosis,
+            "action": decision.action,
+            "task_instruction": decision.task_instruction,
+            "agent_task_instructions": dict(decision.agent_task_instructions),
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "capability_assessment": decision.capability_assessment,
+        }
+        return {
+            "hypothesis_pool": hypothesis_pool,
+            "decision": decision,
+            "raw_response": raw_response,
+            "normalized_response": {"decision": decision.model_dump(mode="json")},
+        }
+
+    def plan_diagnosis(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        del rendered_prompt
+        current_hypothesis = str(payload["current_hypothesis"])
+        evidence_summary = "Macro and microscopic local evidence were collected."
+        main_gap = "External verifier evidence is still needed before closure."
+        task_instruction = (
+            f"Retrieve external supervision evidence for the current working hypothesis '{current_hypothesis}' "
+            f"and clarify the current gap: {main_gap}"
+        )
+        decision = PlannerDecision(
+            diagnosis=(
+                f"The current leading hypothesis remains {current_hypothesis}. The latest internal evidence does not "
+                "justify closure yet, so verifier is the best next step."
+            ),
+            action="verifier",
+            current_hypothesis=current_hypothesis,
+            confidence=float(payload["current_confidence"] or 0.7),
+            needs_verifier=True,
+            finalize=False,
+            planned_agents=["verifier"],
+            task_instruction=task_instruction,
+            agent_task_instructions={"verifier": task_instruction},
+            hypothesis_uncertainty_note="Internal evidence is useful but not yet enough for closure.",
+            capability_assessment="Internal agents can provide only bounded evidence; verifier is needed for validation.",
+            stagnation_assessment="No stagnation is present yet.",
+            contraction_reason="Use verifier once internal evidence has been collected.",
+            information_gain_assessment="The first round added useful internal evidence.",
+            gap_trend="The main gap is shrinking.",
+            stagnation_detected=False,
+        )
+        raw_response = {
+            "diagnosis": decision.diagnosis,
+            "action": decision.action,
+            "current_hypothesis": decision.current_hypothesis,
+            "confidence": decision.confidence,
+            "needs_verifier": True,
+            "finalize": False,
+            "task_instruction": task_instruction,
+            "agent_task_instructions": {"verifier": task_instruction},
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "capability_assessment": decision.capability_assessment,
+            "stagnation_assessment": decision.stagnation_assessment,
+            "contraction_reason": decision.contraction_reason,
+            "evidence_summary": evidence_summary,
+            "main_gap": main_gap,
+            "conflict_status": "none",
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
+            "stagnation_detected": False,
+            "capability_lesson_candidates": [],
+        }
+        return {
+            "decision": decision,
+            "evidence_summary": evidence_summary,
+            "main_gap": main_gap,
+            "conflict_status": "none",
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "capability_assessment": decision.capability_assessment,
+            "stagnation_assessment": decision.stagnation_assessment,
+            "contraction_reason": decision.contraction_reason,
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
+            "raw_response": raw_response,
+            "normalized_response": {"decision": decision.model_dump(mode="json")},
+        }
+
+    def plan_reweight_or_finalize(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
+        del rendered_prompt
+        current_hypothesis = str(payload["current_hypothesis"])
+        verifier_report = payload.get("verifier_report") or {}
+        evidence_summary = str(verifier_report.get("result_summary") or "Verifier evidence aligns with the current hypothesis.")
+        decision = PlannerDecision(
+            diagnosis=(
+                f"Planner interpretation of verifier evidence supports the current hypothesis {current_hypothesis}. "
+                "The case can now be finalized."
+            ),
+            action="finalize",
+            current_hypothesis=current_hypothesis,
+            confidence=min(0.95, float(payload["current_confidence"] or 0.7) + 0.08),
+            needs_verifier=False,
+            finalize=True,
+            planned_agents=[],
+            hypothesis_uncertainty_note="Residual uncertainty remains limited and acceptable at closure.",
+            final_hypothesis_rationale=(
+                f"The mechanism is finalized as {current_hypothesis} because the internal evidence chain and verifier "
+                f"evidence align in this run. Key support: {evidence_summary}"
+            ),
+            capability_assessment="Verifier evidence closes the remaining gap under the current bounded workflow.",
+            stagnation_assessment="No stagnation remains after verifier support.",
+            contraction_reason="Conservatively stop because further internal expansion is unnecessary.",
+            information_gain_assessment="Verifier evidence provides the final information needed for closure.",
+            gap_trend="The main gap is closed.",
+            stagnation_detected=False,
+        )
+        raw_response = {
+            "diagnosis": decision.diagnosis,
+            "action": "finalize",
+            "current_hypothesis": decision.current_hypothesis,
+            "confidence": decision.confidence,
+            "needs_verifier": False,
+            "finalize": True,
+            "task_instruction": None,
+            "agent_task_instructions": {},
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "final_hypothesis_rationale": decision.final_hypothesis_rationale,
+            "capability_assessment": decision.capability_assessment,
+            "stagnation_assessment": decision.stagnation_assessment,
+            "contraction_reason": decision.contraction_reason,
+            "evidence_summary": evidence_summary,
+            "main_gap": "No critical evidence gap remains in the current workflow.",
+            "conflict_status": "none",
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
+            "stagnation_detected": False,
+            "capability_lesson_candidates": [],
+        }
+        return {
+            "decision": decision,
+            "evidence_summary": evidence_summary,
+            "main_gap": "No critical evidence gap remains in the current workflow.",
+            "conflict_status": "none",
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "final_hypothesis_rationale": decision.final_hypothesis_rationale,
+            "capability_assessment": decision.capability_assessment,
+            "stagnation_assessment": decision.stagnation_assessment,
+            "contraction_reason": decision.contraction_reason,
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
+            "raw_response": raw_response,
+            "normalized_response": {"decision": decision.model_dump(mode="json")},
+        }
 
 
 class TestSharedStructureTool:
@@ -314,6 +504,7 @@ def install_specialized_test_doubles(monkeypatch: pytest.MonkeyPatch) -> Callabl
 
         from aie_mas.agents import macro as macro_module
         from aie_mas.agents import microscopic as microscopic_module
+        from aie_mas.agents import planner as planner_module
 
         monkeypatch.setattr(
             macro_module.MacroAgent,
@@ -325,13 +516,18 @@ def install_specialized_test_doubles(monkeypatch: pytest.MonkeyPatch) -> Callabl
             "_build_reasoning_backend",
             lambda self, config, llm_client: TestMicroscopicReasoningBackend(),
         )
+        monkeypatch.setattr(
+            planner_module.PlannerAgent,
+            "_build_backend",
+            lambda self, config, llm_client: TestPlannerBackend(),
+        )
 
         def fake_build_toolset(config):
             del config
             return ToolSet(
                 shared_structure_tool=shared_structure_tool or TestSharedStructureTool(),
                 macro_tool=DeterministicMacroStructureTool(),
-                verifier_tool=MockVerifierEvidenceTool(),
+                verifier_tool=DeterministicVerifierEvidenceTool(),
                 amesp_micro_tool=fake_amesp,
             )
 

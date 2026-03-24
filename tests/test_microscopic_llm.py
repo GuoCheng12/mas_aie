@@ -153,7 +153,7 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         project_root=tmp_path,
         execution_profile="linux-prod",
         tool_backend="real",
-        planner_backend="mock",
+        planner_backend="openai_sdk",
         microscopic_backend="openai_sdk",
         microscopic_base_url="http://34.13.73.248:3888/v1",
         microscopic_model="gpt-4.1-mini",

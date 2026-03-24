@@ -21,7 +21,7 @@ from aie_mas.tools.amesp import (
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
-from aie_mas.tools.verifier import MockVerifierEvidenceTool
+from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
 
 
 S0_AOP_TEXT = """
@@ -545,7 +545,6 @@ def test_real_tool_backend_failure_does_not_break_workflow(
         user_query="Assess the likely AIE mechanism for this molecule.",
         execution_profile="local-dev",
         tool_backend="real",
-        planner_backend="mock",
         data_dir=tmp_path / "data",
         memory_dir=tmp_path / "memory",
         log_dir=tmp_path / "log",

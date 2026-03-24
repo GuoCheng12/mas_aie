@@ -60,6 +60,7 @@ class WorkingMemoryManager:
             planner_task_instruction=state.last_planner_decision.task_instruction,
             planner_agent_task_instructions=dict(state.last_planner_decision.agent_task_instructions),
             hypothesis_uncertainty_note=state.last_planner_decision.hypothesis_uncertainty_note,
+            final_hypothesis_rationale=state.last_planner_decision.final_hypothesis_rationale,
             capability_assessment=state.last_planner_decision.capability_assessment,
             stagnation_assessment=state.last_planner_decision.stagnation_assessment,
             contraction_reason=state.last_planner_decision.contraction_reason,

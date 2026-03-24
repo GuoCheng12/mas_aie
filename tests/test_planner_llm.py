@@ -213,9 +213,9 @@ def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
             """```json
             {
               "hypothesis_pool": [],
-              "current_hypothesis": "mock",
+              "current_hypothesis": "placeholder",
               "confidence": 0.5,
-              "diagnosis": "mock",
+              "diagnosis": "placeholder diagnosis",
               "action": "macro_and_microscopic"
             }
             ```"""
@@ -230,7 +230,7 @@ def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
         schema_name="planner_initial_response",
     )
 
-    assert parsed.current_hypothesis == "mock"
+    assert parsed.current_hypothesis == "placeholder"
 
 
 def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path: Path) -> None:
@@ -368,9 +368,9 @@ def test_workflow_stores_planner_raw_and_normalized_responses(tmp_path: Path) ->
     config = AieMasConfig(project_root=tmp_path, execution_profile="local-dev", prompts_dir=PROMPTS_DIR)
     workflow = AieMasWorkflow(config)
     decision = PlannerDecision(
-        diagnosis="mock diagnosis",
+        diagnosis="placeholder diagnosis",
         action="macro_and_microscopic",
-        current_hypothesis="mock hypothesis",
+        current_hypothesis="placeholder hypothesis",
         confidence=0.55,
         planned_agents=["macro", "microscopic"],
         task_instruction="dispatch",
