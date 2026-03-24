@@ -13,13 +13,14 @@ You will receive:
 - the current working hypothesis
 - a natural-language task instruction from the Planner
 - recent round context
-- the current available structure / 3D-input status
+- the shared prepared structure context or current available structure / 3D-input status
 - the current runtime / capability context
 
 Current implementation boundary:
 - Only Amesp baseline workflow is available as the real execution path.
 - The baseline workflow is limited to:
-  - structure reuse or SMILES-to-3D preparation
+  - shared prepared structure reuse first
+  - compatibility-path structure reuse or SMILES-to-3D preparation only when fallback is explicitly allowed
   - low-cost S0 optimization using Amesp aTB
   - bounded S1 vertical excitation analysis
 - Baseline-first policy:

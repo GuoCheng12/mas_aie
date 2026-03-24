@@ -9,6 +9,9 @@ PendingAgent = Literal["macro", "microscopic", "verifier"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_vertical_excitation"]
 MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
+MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
+MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
+SharedStructureStatus = Literal["missing", "ready", "failed"]
 WorkflowProgressPhase = Literal["start", "probe", "end"]
 
 
@@ -137,6 +140,51 @@ class MicroscopicExecutionPlan(BaseModel):
     failure_reporting: str
 
 
+class SharedStructureContext(BaseModel):
+    input_smiles: str
+    canonical_smiles: str
+    charge: int
+    multiplicity: int
+    atom_count: int
+    conformer_count: int
+    selected_conformer_id: int
+    prepared_xyz_path: str
+    prepared_sdf_path: str
+    summary_path: str
+    rotatable_bond_count: int
+    aromatic_ring_count: int
+    ring_system_count: int
+    hetero_atom_count: int
+    branch_point_count: int
+    donor_acceptor_partition_proxy: float
+    planarity_proxy: float
+    compactness_proxy: float
+    torsion_candidate_count: int
+    principal_span_proxy: float
+    conformer_dispersion_proxy: float
+
+
+class MacroExecutionStep(BaseModel):
+    step_id: str
+    step_type: MacroPlanStepType
+    description: str
+    input_source: str
+    expected_outputs: list[str] = Field(default_factory=list)
+
+
+class MacroExecutionPlan(BaseModel):
+    plan_version: str = "macro_context_v1"
+    local_goal: str
+    requested_deliverables: list[str] = Field(default_factory=list)
+    structure_source: MacroStructureSource
+    focus_areas: list[str] = Field(default_factory=list)
+    supported_scope: list[str] = Field(default_factory=list)
+    unsupported_requests: list[str] = Field(default_factory=list)
+    steps: list[MacroExecutionStep] = Field(default_factory=list)
+    expected_outputs: list[str] = Field(default_factory=list)
+    failure_reporting: str
+
+
 class CaseMemoryEntry(BaseModel):
     case_id: Optional[str] = None
     smiles: str
@@ -201,6 +249,9 @@ class AieMasState(BaseModel):
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
     next_microscopic_task: Optional[MicroscopicTaskSpec] = None
     last_microscopic_task: Optional[MicroscopicTaskSpec] = None
+    shared_structure_status: SharedStructureStatus = "missing"
+    shared_structure_context: Optional[SharedStructureContext] = None
+    shared_structure_error: Optional[dict[str, Any]] = None
 
     case_memory_hits: list[CaseMemoryEntry] = Field(default_factory=list)
     strategy_memory_hits: list[StrategyMemoryEntry] = Field(default_factory=list)

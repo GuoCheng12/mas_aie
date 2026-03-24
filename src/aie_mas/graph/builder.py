@@ -3,8 +3,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Callable, Literal, Optional
 
+from aie_mas.agents.macro import MacroAgent
 from aie_mas.agents.planner import PlannerAgent
-from aie_mas.agents.result_agents import MacroAgent, MicroscopicAgent, VerifierAgent
+from aie_mas.agents.result_agents import MicroscopicAgent, VerifierAgent
 from aie_mas.compat.langgraph import END, StateGraph
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
@@ -32,7 +33,8 @@ class AieMasWorkflow:
         self.prompts = PromptRepository(self.config.prompts_dir)
         self.planner = PlannerAgent(self.prompts, config=self.config)
         toolset = build_toolset(self.config)
-        self.macro_agent = MacroAgent(tool=toolset.macro_tool, prompts=self.prompts)
+        self.shared_structure_tool = toolset.shared_structure_tool
+        self.macro_agent = MacroAgent(tool=toolset.macro_tool, prompts=self.prompts, config=self.config)
         self.microscopic_agent = MicroscopicAgent(
             s0_tool=toolset.s0_tool,
             s1_tool=toolset.s1_tool,
@@ -54,6 +56,10 @@ class AieMasWorkflow:
     def build(self):
         graph = StateGraph(AieMasState)
         graph.add_node("ingest_user_query", self._with_progress("ingest_user_query", self.ingest_user_query))
+        graph.add_node(
+            "prepare_shared_structure_context",
+            self._with_progress("prepare_shared_structure_context", self.prepare_shared_structure_context),
+        )
         graph.add_node("planner_initial", self._with_progress("planner_initial", self.planner_initial))
         graph.add_node("run_macro", self._with_progress("run_macro", self.run_macro))
         graph.add_node("run_microscopic", self._with_progress("run_microscopic", self.run_microscopic))
@@ -74,7 +80,8 @@ class AieMasWorkflow:
         graph.add_node("final_output", self._with_progress("final_output", self.final_output))
 
         graph.set_entry_point("ingest_user_query")
-        graph.add_edge("ingest_user_query", "planner_initial")
+        graph.add_edge("ingest_user_query", "prepare_shared_structure_context")
+        graph.add_edge("prepare_shared_structure_context", "planner_initial")
         graph.add_edge("planner_initial", "run_macro")
         graph.add_edge("run_microscopic", "planner_diagnosis")
         graph.add_edge("planner_diagnosis", "update_working_memory")
@@ -133,7 +140,16 @@ class AieMasWorkflow:
         state.last_planner_decision = decision
         state.planner_diagnosis_history.append(decision.diagnosis)
         state.planner_action_history.append(decision.action)
-        state.latest_evidence_summary = "Initial planning used only the user query and SMILES."
+        if state.shared_structure_status == "ready" and state.shared_structure_context is not None:
+            state.latest_evidence_summary = (
+                "Initial planning used the user query, SMILES, and shared 3D structure context."
+            )
+        elif state.shared_structure_status == "failed":
+            state.latest_evidence_summary = (
+                "Initial planning used the user query and SMILES after shared 3D structure preparation failed."
+            )
+        else:
+            state.latest_evidence_summary = "Initial planning used only the user query and SMILES."
         state.latest_main_gap = "Internal macro and microscopic evidence are both missing."
         state.latest_conflict_status = "none"
         state.latest_hypothesis_uncertainty_note = decision.hypothesis_uncertainty_note
@@ -153,6 +169,27 @@ class AieMasWorkflow:
         )
         return state
 
+    def prepare_shared_structure_context(self, state: AieMasState) -> AieMasState:
+        case_id = state.case_id or "ad_hoc_case"
+        workdir = self.config.tools_work_dir / "shared_structure" / case_id
+        try:
+            context = self.shared_structure_tool.invoke(
+                smiles=state.smiles,
+                label=case_id,
+                workdir=workdir,
+            )
+        except Exception as exc:
+            error_payload = exc.to_payload() if hasattr(exc, "to_payload") else {"message": str(exc)}
+            state.shared_structure_status = "failed"
+            state.shared_structure_context = None
+            state.shared_structure_error = error_payload
+            return state
+
+        state.shared_structure_status = "ready"
+        state.shared_structure_context = context
+        state.shared_structure_error = None
+        return state
+
     def run_macro(self, state: AieMasState) -> AieMasState:
         task_instruction = state.pending_agent_instructions.get(
             "macro",
@@ -162,6 +199,10 @@ class AieMasWorkflow:
             smiles=state.smiles,
             task_received=task_instruction,
             current_hypothesis=state.current_hypothesis or "unknown",
+            recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
+            shared_structure_context=state.shared_structure_context,
+            case_id=state.case_id,
+            round_index=state.round_idx + 1,
         )
         state.macro_reports.append(report)
         state.active_round_reports.append(report)
@@ -183,11 +224,13 @@ class AieMasWorkflow:
             task_spec=task_spec,
             current_hypothesis=state.current_hypothesis or "unknown",
             recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
-            available_artifacts=(
-                dict(state.microscopic_reports[-1].generated_artifacts)
-                if state.microscopic_reports
-                else {}
-            ),
+            available_artifacts={
+                **(dict(state.microscopic_reports[-1].generated_artifacts) if state.microscopic_reports else {}),
+                **self._shared_structure_artifacts(state),
+            },
+            shared_structure_context=state.shared_structure_context,
+            shared_structure_status=state.shared_structure_status,
+            allow_internal_structure_fallback=False,
             case_id=state.case_id,
             round_index=state.round_idx + 1,
         )
@@ -377,6 +420,7 @@ class AieMasWorkflow:
         mapping = {
             "ingest_user_query": "system",
             "planner_initial": "planner",
+            "prepare_shared_structure_context": "structure",
             "planner_diagnosis": "planner",
             "planner_reweight_or_finalize": "planner",
             "run_macro": "macro",
@@ -405,12 +449,24 @@ class AieMasWorkflow:
                     if state.next_microscopic_task
                     else None
                 )
+            elif node_name == "prepare_shared_structure_context":
+                details["smiles"] = state.smiles
             elif node_name == "run_verifier":
                 details["task_instruction"] = state.pending_agent_instructions.get("verifier")
             elif node_name.startswith("planner") and state.current_hypothesis:
                 details["current_hypothesis"] = state.current_hypothesis
             return details
 
+        if node_name == "prepare_shared_structure_context":
+            return {
+                "shared_structure_status": state.shared_structure_status,
+                "shared_structure_context": (
+                    state.shared_structure_context.model_dump(mode="json")
+                    if state.shared_structure_context is not None
+                    else None
+                ),
+                "shared_structure_error": state.shared_structure_error,
+            }
         if node_name in {"planner_initial", "planner_diagnosis", "planner_reweight_or_finalize"}:
             if state.last_planner_decision is None:
                 return {}
@@ -459,6 +515,15 @@ class AieMasWorkflow:
             "result_summary": report.result_summary,
             "remaining_local_uncertainty": report.remaining_local_uncertainty,
             "generated_artifacts": dict(report.generated_artifacts),
+        }
+
+    def _shared_structure_artifacts(self, state: AieMasState) -> dict[str, Any]:
+        if state.shared_structure_context is None:
+            return {}
+        return {
+            "prepared_xyz_path": state.shared_structure_context.prepared_xyz_path,
+            "prepared_sdf_path": state.shared_structure_context.prepared_sdf_path,
+            "prepared_summary_path": state.shared_structure_context.summary_path,
         }
 
 

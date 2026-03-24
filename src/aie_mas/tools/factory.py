@@ -10,11 +10,13 @@ from aie_mas.tools.microscopic import (
     MockS1OptimizationTool,
     MockTargetedMicroscopicTool,
 )
+from aie_mas.tools.shared_structure import SharedStructurePrepTool
 from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
 
 @dataclass
 class ToolSet:
+    shared_structure_tool: SharedStructurePrepTool
     macro_tool: MockMacroStructureTool
     s0_tool: MockS0OptimizationTool
     s1_tool: MockS1OptimizationTool
@@ -26,6 +28,7 @@ class ToolSet:
 def build_toolset(config: AieMasConfig) -> ToolSet:
     if config.tool_backend == "real":
         return ToolSet(
+            shared_structure_tool=SharedStructurePrepTool(),
             macro_tool=MockMacroStructureTool(),
             s0_tool=MockS0OptimizationTool(),
             s1_tool=MockS1OptimizationTool(),
@@ -43,6 +46,7 @@ def build_toolset(config: AieMasConfig) -> ToolSet:
         )
 
     return ToolSet(
+        shared_structure_tool=SharedStructurePrepTool(),
         macro_tool=MockMacroStructureTool(),
         s0_tool=MockS0OptimizationTool(),
         s1_tool=MockS1OptimizationTool(),

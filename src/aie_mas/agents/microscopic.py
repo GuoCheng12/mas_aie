@@ -13,6 +13,8 @@ from aie_mas.graph.state import (
     MicroscopicExecutionPlan,
     MicroscopicExecutionStep,
     MicroscopicTaskSpec,
+    SharedStructureContext,
+    SharedStructureStatus,
     WorkflowProgressEvent,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
@@ -185,6 +187,9 @@ class MicroscopicAgent:
         *,
         recent_rounds_context: Optional[list[dict[str, object]]] = None,
         available_artifacts: Optional[dict[str, Any]] = None,
+        shared_structure_context: Optional[SharedStructureContext] = None,
+        shared_structure_status: SharedStructureStatus = "missing",
+        allow_internal_structure_fallback: bool = True,
         case_id: Optional[str] = None,
         round_index: int = 1,
     ) -> AgentReport:
@@ -216,6 +221,7 @@ class MicroscopicAgent:
             task_spec=task_spec,
             recent_rounds_context=recent_rounds_context,
             available_artifacts=available_artifacts,
+            shared_structure_context=shared_structure_context,
         )
         rendered_prompt = self._prompts.render("microscopic_reasoning", reasoning_payload)
         reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
@@ -237,6 +243,7 @@ class MicroscopicAgent:
             task_received=task_received,
             task_spec=task_spec,
             available_artifacts=available_artifacts,
+            shared_structure_context=shared_structure_context,
             reasoning=reasoning,
         )
         self._emit_probe(
@@ -248,6 +255,21 @@ class MicroscopicAgent:
             details=plan.model_dump(mode="json"),
         )
 
+        if (
+            self._amesp_tool is not None
+            and not allow_internal_structure_fallback
+            and shared_structure_context is None
+            and not self._has_reusable_structure(available_artifacts)
+        ):
+            return self._shared_structure_unavailable_report(
+                task_received=task_received,
+                task_spec=task_spec,
+                current_hypothesis=current_hypothesis,
+                reasoning=reasoning,
+                plan=plan,
+                shared_structure_status=shared_structure_status,
+            )
+
         if self._amesp_tool is not None:
             return self._run_real(
                 smiles=smiles,
@@ -258,6 +280,7 @@ class MicroscopicAgent:
                 plan=plan,
                 recent_rounds_context=recent_rounds_context,
                 available_artifacts=available_artifacts,
+                shared_structure_context=shared_structure_context,
                 case_id=resolved_case_id,
                 round_index=round_index,
             )
@@ -281,6 +304,7 @@ class MicroscopicAgent:
         plan: MicroscopicExecutionPlan,
         recent_rounds_context: list[dict[str, object]],
         available_artifacts: dict[str, Any],
+        shared_structure_context: Optional[SharedStructureContext],
         case_id: str,
         round_index: int,
     ) -> AgentReport:
@@ -290,7 +314,11 @@ class MicroscopicAgent:
             "requested_focus": ", ".join(plan.requested_deliverables),
             "recent_context_note": self._recent_context_note(recent_rounds_context),
             "capability_scope": self._capability_scope_text(),
-            "structure_source_note": self._structure_source_note(plan.structure_source, available_artifacts),
+            "structure_source_note": self._structure_source_note(
+                plan.structure_source,
+                available_artifacts,
+                shared_structure_context=shared_structure_context,
+            ),
             "unsupported_requests_note": self._unsupported_requests_note(plan.unsupported_requests),
             "reasoning_summary_text": reasoning.reasoning_summary,
             "capability_limit_note": reasoning.capability_limit_note,
@@ -309,9 +337,12 @@ class MicroscopicAgent:
         workdir = self._resolve_workdir(case_id=case_id, round_index=round_index)
         tool_calls = [
             "microscopic_reasoning(task_instruction_to_execution_plan)",
-            "structure_preparation(smiles_to_3d or reusable prepared structure)",
             f"{self._amesp_tool.name}.execute(plan_version='{plan.plan_version}', label='{label}')",
         ]
+        if plan.structure_source == "existing_prepared_structure":
+            tool_calls.insert(1, "shared_structure_context(reuse_prepared_3d_structure)")
+        else:
+            tool_calls.insert(1, "structure_preparation(smiles_to_3d or reusable prepared structure)")
 
         try:
             run_result = self._amesp_tool.execute(
@@ -510,6 +541,76 @@ class MicroscopicAgent:
             planner_readable_report=rendered["planner_readable_report"],
         )
 
+    def _shared_structure_unavailable_report(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        current_hypothesis: str,
+        reasoning: MicroscopicReasoningResponse,
+        plan: MicroscopicExecutionPlan,
+        shared_structure_status: SharedStructureStatus,
+    ) -> AgentReport:
+        result_summary_text = (
+            "Microscopic execution returned status=partial because shared structure context was not available and "
+            "the normal graph path does not allow private structure preparation."
+        )
+        render_payload = {
+            "task_received": task_received,
+            "current_hypothesis": current_hypothesis,
+            "requested_focus": ", ".join(plan.requested_deliverables),
+            "recent_context_note": "No additional microscopic runtime step was executed.",
+            "capability_scope": self._capability_scope_text(),
+            "structure_source_note": (
+                f"Shared structure status is '{shared_structure_status}', so the normal microscopic path stopped before tool execution."
+            ),
+            "unsupported_requests_note": self._unsupported_requests_note(plan.unsupported_requests),
+            "reasoning_summary_text": reasoning.reasoning_summary,
+            "capability_limit_note": reasoning.capability_limit_note,
+            "failure_policy": reasoning.failure_policy,
+            "plan_steps": self._plan_steps_text(plan),
+            "expected_outputs_text": ", ".join(plan.expected_outputs),
+            "result_summary_text": result_summary_text,
+            "local_uncertainty_detail": (
+                "shared prepared structure context is unavailable in the normal graph path, so no bounded microscopic runtime "
+                "result could be collected without violating the shared-structure-first policy."
+            ),
+        }
+        rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
+        return AgentReport(
+            agent_name="microscopic",
+            task_received=task_received,
+            task_understanding=reasoning.task_understanding,
+            reasoning_summary=rendered["reasoning_summary"],
+            execution_plan=rendered["execution_plan"],
+            result_summary=rendered["result_summary"],
+            remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
+            tool_calls=["microscopic_reasoning(task_instruction_to_execution_plan)"],
+            raw_results={
+                "reasoning_output": reasoning.model_dump(mode="json"),
+                "shared_structure_status": shared_structure_status,
+            },
+            structured_results={
+                "backend": "amesp",
+                "reasoning_backend": self._config.microscopic_backend,
+                "task_mode": task_spec.mode,
+                "task_label": task_spec.task_label,
+                "task_objective": task_spec.objective,
+                "reasoning": reasoning.model_dump(mode="json"),
+                "execution_plan": plan.model_dump(mode="json"),
+                "error": {
+                    "code": "shared_structure_unavailable",
+                    "message": result_summary_text,
+                    "shared_structure_status": shared_structure_status,
+                },
+                "supported_scope": plan.supported_scope,
+                "unsupported_requests": plan.unsupported_requests,
+            },
+            generated_artifacts={},
+            status="partial",
+            planner_readable_report=rendered["planner_readable_report"],
+        )
+
     def _emit_probe(
         self,
         *,
@@ -554,6 +655,7 @@ class MicroscopicAgent:
         task_spec: MicroscopicTaskSpec,
         recent_rounds_context: list[dict[str, object]],
         available_artifacts: dict[str, Any],
+        shared_structure_context: Optional[SharedStructureContext],
     ) -> dict[str, Any]:
         requested_deliverables = self._requested_deliverables(task_instruction)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
@@ -564,7 +666,15 @@ class MicroscopicAgent:
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "recent_rounds_context": recent_rounds_context,
-            "available_structure_context": self._available_structure_context(available_artifacts),
+            "available_structure_context": self._available_structure_context(
+                available_artifacts,
+                shared_structure_context=shared_structure_context,
+            ),
+            "shared_structure_context": (
+                shared_structure_context.model_dump(mode="json")
+                if shared_structure_context is not None
+                else None
+            ),
             "runtime_context": self._runtime_context_summary(),
         }
 
@@ -574,6 +684,7 @@ class MicroscopicAgent:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         available_artifacts: dict[str, Any],
+        shared_structure_context: Optional[SharedStructureContext],
         reasoning: MicroscopicReasoningResponse,
     ) -> MicroscopicExecutionPlan:
         requested_deliverables = (
@@ -582,10 +693,13 @@ class MicroscopicAgent:
             else self._requested_deliverables(task_received)
         )
         unsupported_requests = list(reasoning.execution_plan.unsupported_requests)
+        structure_is_reusable = bool(shared_structure_context is not None) or self._has_reusable_structure(
+            available_artifacts
+        )
         structure_source = (
             "existing_prepared_structure"
             if reasoning.execution_plan.structure_strategy == "reuse_if_available_else_prepare_from_smiles"
-            and self._has_reusable_structure(available_artifacts)
+            and structure_is_reusable
             else "prepared_from_smiles"
         )
         step_sequence = list(reasoning.execution_plan.step_sequence) or [
@@ -593,6 +707,8 @@ class MicroscopicAgent:
             "s0_optimization",
             "s1_vertical_excitation",
         ]
+        if structure_source == "existing_prepared_structure":
+            step_sequence = [step for step in step_sequence if step != "structure_prep"]
         steps = [self._build_step(step_type, structure_source) for step_type in step_sequence]
         expected_outputs = list(reasoning.expected_outputs) or [
             "S0 optimized geometry",
@@ -677,7 +793,12 @@ class MicroscopicAgent:
             expected_outputs=["excited-state energies", "oscillator strengths"],
         )
 
-    def _available_structure_context(self, available_artifacts: dict[str, Any]) -> dict[str, Any]:
+    def _available_structure_context(
+        self,
+        available_artifacts: dict[str, Any],
+        *,
+        shared_structure_context: Optional[SharedStructureContext],
+    ) -> dict[str, Any]:
         context = {
             "has_prepared_structure": False,
             "prepared_xyz_path": None,
@@ -685,7 +806,17 @@ class MicroscopicAgent:
             "prepared_atom_count": None,
             "prepared_charge": None,
             "prepared_multiplicity": None,
+            "source": "missing",
         }
+        if shared_structure_context is not None:
+            context["has_prepared_structure"] = True
+            context["prepared_xyz_path"] = shared_structure_context.prepared_xyz_path
+            context["prepared_summary_path"] = shared_structure_context.summary_path
+            context["prepared_atom_count"] = shared_structure_context.atom_count
+            context["prepared_charge"] = shared_structure_context.charge
+            context["prepared_multiplicity"] = shared_structure_context.multiplicity
+            context["source"] = "shared_structure_context"
+            return context
         summary_path = available_artifacts.get("prepared_summary_path")
         xyz_path = available_artifacts.get("prepared_xyz_path")
         if not summary_path or not xyz_path:
@@ -704,6 +835,7 @@ class MicroscopicAgent:
         context["prepared_atom_count"] = summary_payload.get("atom_count")
         context["prepared_charge"] = summary_payload.get("charge")
         context["prepared_multiplicity"] = summary_payload.get("multiplicity")
+        context["source"] = "available_artifacts"
         return context
 
     def _runtime_context_summary(self) -> dict[str, Any]:
@@ -716,7 +848,8 @@ class MicroscopicAgent:
                 "baseline-first must stay low-cost; do not default to heavy exhaustive DFT geometry optimization for large systems"
             ),
             "supported_scope": [
-                "structure preparation or reuse",
+                "shared prepared structure reuse",
+                "structure preparation or reuse in compatibility mode",
                 "low-cost aTB S0 optimization",
                 "bounded S1 vertical excitation",
             ],
@@ -731,6 +864,9 @@ class MicroscopicAgent:
                 "NAC",
                 "AIMD",
             ],
+            "shared_structure_policy": (
+                "prefer shared prepared structure context; only compatibility paths may fall back to private structure preparation"
+            ),
         }
 
     def _resolve_workdir(self, *, case_id: str, round_index: int) -> Path:
@@ -805,7 +941,14 @@ class MicroscopicAgent:
         self,
         structure_source: str,
         available_artifacts: dict[str, Any],
+        *,
+        shared_structure_context: Optional[SharedStructureContext],
     ) -> str:
+        if structure_source == "existing_prepared_structure" and shared_structure_context is not None:
+            return (
+                "Reuse the shared prepared 3D structure context that is already available for this case at "
+                f"{shared_structure_context.prepared_xyz_path}."
+            )
         if structure_source == "existing_prepared_structure":
             return "Reuse the previously prepared 3D structure artifacts that are already available for this case."
         if available_artifacts.get("prepared_xyz_path"):

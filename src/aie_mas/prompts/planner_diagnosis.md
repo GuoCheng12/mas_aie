@@ -16,6 +16,8 @@ You will be given:
 - working_memory_summary
 - recent_rounds_context
 - recent_capability_context
+- shared_structure_status
+- shared_structure_context
 - latest_macro_report (optional)
 - latest_microscopic_report (optional)
 - latest_verifier_report (optional)
@@ -50,6 +52,7 @@ Important rules:
 - Do not switch hypothesis in this stage unless the system is in a verifier-after stage.
 - Macro, Microscopic, and Verifier reports are local result reports only; they do not contain the final interpretation.
 - Use recent_rounds_context and recent_capability_context to detect repeated unchanged gaps, repeated unresolved local uncertainty, and repeated low-information loops.
+- Use shared_structure_status and shared_structure_context to understand whether downstream follow-up can reuse existing 3D structure context or must degrade to fallback behavior.
 - If confidence is already high enough for a temporary conclusion, the next action must be Verifier.
 - If the current rounds indicate capability-limited stagnation or low information gain, you may trigger Verifier now to break the deadlock.
 - If internal evidence is still informative, choose the most informative next step between Macro or Microscopic.
@@ -95,6 +98,7 @@ task_instruction rules:
 - required when action is macro, microscopic, or verifier
 - should describe only that specialized agent's local task
 - must stay within current specialized-agent capability
+- should mention shared prepared structure reuse when action is macro or microscopic and the shared structure is available
 - if action is microscopic, the instruction must explicitly respect low-cost baseline-first execution
 - must not ask the agent to decide the global mechanism
 - must not ask the agent to choose the next system-level action

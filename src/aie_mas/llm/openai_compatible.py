@@ -153,3 +153,16 @@ class OpenAICompatibleMicroscopicClient(OpenAICompatibleJsonSchemaClient):
             client=client,
             backend_label="microscopic_backend='openai_sdk'",
         )
+
+
+class OpenAICompatibleMacroClient(OpenAICompatibleJsonSchemaClient):
+    def __init__(self, config: AieMasConfig, client: Any | None = None) -> None:
+        super().__init__(
+            base_url=str(config.macro_base_url),
+            api_key=config.macro_api_key,
+            model=str(config.macro_model),
+            temperature=float(config.macro_temperature),
+            timeout_seconds=float(config.macro_timeout_seconds),
+            client=client,
+            backend_label="macro_backend='openai_sdk'",
+        )

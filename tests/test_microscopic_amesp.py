@@ -25,6 +25,7 @@ from aie_mas.tools.microscopic import (
     MockS1OptimizationTool,
     MockTargetedMicroscopicTool,
 )
+from aie_mas.tools.shared_structure import SharedStructurePrepTool
 from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
 
@@ -528,6 +529,7 @@ def test_real_tool_backend_failure_does_not_break_workflow(tmp_path: Path, monke
     def fake_build_toolset(config):
         del config
         return ToolSet(
+            shared_structure_tool=SharedStructurePrepTool(structure_preparer=_fake_structure_preparer),
             macro_tool=MockMacroStructureTool(),
             s0_tool=MockS0OptimizationTool(),
             s1_tool=MockS1OptimizationTool(),

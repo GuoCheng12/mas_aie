@@ -77,12 +77,13 @@ def _default_initial_agent_task_instructions(
     return {
         "macro": (
             f"Assess macro-level structural evidence relevant to the current working hypothesis "
-            f"'{current_hypothesis}'. Summarize low-cost structural indicators only, and stay within "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure context when available, summarize low-cost "
+            f"structural indicators only, and stay within "
             f"current macro capability. Hypothesis uncertainty to keep in mind: {hypothesis_uncertainty_note}"
         ),
         "microscopic": (
             f"Run the first-round low-cost S0/S1 microscopic baseline task for the current working hypothesis "
-            f"'{current_hypothesis}'. Prioritize semi-empirical or otherwise low-cost bounded evidence collection, "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure context when available. Prioritize semi-empirical or otherwise low-cost bounded evidence collection, "
             f"not heavy exhaustive geometry optimization. Report local microscopic results only, and do not attempt "
             f"mechanism discrimination beyond current microscopic capability. Capability note: {capability_assessment}"
         ),
@@ -97,10 +98,12 @@ def _default_follow_up_task_instruction(
     main_gap = payload.get("main_gap") or "clarify the unresolved signal."
     capability_assessment = payload.get("capability_assessment") or "Stay within current specialized-agent capability."
     contraction_reason = payload.get("contraction_reason") or ""
+    shared_structure_note = payload.get("shared_structure_note") or ""
     if action == "macro":
         return (
             f"Collect additional macro-level structural evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
+            f"{shared_structure_note} "
             f"Only use low-cost structural proxies; do not attempt excited-state adjudication. "
             f"Capability note: {capability_assessment}"
         )
@@ -108,6 +111,7 @@ def _default_follow_up_task_instruction(
         return (
             f"Collect additional microscopic evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
+            f"{shared_structure_note} "
             f"Keep the task low-cost and bounded to current microscopic capability. "
             f"{contraction_reason or capability_assessment}"
         )
@@ -243,11 +247,17 @@ class MockPlannerBackend:
             hypothesis_uncertainty_note=hypothesis_uncertainty_note,
             capability_assessment=capability_assessment,
         )
+        shared_structure_status = payload.get("shared_structure_status", "missing")
+        shared_structure_note = {
+            "ready": "A shared prepared 3D structure context is already available for the first round.",
+            "failed": "Shared 3D structure preparation failed, so specialized agents may need to degrade to fallback behavior.",
+        }.get(shared_structure_status, "Shared 3D structure context is not yet available.")
         diagnosis = (
             f"Current task: assess the likely emission mechanism for SMILES {payload['smiles']}. "
             f"The leading working hypothesis is {current_hypothesis}. "
             f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
-            "This remains preliminary because only the user query and raw SMILES are available so far. "
+            f"{shared_structure_note} "
+            "This remains preliminary because only the initial task context and bounded structural inputs are available so far. "
             "The first round should therefore collect both macro structural evidence and low-cost microscopic S0/S1 "
             f"baseline evidence before any external verification or finalization. Capability note: "
             f"{capability_assessment}"
@@ -303,6 +313,10 @@ class MockPlannerBackend:
             for entry in recent_rounds_context
             if str(entry.get("action_taken") or "").strip()
         ]
+        shared_structure_note = {
+            "ready": "Reuse the shared prepared structure context that is already available for this case.",
+            "failed": "Shared 3D structure preparation previously failed, so any follow-up must stay compatible with fallback behavior.",
+        }.get(payload.get("shared_structure_status"), "")
         recent_gap_repetition_detected = (
             len(recent_gap_values) >= 2 and len(set(recent_gap_values[-2:])) == 1
         )
@@ -484,6 +498,7 @@ class MockPlannerBackend:
                 "main_gap": main_gap,
                 "capability_assessment": capability_assessment,
                 "contraction_reason": contraction_reason,
+                "shared_structure_note": shared_structure_note,
             },
         )
         agent_task_instructions = (
@@ -1141,7 +1156,14 @@ class PlannerAgent:
         payload = {
             "user_query": state.user_query,
             "smiles": state.smiles,
+            "shared_structure_status": state.shared_structure_status,
+            "shared_structure_context": (
+                state.shared_structure_context.model_dump(mode="json")
+                if state.shared_structure_context is not None
+                else None
+            ),
             "runtime_context": {
+                **self._config.runtime_context(),
                 "microscopic_baseline_policy": (
                     "first-round microscopic work must stay low-cost and bounded; do not default to heavy exhaustive "
                     "DFT geometry optimization for large systems"
@@ -1173,6 +1195,12 @@ class PlannerAgent:
             "latest_microscopic_report": latest_microscopic,
             "latest_verifier_report": latest_verifier,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
+            "shared_structure_status": state.shared_structure_status,
+            "shared_structure_context": (
+                state.shared_structure_context.model_dump(mode="json")
+                if state.shared_structure_context is not None
+                else None
+            ),
         }
         rendered_prompt = self._prompts.render("planner_diagnosis", payload)
         return self._backend.plan_diagnosis(rendered_prompt, payload)

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from aie_mas.agents.planner import PlannerAgent, PlannerInitialResponse
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import AieMasState, WorkingMemoryEntry
+from aie_mas.graph.state import AieMasState, SharedStructureContext, WorkingMemoryEntry
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
 from aie_mas.utils.prompts import PromptRepository
 
@@ -100,6 +100,8 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "runtime_context" in prompt_payload
+    assert "shared_structure_status" in prompt_payload
+    assert "shared_structure_context" in prompt_payload
     assert "low-cost" in prompt_payload.lower()
 
 
@@ -272,6 +274,30 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
         smiles="C1=CC=CC=C1",
         current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
         confidence=0.52,
+        shared_structure_status="ready",
+        shared_structure_context=SharedStructureContext(
+            input_smiles="C1=CC=CC=C1",
+            canonical_smiles="c1ccccc1",
+            charge=0,
+            multiplicity=1,
+            atom_count=12,
+            conformer_count=3,
+            selected_conformer_id=1,
+            prepared_xyz_path=str(tmp_path / "prepared.xyz"),
+            prepared_sdf_path=str(tmp_path / "prepared.sdf"),
+            summary_path=str(tmp_path / "summary.json"),
+            rotatable_bond_count=2,
+            aromatic_ring_count=2,
+            ring_system_count=1,
+            hetero_atom_count=0,
+            branch_point_count=2,
+            donor_acceptor_partition_proxy=0.0,
+            planarity_proxy=0.8,
+            compactness_proxy=0.4,
+            torsion_candidate_count=2,
+            principal_span_proxy=7.2,
+            conformer_dispersion_proxy=0.5,
+        ),
         macro_reports=[
             {
                 "agent_name": "macro",
@@ -318,6 +344,8 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
 
     assert result["decision"].action == "microscopic"
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "shared_structure_status" in message_payload
+    assert "shared_structure_context" in message_payload
     assert "recent_rounds_context" in message_payload
     assert "recent_capability_context" in message_payload
     assert '"action_taken": "macro, microscopic"' in message_payload
