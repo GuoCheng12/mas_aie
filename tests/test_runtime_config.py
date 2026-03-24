@@ -18,6 +18,10 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_MACRO_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_MACRO_MODEL", "gpt-4.1-mini")
+    monkeypatch.setenv("AIE_MAS_VERIFIER_BACKEND", "openai_sdk")
+    monkeypatch.setenv("AIE_MAS_VERIFIER_BASE_URL", "https://openrouter.ai/api/v1")
+    monkeypatch.setenv("AIE_MAS_VERIFIER_MODEL", "anthropic/claude-3.5-sonnet")
+    monkeypatch.setenv("AIE_MAS_VERIFIER_API_KEY", "test-verifier-key")
     monkeypatch.setenv("AIE_MAS_MICROSCOPIC_BACKEND", "openai_sdk")
     monkeypatch.setenv("AIE_MAS_MICROSCOPIC_MODEL", "gpt-4.1-mini")
     monkeypatch.setenv("AIE_MAS_AMESP_NPARA", "22")
@@ -46,6 +50,10 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.macro_backend == "openai_sdk"
     assert config.macro_model == "gpt-4.1-mini"
     assert config.macro_base_url == "http://34.13.73.248:3888/v1"
+    assert config.verifier_backend == "openai_sdk"
+    assert config.verifier_base_url == "https://openrouter.ai/api/v1"
+    assert config.verifier_model == "anthropic/claude-3.5-sonnet"
+    assert config.verifier_api_key == "test-verifier-key"
     assert config.microscopic_base_url == "http://34.13.73.248:3888/v1"
     assert config.microscopic_model == "gpt-4.1-mini"
     assert config.amesp_npara == 22
@@ -125,6 +133,12 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.macro_model == "gpt-5.2"
     assert local_config.macro_base_url == local_config.planner_base_url
     assert linux_config.macro_base_url == linux_config.planner_base_url
+    assert local_config.verifier_backend == "openai_sdk"
+    assert linux_config.verifier_backend == "openai_sdk"
+    assert local_config.verifier_model == "anthropic/claude-3.5-sonnet"
+    assert linux_config.verifier_model == "anthropic/claude-3.5-sonnet"
+    assert local_config.verifier_base_url == "https://openrouter.ai/api/v1"
+    assert linux_config.verifier_base_url == "https://openrouter.ai/api/v1"
     assert local_config.microscopic_model == "gpt-4.1-mini"
     assert linux_config.microscopic_model == "gpt-4.1-mini"
     assert local_config.microscopic_base_url == local_config.planner_base_url

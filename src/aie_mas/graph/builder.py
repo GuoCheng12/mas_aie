@@ -42,7 +42,7 @@ class AieMasWorkflow:
             config=self.config,
             progress_callback=self.progress_callback,
         )
-        self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool, prompts=self.prompts)
+        self.verifier_agent = VerifierAgent(tool=toolset.verifier_tool, prompts=self.prompts, config=self.config)
         self.working_memory = WorkingMemoryManager()
         self.long_term_memory = (
             LongTermMemoryStore(self.config.memory_dir)
@@ -171,7 +171,7 @@ class AieMasWorkflow:
         case_id = state.case_id or "ad_hoc_case"
         workdir = self.config.tools_work_dir / "shared_structure" / case_id
         try:
-            context = self.shared_structure_tool.invoke(
+            prep_result = self.shared_structure_tool.invoke(
                 smiles=state.smiles,
                 label=case_id,
                 workdir=workdir,
@@ -181,11 +181,20 @@ class AieMasWorkflow:
             state.shared_structure_status = "failed"
             state.shared_structure_context = None
             state.shared_structure_error = error_payload
+            state.molecule_identity_status = "failed"
+            state.molecule_identity_context = None
+            state.molecule_identity_error = {
+                "code": "identity_not_available",
+                "message": "Molecule identity context could not be generated because shared preparation failed.",
+            }
             return state
 
         state.shared_structure_status = "ready"
-        state.shared_structure_context = context
+        state.shared_structure_context = prep_result["shared_structure_context"]  # type: ignore[assignment]
         state.shared_structure_error = None
+        state.molecule_identity_context = prep_result["molecule_identity_context"]  # type: ignore[assignment]
+        state.molecule_identity_status = prep_result["molecule_identity_status"]  # type: ignore[assignment]
+        state.molecule_identity_error = prep_result["molecule_identity_error"]  # type: ignore[assignment]
         return state
 
     def run_macro(self, state: AieMasState) -> AieMasState:
@@ -253,6 +262,10 @@ class AieMasWorkflow:
             smiles=state.smiles,
             current_hypothesis=state.current_hypothesis or "unknown",
             task_received=task_instruction,
+            main_gap=state.latest_main_gap or "Unspecified verifier gap.",
+            molecule_identity_context=state.molecule_identity_context,
+            latest_macro_report=state.macro_reports[-1] if state.macro_reports else None,
+            latest_microscopic_report=state.microscopic_reports[-1] if state.microscopic_reports else None,
         )
         state.verifier_reports.append(report)
         state.active_round_reports.append(report)
@@ -287,6 +300,12 @@ class AieMasWorkflow:
             "capability_assessment": state.latest_capability_assessment,
             "stagnation_assessment": state.latest_stagnation_assessment,
             "contraction_reason": state.latest_contraction_reason,
+            "molecule_identity_status": state.molecule_identity_status,
+            "molecule_identity_context": (
+                state.molecule_identity_context.model_dump(mode="json")
+                if state.molecule_identity_context is not None
+                else None
+            ),
             "working_memory_rounds": len(state.working_memory),
         }
         state.state_snapshot = state.model_dump(mode="json")
@@ -498,7 +517,14 @@ class AieMasWorkflow:
                     if state.shared_structure_context is not None
                     else None
                 ),
+                "molecule_identity_status": state.molecule_identity_status,
+                "molecule_identity_context": (
+                    state.molecule_identity_context.model_dump(mode="json")
+                    if state.molecule_identity_context is not None
+                    else None
+                ),
                 "shared_structure_error": state.shared_structure_error,
+                "molecule_identity_error": state.molecule_identity_error,
             }
         if node_name in {"planner_initial", "planner_diagnosis", "planner_reweight_or_finalize"}:
             if state.last_planner_decision is None:

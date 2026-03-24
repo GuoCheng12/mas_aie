@@ -10,7 +10,12 @@ from aie_mas.agents.macro import MacroReasoningPlanDraft, MacroReasoningResponse
 from aie_mas.agents.microscopic import MicroscopicReasoningPlanDraft, MicroscopicReasoningResponse
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.graph import builder as graph_builder
-from aie_mas.graph.state import HypothesisEntry, PlannerDecision, SharedStructureContext
+from aie_mas.graph.state import (
+    HypothesisEntry,
+    MoleculeIdentityContext,
+    PlannerDecision,
+    SharedStructureContext,
+)
 from aie_mas.tools.amesp import (
     AmespBaselineRunResult,
     AmespExcitedState,
@@ -19,7 +24,6 @@ from aie_mas.tools.amesp import (
 )
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
-from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
 from aie_mas.utils.smiles import extract_smiles_features
 
 
@@ -330,7 +334,7 @@ class TestPlannerBackend:
 class TestSharedStructureTool:
     name = "shared_structure_prep"
 
-    def invoke(self, *, smiles: str, label: str, workdir: Path) -> SharedStructureContext:
+    def invoke(self, *, smiles: str, label: str, workdir: Path) -> dict[str, object]:
         features = extract_smiles_features(smiles)
         workdir.mkdir(parents=True, exist_ok=True)
         xyz_path = workdir / "prepared_structure.xyz"
@@ -344,29 +348,40 @@ class TestSharedStructureTool:
         )
         ring_system_count = max(1, aromatic_ring_count)
         rotatable_bond_count = max(1, features.branch_point_count // 2) if features.branch_point_count else 1
-        return SharedStructureContext(
-            input_smiles=smiles,
-            canonical_smiles=smiles,
-            charge=0,
-            multiplicity=1,
-            atom_count=max(12, features.length // 2),
-            conformer_count=3,
-            selected_conformer_id=1,
-            prepared_xyz_path=str(xyz_path),
-            prepared_sdf_path=str(sdf_path),
-            summary_path=str(summary_path),
-            rotatable_bond_count=rotatable_bond_count,
-            aromatic_ring_count=aromatic_ring_count,
-            ring_system_count=ring_system_count,
-            hetero_atom_count=features.hetero_atom_count,
-            branch_point_count=features.branch_point_count,
-            donor_acceptor_partition_proxy=float(min(1, features.donor_acceptor_proxy)),
-            planarity_proxy=round(min(1.0, max(0.2, features.conjugation_proxy / 10.0)), 6),
-            compactness_proxy=round(max(0.0, 1.0 - min(features.length / 120.0, 1.0)), 6),
-            torsion_candidate_count=rotatable_bond_count,
-            principal_span_proxy=round(min(features.length / 10.0, 20.0), 6),
-            conformer_dispersion_proxy=round(min(1.0, features.flexibility_proxy / 10.0), 6),
-        )
+        return {
+            "shared_structure_context": SharedStructureContext(
+                input_smiles=smiles,
+                canonical_smiles=smiles,
+                charge=0,
+                multiplicity=1,
+                atom_count=max(12, features.length // 2),
+                conformer_count=3,
+                selected_conformer_id=1,
+                prepared_xyz_path=str(xyz_path),
+                prepared_sdf_path=str(sdf_path),
+                summary_path=str(summary_path),
+                rotatable_bond_count=rotatable_bond_count,
+                aromatic_ring_count=aromatic_ring_count,
+                ring_system_count=ring_system_count,
+                hetero_atom_count=features.hetero_atom_count,
+                branch_point_count=features.branch_point_count,
+                donor_acceptor_partition_proxy=float(min(1, features.donor_acceptor_proxy)),
+                planarity_proxy=round(min(1.0, max(0.2, features.conjugation_proxy / 10.0)), 6),
+                compactness_proxy=round(max(0.0, 1.0 - min(features.length / 120.0, 1.0)), 6),
+                torsion_candidate_count=rotatable_bond_count,
+                principal_span_proxy=round(min(features.length / 10.0, 20.0), 6),
+                conformer_dispersion_proxy=round(min(1.0, features.flexibility_proxy / 10.0), 6),
+            ),
+            "molecule_identity_context": MoleculeIdentityContext(
+                input_smiles=smiles,
+                canonical_smiles=smiles,
+                molecular_formula="C10H10",
+                inchi="InChI=1S/test",
+                inchikey="TEST-INCHIKEY",
+            ),
+            "molecule_identity_status": "ready",
+            "molecule_identity_error": None,
+        }
 
 
 class TestAmespTool:
@@ -461,6 +476,53 @@ class TestAmespTool:
         )
 
 
+class TestVerifierTool:
+    name = "verifier_evidence_lookup"
+
+    def invoke(
+        self,
+        *,
+        smiles: str,
+        current_hypothesis: str,
+        task_received: str,
+        main_gap: str,
+        molecule_identity_context: MoleculeIdentityContext | None,
+        latest_macro_report,
+        latest_microscopic_report,
+    ) -> dict[str, Any]:
+        del smiles, task_received, main_gap, molecule_identity_context, latest_macro_report, latest_microscopic_report
+        return {
+            "status": "success",
+            "source_count": 1,
+            "evidence_cards": [
+                {
+                    "card_id": "test-verifier-card",
+                    "source": "test_source",
+                    "title": "Test verifier evidence",
+                    "doi": None,
+                    "url": None,
+                    "observation": (
+                        f"External material in this test fixture discusses the current hypothesis "
+                        f"{current_hypothesis} alongside related AIE context."
+                    ),
+                    "topic_tags": ["restriction"],
+                    "evidence_kind": "external_summary",
+                    "why_relevant": "Test-only verifier evidence card.",
+                    "query_group": "similar_family",
+                    "match_level": "same_family",
+                    "mechanism_claim": None,
+                    "experimental_context": None,
+                }
+            ],
+            "queried_hypothesis": current_hypothesis,
+            "retrieval_note": "Test-only verifier retrieval completed.",
+            "raw_response": {"evidence_cards": 1},
+            "queries_executed": [{"query_group": "similar_family", "query": "test query"}],
+            "query_groups_attempted": ["exact_identity", "similar_family", "mechanistic_discriminator"],
+            "query_groups_with_hits": ["similar_family"],
+        }
+
+
 def _macro_focus_areas(task_instruction: str) -> list[str]:
     lower = task_instruction.lower()
     focus_areas: list[str] = []
@@ -527,7 +589,7 @@ def install_specialized_test_doubles(monkeypatch: pytest.MonkeyPatch) -> Callabl
             return ToolSet(
                 shared_structure_tool=shared_structure_tool or TestSharedStructureTool(),
                 macro_tool=DeterministicMacroStructureTool(),
-                verifier_tool=DeterministicVerifierEvidenceTool(),
+                verifier_tool=TestVerifierTool(),
                 amesp_micro_tool=fake_amesp,
             )
 

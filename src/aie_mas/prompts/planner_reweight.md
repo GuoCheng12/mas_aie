@@ -47,7 +47,7 @@ Important rules:
 - Hypothesis switching is allowed only here, after verifier evidence.
 - Weak verifier conflict should not automatically force a switch.
 - Strong verifier conflict may trigger reweighting.
-- If verifier supports the current hypothesis and the evidence chain is strong enough, you may finalize.
+- If verifier evidence aligns with the current hypothesis and the evidence chain is strong enough, you may finalize.
 - If verifier evidence is insufficient, you may continue refinement, but explain why.
 - Interpret raw verifier evidence cards yourself; do not assume verifier has already labeled them as support or conflict.
 - If the latest internal agent reports were `contracted`, `partial`, or `failed`, treat the missing deliverables as still unresolved rather than as successful completion.
@@ -56,7 +56,7 @@ Important rules:
   - bounded follow-up
   - switch after strong conflict
   - finalize when verifier support is sufficient
-- Verifier is not a tool for exploratory information search. In this stage you already have verifier evidence; use it for interpretation, not for inventing another verifier loop.
+- Verifier is not a tool for exploratory information search. In this stage you already have external evidence cards; use them for interpretation, not for inventing another verifier loop.
 - Do not ask specialized agents to decide the global mechanism or next system action.
 - If a bounded microscopic follow-up is chosen, keep it low-cost and conservative rather than expanding into a heavy exhaustive geometry-optimization agenda.
 

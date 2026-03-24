@@ -456,6 +456,12 @@ class PlannerAgent:
                 if state.shared_structure_context is not None
                 else None
             ),
+            "molecule_identity_status": state.molecule_identity_status,
+            "molecule_identity_context": (
+                state.molecule_identity_context.model_dump(mode="json")
+                if state.molecule_identity_context is not None
+                else None
+            ),
             "runtime_context": {
                 **self._config.runtime_context(),
                 "microscopic_baseline_policy": (
@@ -495,6 +501,12 @@ class PlannerAgent:
                 if state.shared_structure_context is not None
                 else None
             ),
+            "molecule_identity_status": state.molecule_identity_status,
+            "molecule_identity_context": (
+                state.molecule_identity_context.model_dump(mode="json")
+                if state.molecule_identity_context is not None
+                else None
+            ),
         }
         rendered_prompt = self._prompts.render("planner_diagnosis", payload)
         return self._backend.plan_diagnosis(rendered_prompt, payload)
@@ -512,6 +524,12 @@ class PlannerAgent:
             else None,
             "recent_internal_evidence_summary": state.latest_evidence_summary,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
+            "molecule_identity_status": state.molecule_identity_status,
+            "molecule_identity_context": (
+                state.molecule_identity_context.model_dump(mode="json")
+                if state.molecule_identity_context is not None
+                else None
+            ),
         }
         rendered_prompt = self._prompts.render("planner_reweight", payload)
         return self._backend.plan_reweight_or_finalize(rendered_prompt, payload)

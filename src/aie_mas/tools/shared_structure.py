@@ -9,7 +9,7 @@ from aie_mas.chem.structure_prep import (
     StructurePrepRequest,
     prepare_structure_from_smiles,
 )
-from aie_mas.graph.state import SharedStructureContext
+from aie_mas.graph.state import MoleculeIdentityContext, SharedStructureContext
 
 if TYPE_CHECKING:  # pragma: no cover
     from ase import Atoms
@@ -31,7 +31,7 @@ class SharedStructurePrepTool:
         smiles: str,
         label: str,
         workdir: Path,
-    ) -> SharedStructureContext:
+    ) -> dict[str, object]:
         atoms, prepared = self._structure_preparer(
             StructurePrepRequest(
                 smiles=smiles,
@@ -40,7 +40,7 @@ class SharedStructurePrepTool:
             )
         )
         descriptors = _compute_shared_descriptors(smiles=smiles, atoms=atoms, prepared=prepared)
-        return SharedStructureContext(
+        shared_context = SharedStructureContext(
             input_smiles=prepared.input_smiles,
             canonical_smiles=prepared.canonical_smiles,
             charge=prepared.charge,
@@ -53,6 +53,16 @@ class SharedStructurePrepTool:
             summary_path=str(prepared.summary_path),
             **descriptors,
         )
+        identity_context, identity_status, identity_error = _compute_identity_context(
+            smiles=smiles,
+            prepared=prepared,
+        )
+        return {
+            "shared_structure_context": shared_context,
+            "molecule_identity_context": identity_context,
+            "molecule_identity_status": identity_status,
+            "molecule_identity_error": identity_error,
+        }
 
 
 def _compute_shared_descriptors(
@@ -185,4 +195,90 @@ def _import_rdkit() -> dict[str, object]:
     from rdkit.Chem import Lipinski
     from rdkit.Chem import rdMolDescriptors
 
-    return {"Chem": Chem, "Lipinski": Lipinski, "rdMolDescriptors": rdMolDescriptors}
+    inchi_module = None
+    try:
+        from rdkit.Chem import inchi as rdkit_inchi
+
+        inchi_module = rdkit_inchi
+    except Exception:  # pragma: no cover - depends on RDKit build
+        inchi_module = None
+
+    return {
+        "Chem": Chem,
+        "Lipinski": Lipinski,
+        "rdMolDescriptors": rdMolDescriptors,
+        "inchi": inchi_module,
+    }
+
+
+def _compute_identity_context(
+    *,
+    smiles: str,
+    prepared: PreparedStructure,
+) -> tuple[MoleculeIdentityContext, str, dict[str, str] | None]:
+    rdkit = _import_rdkit()
+    Chem = rdkit["Chem"]
+    rdMolDescriptors = rdkit["rdMolDescriptors"]
+    inchi_module = rdkit["inchi"]
+
+    base_mol = Chem.MolFromSmiles(smiles)
+    if base_mol is None:
+        return (
+            MoleculeIdentityContext(input_smiles=smiles),
+            "failed",
+            {
+                "code": "identity_invalid_smiles",
+                "message": f"Failed to parse SMILES during identity generation: {smiles!r}",
+            },
+        )
+
+    canonical_smiles = prepared.canonical_smiles or Chem.MolToSmiles(base_mol, canonical=True)
+    formula = None
+    inchi = None
+    inchikey = None
+    errors: list[str] = []
+
+    try:
+        formula = str(rdMolDescriptors.CalcMolFormula(base_mol))
+    except Exception as exc:  # pragma: no cover - defensive
+        errors.append(f"molecular_formula: {exc}")
+
+    if inchi_module is not None:
+        try:
+            inchi = str(inchi_module.MolToInchi(base_mol))
+        except Exception as exc:  # pragma: no cover - depends on RDKit build
+            errors.append(f"inchi: {exc}")
+        if inchi:
+            try:
+                inchikey = str(inchi_module.InchiToInchiKey(inchi))
+            except Exception as exc:  # pragma: no cover - depends on RDKit build
+                errors.append(f"inchikey: {exc}")
+    else:
+        errors.append("inchi: RDKit InChI module unavailable")
+
+    context = MoleculeIdentityContext(
+        input_smiles=smiles,
+        canonical_smiles=canonical_smiles,
+        molecular_formula=formula,
+        inchi=inchi,
+        inchikey=inchikey,
+    )
+    if formula and inchi and inchikey:
+        return context, "ready", None
+    if any([formula, inchi, inchikey, canonical_smiles]):
+        return (
+            context,
+            "partial",
+            {
+                "code": "identity_partial",
+                "message": "; ".join(errors) if errors else "Identity context is only partially available.",
+            },
+        )
+    return (
+        context,
+        "failed",
+        {
+            "code": "identity_generation_failed",
+            "message": "; ".join(errors) if errors else "Identity context could not be generated.",
+        },
+    )

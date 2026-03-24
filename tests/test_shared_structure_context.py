@@ -8,7 +8,7 @@ from aie_mas.cli.run_case import run_case_workflow
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.builder import AieMasWorkflow
-from aie_mas.graph.state import AieMasState, SharedStructureContext
+from aie_mas.graph.state import AieMasState, MoleculeIdentityContext, SharedStructureContext
 from aie_mas.tools import shared_structure as shared_structure_module
 from aie_mas.tools.amesp import AmespBaselineRunResult, AmespExcitedState, AmespExcitedStateResult, AmespGroundStateResult
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
@@ -20,7 +20,7 @@ PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts
 class _SuccessfulSharedStructureTool:
     name = "shared_structure_prep"
 
-    def invoke(self, *, smiles: str, label: str, workdir: Path) -> SharedStructureContext:
+    def invoke(self, *, smiles: str, label: str, workdir: Path) -> dict[str, object]:
         del smiles, label
         workdir.mkdir(parents=True, exist_ok=True)
         xyz_path = workdir / "prepared_structure.xyz"
@@ -29,29 +29,40 @@ class _SuccessfulSharedStructureTool:
         xyz_path.write_text("1\nX\nC 0.0 0.0 0.0\n", encoding="utf-8")
         sdf_path.write_text("fake sdf\n", encoding="utf-8")
         summary_path.write_text("{}", encoding="utf-8")
-        return SharedStructureContext(
-            input_smiles="C1=CC=CC=C1",
-            canonical_smiles="c1ccccc1",
-            charge=0,
-            multiplicity=1,
-            atom_count=12,
-            conformer_count=3,
-            selected_conformer_id=1,
-            prepared_xyz_path=str(xyz_path),
-            prepared_sdf_path=str(sdf_path),
-            summary_path=str(summary_path),
-            rotatable_bond_count=2,
-            aromatic_ring_count=2,
-            ring_system_count=1,
-            hetero_atom_count=1,
-            branch_point_count=3,
-            donor_acceptor_partition_proxy=0.5,
-            planarity_proxy=0.75,
-            compactness_proxy=0.4,
-            torsion_candidate_count=2,
-            principal_span_proxy=8.0,
-            conformer_dispersion_proxy=0.6,
-        )
+        return {
+            "shared_structure_context": SharedStructureContext(
+                input_smiles="C1=CC=CC=C1",
+                canonical_smiles="c1ccccc1",
+                charge=0,
+                multiplicity=1,
+                atom_count=12,
+                conformer_count=3,
+                selected_conformer_id=1,
+                prepared_xyz_path=str(xyz_path),
+                prepared_sdf_path=str(sdf_path),
+                summary_path=str(summary_path),
+                rotatable_bond_count=2,
+                aromatic_ring_count=2,
+                ring_system_count=1,
+                hetero_atom_count=1,
+                branch_point_count=3,
+                donor_acceptor_partition_proxy=0.5,
+                planarity_proxy=0.75,
+                compactness_proxy=0.4,
+                torsion_candidate_count=2,
+                principal_span_proxy=8.0,
+                conformer_dispersion_proxy=0.6,
+            ),
+            "molecule_identity_context": MoleculeIdentityContext(
+                input_smiles="C1=CC=CC=C1",
+                canonical_smiles="c1ccccc1",
+                molecular_formula="C6H6",
+                inchi="InChI=1S/C6H6/c1-2-4-6-5-3-1/h1-6H",
+                inchikey="UHOVQNZJYSORNB-UHFFFAOYSA-N",
+            ),
+            "molecule_identity_status": "ready",
+            "molecule_identity_error": None,
+        }
 
 
 class _SharedStructureFailure(Exception):
@@ -65,7 +76,7 @@ class _SharedStructureFailure(Exception):
 class _FailingSharedStructureTool:
     name = "shared_structure_prep"
 
-    def invoke(self, *, smiles: str, label: str, workdir: Path) -> SharedStructureContext:
+    def invoke(self, *, smiles: str, label: str, workdir: Path) -> dict[str, object]:
         del smiles, label, workdir
         raise _SharedStructureFailure()
 
@@ -163,6 +174,9 @@ def test_prepare_shared_structure_context_populates_state(tmp_path: Path) -> Non
     assert updated.shared_structure_context is not None
     assert updated.shared_structure_context.canonical_smiles == "c1ccccc1"
     assert updated.shared_structure_context.prepared_xyz_path.endswith("prepared_structure.xyz")
+    assert updated.molecule_identity_status == "ready"
+    assert updated.molecule_identity_context is not None
+    assert updated.molecule_identity_context.inchikey == "UHOVQNZJYSORNB-UHFFFAOYSA-N"
 
 
 def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(
@@ -192,6 +206,8 @@ def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(
         "code": "shared_structure_failed",
         "message": "shared structure prep failed",
     }
+    assert state.molecule_identity_status == "failed"
+    assert state.molecule_identity_error is not None
     assert state.current_hypothesis is not None
     assert state.macro_reports[0].structured_results["structure_source"] == "smiles_only_fallback"
     assert fallback_tool.called is True
@@ -206,11 +222,14 @@ def test_shared_structure_tool_success_schema_is_serializable(tmp_path: Path) ->
 
     tool = SharedStructurePrepTool(structure_preparer=lambda request: (_FakeAtoms(), _FakePreparedStructure(request, tmp_path)))
 
-    context = tool.invoke(smiles="C1=CC=CC=C1", label="case123", workdir=tmp_path / "shared")
+    result = tool.invoke(smiles="C1=CC=CC=C1", label="case123", workdir=tmp_path / "shared")
+    context = result["shared_structure_context"]
+    identity = result["molecule_identity_context"]
 
     assert context.atom_count == 12
     assert context.summary_path.endswith("structure_prep_summary.json")
     assert context.rotatable_bond_count >= 0
+    assert identity.canonical_smiles
 
 
 def test_shared_structure_descriptor_computation_supports_rdkit_api_variants(monkeypatch) -> None:

@@ -6,14 +6,14 @@ from aie_mas.config import AieMasConfig
 from aie_mas.tools.amesp import AmespBaselineMicroscopicTool
 from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
-from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
+from aie_mas.tools.verifier import OpenAIVerifierEvidenceTool
 
 
 @dataclass
 class ToolSet:
     shared_structure_tool: SharedStructurePrepTool
     macro_tool: DeterministicMacroStructureTool
-    verifier_tool: DeterministicVerifierEvidenceTool
+    verifier_tool: OpenAIVerifierEvidenceTool
     amesp_micro_tool: AmespBaselineMicroscopicTool
 
 
@@ -21,7 +21,7 @@ def build_toolset(config: AieMasConfig) -> ToolSet:
     return ToolSet(
         shared_structure_tool=SharedStructurePrepTool(),
         macro_tool=DeterministicMacroStructureTool(),
-        verifier_tool=DeterministicVerifierEvidenceTool(),
+        verifier_tool=OpenAIVerifierEvidenceTool(config=config),
         amesp_micro_tool=AmespBaselineMicroscopicTool(
             amesp_bin=config.amesp_binary_path,
             npara=config.amesp_npara,

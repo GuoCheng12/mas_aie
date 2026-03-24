@@ -166,3 +166,16 @@ class OpenAICompatibleMacroClient(OpenAICompatibleJsonSchemaClient):
             client=client,
             backend_label="macro_backend='openai_sdk'",
         )
+
+
+class OpenAICompatibleVerifierClient(OpenAICompatibleJsonSchemaClient):
+    def __init__(self, config: AieMasConfig, client: Any | None = None) -> None:
+        super().__init__(
+            base_url=str(config.verifier_base_url),
+            api_key=config.verifier_api_key,
+            model=str(config.verifier_model),
+            temperature=float(config.verifier_temperature),
+            timeout_seconds=float(config.verifier_timeout_seconds),
+            client=client,
+            backend_label="verifier_backend='openai_sdk'",
+        )

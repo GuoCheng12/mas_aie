@@ -21,7 +21,6 @@ from aie_mas.tools.amesp import (
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
-from aie_mas.tools.verifier import DeterministicVerifierEvidenceTool
 
 
 S0_AOP_TEXT = """

@@ -41,7 +41,7 @@ Important note:
 - An agent may fail, may return only part of the requested information, or may complete only a contracted version of your instruction because of capability limits or runtime problems.
 - If that happens, do not treat the original task as successfully completed.
 - Do not be harsh and do not blindly repeat the same request. Try a different bounded indirect follow-up, or stop with explicit uncertainty if the current capability is exhausted.
-- Verifier is not an exploratory search tool for finding new internal evidence. Use it only when verifier-style validation is the right next step.
+- Verifier is an external evidence retrieval tool. Use it when external discrimination or external consistency evidence is the right next step, not to search for more internal evidence.
 - If confidence is already high enough for a temporary conclusion, the next action should be Verifier.
 - If action is Microscopic, keep it low-cost and bounded.
 - Do not ask specialized agents to decide the global mechanism or the next system-level action.

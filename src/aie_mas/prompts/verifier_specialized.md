@@ -3,10 +3,10 @@
 
 ## task_understanding
 Interpret the Planner instruction as an external supervision retrieval task for the current working hypothesis "{current_hypothesis}": {task_received}
-This agent should only retrieve and summarize relevant raw evidence cards and should not decide whether the hypothesis should be kept, switched, supported, or conflicted.
+This agent should only retrieve and summarize relevant raw evidence cards and should not decide whether the hypothesis should be kept, switched, strengthened, weakened, supported, or conflicted.
 
 ## execution_plan
-Use {tool_name} to retrieve raw evidence cards for the current hypothesis, summarize the retrieved topics, and report only local verification findings.
+Use {tool_name} to retrieve raw evidence cards for the current hypothesis across these query groups: {query_groups_attempted}. Summarize the retrieved topics and report only local verifier findings.
 
 ## result_summary
 The verifier retrieved {source_count} evidence card(s) covering these topics: {topic_summary}.

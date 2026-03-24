@@ -13,6 +13,7 @@ MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometr
 MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
 VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
 SharedStructureStatus = Literal["missing", "ready", "failed"]
+MoleculeIdentityStatus = Literal["missing", "ready", "partial", "failed"]
 WorkflowProgressPhase = Literal["start", "probe", "end"]
 
 
@@ -54,9 +55,27 @@ class AgentReport(BaseModel):
 class VerifierEvidenceCard(BaseModel):
     card_id: str
     source: str
+    title: Optional[str] = None
+    doi: Optional[str] = None
+    url: Optional[str] = None
     observation: str
     topic_tags: list[str] = Field(default_factory=list)
     evidence_kind: VerifierEvidenceKind
+    why_relevant: Optional[str] = None
+    query_group: Literal[
+        "exact_identity",
+        "similar_family",
+        "mechanistic_discriminator",
+        "limitation",
+    ] = "similar_family"
+    match_level: Literal[
+        "exact_molecule",
+        "same_family",
+        "generic_mechanistic_context",
+        "retrieval_limitation",
+    ] = "generic_mechanistic_context"
+    mechanism_claim: Optional[str] = None
+    experimental_context: Optional[str] = None
 
 
 class WorkingMemoryAgentEntry(BaseModel):
@@ -179,6 +198,14 @@ class SharedStructureContext(BaseModel):
     conformer_dispersion_proxy: float
 
 
+class MoleculeIdentityContext(BaseModel):
+    input_smiles: str
+    canonical_smiles: Optional[str] = None
+    molecular_formula: Optional[str] = None
+    inchi: Optional[str] = None
+    inchikey: Optional[str] = None
+
+
 class MacroExecutionStep(BaseModel):
     step_id: str
     step_type: MacroPlanStepType
@@ -268,6 +295,9 @@ class AieMasState(BaseModel):
     shared_structure_status: SharedStructureStatus = "missing"
     shared_structure_context: Optional[SharedStructureContext] = None
     shared_structure_error: Optional[dict[str, Any]] = None
+    molecule_identity_status: MoleculeIdentityStatus = "missing"
+    molecule_identity_context: Optional[MoleculeIdentityContext] = None
+    molecule_identity_error: Optional[dict[str, Any]] = None
 
     case_memory_hits: list[CaseMemoryEntry] = Field(default_factory=list)
     strategy_memory_hits: list[StrategyMemoryEntry] = Field(default_factory=list)

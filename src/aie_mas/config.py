@@ -11,6 +11,7 @@ ToolBackend = Literal["real"]
 PlannerBackend = Literal["openai_sdk"]
 MicroscopicBackend = Literal["openai_sdk"]
 MacroBackend = Literal["openai_sdk"]
+VerifierBackend = Literal["openai_sdk"]
 
 
 def _default_project_root() -> Path:
@@ -40,6 +41,12 @@ class AieMasConfig(BaseModel):
     macro_api_key: Optional[str] = None
     macro_temperature: Optional[float] = None
     macro_timeout_seconds: Optional[float] = None
+    verifier_backend: Optional[VerifierBackend] = None
+    verifier_base_url: Optional[str] = None
+    verifier_model: Optional[str] = None
+    verifier_api_key: Optional[str] = None
+    verifier_temperature: Optional[float] = None
+    verifier_timeout_seconds: Optional[float] = None
     amesp_npara: Optional[int] = None
     amesp_maxcore_mb: Optional[int] = None
     amesp_use_ricosx: bool = True
@@ -80,6 +87,10 @@ class AieMasConfig(BaseModel):
             "macro_base_url": "AIE_MAS_MACRO_BASE_URL",
             "macro_model": "AIE_MAS_MACRO_MODEL",
             "macro_api_key": "AIE_MAS_MACRO_API_KEY",
+            "verifier_backend": "AIE_MAS_VERIFIER_BACKEND",
+            "verifier_base_url": "AIE_MAS_VERIFIER_BASE_URL",
+            "verifier_model": "AIE_MAS_VERIFIER_MODEL",
+            "verifier_api_key": "AIE_MAS_VERIFIER_API_KEY",
             "amesp_npara": "AIE_MAS_AMESP_NPARA",
             "amesp_maxcore_mb": "AIE_MAS_AMESP_MAXCORE_MB",
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
@@ -136,6 +147,12 @@ class AieMasConfig(BaseModel):
             env_values["macro_temperature"] = float(os.getenv("AIE_MAS_MACRO_TEMPERATURE", "0.0"))
         if os.getenv("AIE_MAS_MACRO_TIMEOUT"):
             env_values["macro_timeout_seconds"] = float(os.getenv("AIE_MAS_MACRO_TIMEOUT", "120.0"))
+        if os.getenv("AIE_MAS_VERIFIER_TEMPERATURE"):
+            env_values["verifier_temperature"] = float(os.getenv("AIE_MAS_VERIFIER_TEMPERATURE", "0.1"))
+        if os.getenv("AIE_MAS_VERIFIER_TIMEOUT"):
+            env_values["verifier_timeout_seconds"] = float(
+                os.getenv("AIE_MAS_VERIFIER_TIMEOUT", "600.0")
+            )
         if os.getenv("AIE_MAS_AMESP_USE_RICOSX"):
             env_values["amesp_use_ricosx"] = cls._parse_bool(
                 os.getenv("AIE_MAS_AMESP_USE_RICOSX", "1")
@@ -184,6 +201,16 @@ class AieMasConfig(BaseModel):
             self.macro_temperature = self.planner_temperature
         if self.macro_timeout_seconds is None:
             self.macro_timeout_seconds = self.planner_timeout_seconds
+        if self.verifier_backend is None:
+            self.verifier_backend = "openai_sdk"
+        if self.verifier_base_url is None:
+            self.verifier_base_url = "https://openrouter.ai/api/v1"
+        if self.verifier_model is None:
+            self.verifier_model = "anthropic/claude-3.5-sonnet"
+        if self.verifier_temperature is None:
+            self.verifier_temperature = 0.1
+        if self.verifier_timeout_seconds is None:
+            self.verifier_timeout_seconds = 600.0
         if self.amesp_npara is None:
             if self.execution_profile == "linux-prod":
                 self.amesp_npara = max(1, min(20, os.cpu_count() or 1))
@@ -256,6 +283,12 @@ class AieMasConfig(BaseModel):
             "macro_api_key_configured": bool(self.macro_api_key),
             "macro_temperature": self.macro_temperature,
             "macro_timeout_seconds": self.macro_timeout_seconds,
+            "verifier_backend": self.verifier_backend,
+            "verifier_base_url": self.verifier_base_url,
+            "verifier_model": self.verifier_model,
+            "verifier_api_key_configured": bool(self.verifier_api_key),
+            "verifier_temperature": self.verifier_temperature,
+            "verifier_timeout_seconds": self.verifier_timeout_seconds,
             "amesp_npara": self.amesp_npara,
             "amesp_maxcore_mb": self.amesp_maxcore_mb,
             "amesp_use_ricosx": self.amesp_use_ricosx,
