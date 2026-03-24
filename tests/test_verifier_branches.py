@@ -49,8 +49,20 @@ def test_verifier_support_branch_finalizes(tmp_path: Path) -> None:
     planner = _build_planner(tmp_path)
     state = _build_state(
         [
-            {"relation_to_hypothesis": "support", "source": "s1", "observation": "support 1"},
-            {"relation_to_hypothesis": "support", "source": "s2", "observation": "support 2"},
+            {
+                "card_id": "s1",
+                "source": "s1",
+                "observation": "Restriction-oriented external note 1",
+                "topic_tags": ["restriction", "branching"],
+                "evidence_kind": "case_memory",
+            },
+            {
+                "card_id": "s2",
+                "source": "s2",
+                "observation": "Restriction-oriented external note 2",
+                "topic_tags": ["restriction"],
+                "evidence_kind": "external_summary",
+            },
         ]
     )
 
@@ -61,14 +73,27 @@ def test_verifier_support_branch_finalizes(tmp_path: Path) -> None:
     assert result["decision"].task_instruction is None
     assert result["conflict_status"] == "none"
     assert result["decision"].contraction_reason
+    assert "supports the current hypothesis" in result["decision"].diagnosis.lower()
 
 
 def test_verifier_weak_conflict_branch_continues_refine(tmp_path: Path) -> None:
     planner = _build_planner(tmp_path)
     state = _build_state(
         [
-            {"relation_to_hypothesis": "support", "source": "s1", "observation": "support 1"},
-            {"relation_to_hypothesis": "conflict", "source": "c1", "observation": "conflict 1"},
+            {
+                "card_id": "s1",
+                "source": "s1",
+                "observation": "Restriction-oriented external note 1",
+                "topic_tags": ["restriction", "branching"],
+                "evidence_kind": "case_memory",
+            },
+            {
+                "card_id": "c1",
+                "source": "c1",
+                "observation": "ICT-oriented external note 1",
+                "topic_tags": ["ict", "heteroatom"],
+                "evidence_kind": "external_summary",
+            },
         ]
     )
 
@@ -81,14 +106,27 @@ def test_verifier_weak_conflict_branch_continues_refine(tmp_path: Path) -> None:
     assert result["conflict_status"] == "weak"
     assert result["decision"].capability_assessment
     assert result["decision"].contraction_reason
+    assert "weak conflict" in result["decision"].diagnosis.lower()
 
 
 def test_verifier_strong_conflict_branch_switches_hypothesis(tmp_path: Path) -> None:
     planner = _build_planner(tmp_path)
     state = _build_state(
         [
-            {"relation_to_hypothesis": "conflict", "source": "c1", "observation": "conflict 1"},
-            {"relation_to_hypothesis": "conflict", "source": "c2", "observation": "conflict 2"},
+            {
+                "card_id": "c1",
+                "source": "c1",
+                "observation": "ICT-oriented external note 1",
+                "topic_tags": ["ict", "heteroatom"],
+                "evidence_kind": "external_summary",
+            },
+            {
+                "card_id": "c2",
+                "source": "c2",
+                "observation": "Second ICT-oriented external note",
+                "topic_tags": ["ict"],
+                "evidence_kind": "mechanistic_note",
+            },
         ]
     )
 
@@ -100,3 +138,4 @@ def test_verifier_strong_conflict_branch_switches_hypothesis(tmp_path: Path) -> 
     assert result["decision"].task_instruction
     assert result["conflict_status"] == "strong"
     assert result["decision"].contraction_reason
+    assert "strong conflict" in result["decision"].diagnosis.lower()

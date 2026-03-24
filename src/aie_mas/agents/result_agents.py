@@ -30,9 +30,7 @@ class VerifierAgent:
                 "current_hypothesis": current_hypothesis,
                 "tool_name": self._tool.name,
                 "source_count": "pending",
-                "support_count": "pending",
-                "conflict_count": "pending",
-                "neutral_count": "pending",
+                "topic_summary": "pending",
                 "local_uncertainty_detail": (
                     "the evidence cards still need Planner-level synthesis before any mechanism decision."
                 ),
@@ -40,9 +38,7 @@ class VerifierAgent:
         )
         raw_result = self._tool.invoke(smiles, current_hypothesis)
         cards = raw_result["evidence_cards"]
-        support_count = sum(card["relation_to_hypothesis"] == "support" for card in cards)
-        conflict_count = sum(card["relation_to_hypothesis"] == "conflict" for card in cards)
-        neutral_count = sum(card["relation_to_hypothesis"] == "neutral" for card in cards)
+        topic_summary = _topic_summary(cards)
         rendered = self._prompts.render_sections(
             "verifier_specialized",
             {
@@ -50,22 +46,14 @@ class VerifierAgent:
                 "current_hypothesis": current_hypothesis,
                 "tool_name": self._tool.name,
                 "source_count": raw_result["source_count"],
-                "support_count": support_count,
-                "conflict_count": conflict_count,
-                "neutral_count": neutral_count,
+                "topic_summary": topic_summary,
                 "local_uncertainty_detail": (
                     "the evidence cards still need Planner-level synthesis before any mechanism decision."
                 ),
             },
         )
         structured_results = dict(raw_result)
-        structured_results.update(
-            {
-                "support_count": support_count,
-                "conflict_count": conflict_count,
-                "neutral_count": neutral_count,
-            }
-        )
+        structured_results["topic_summary"] = topic_summary
         return AgentReport(
             agent_name="verifier",
             task_received=task_received,
@@ -82,3 +70,13 @@ class VerifierAgent:
             status="success",
             planner_readable_report=rendered["planner_readable_report"],
         )
+
+
+def _topic_summary(cards: list[dict[str, object]]) -> str:
+    topics: list[str] = []
+    for card in cards:
+        for tag in card.get("topic_tags", []):
+            tag_text = str(tag).strip()
+            if tag_text and tag_text not in topics:
+                topics.append(tag_text)
+    return ", ".join(topics) if topics else "no specific topic tags"

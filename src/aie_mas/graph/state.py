@@ -11,6 +11,7 @@ MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_verti
 MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
 MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
+VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
 SharedStructureStatus = Literal["missing", "ready", "failed"]
 WorkflowProgressPhase = Literal["start", "probe", "end"]
 
@@ -46,6 +47,14 @@ class AgentReport(BaseModel):
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
     planner_readable_report: str
+
+
+class VerifierEvidenceCard(BaseModel):
+    card_id: str
+    source: str
+    observation: str
+    topic_tags: list[str] = Field(default_factory=list)
+    evidence_kind: VerifierEvidenceKind
 
 
 class WorkingMemoryAgentEntry(BaseModel):

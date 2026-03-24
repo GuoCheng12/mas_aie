@@ -172,6 +172,74 @@ def _collect_local_uncertainties(*reports: dict[str, Any]) -> list[str]:
     return uncertainties
 
 
+def _verifier_topic_summary(cards: list[dict[str, Any]]) -> str:
+    topics: list[str] = []
+    for card in cards:
+        for tag in card.get("topic_tags", []):
+            tag_text = str(tag).strip().lower()
+            if tag_text and tag_text not in topics:
+                topics.append(tag_text)
+    return ", ".join(topics) if topics else "no specific external topics"
+
+
+def _mock_verifier_tag_profile(current_hypothesis: str) -> tuple[set[str], set[str]]:
+    hypothesis = current_hypothesis.lower()
+    if any(token in hypothesis for token in ("restriction", "rotation", "motion", "rim", "rir")):
+        return {"restriction"}, {"ict"}
+    if "ict" in hypothesis or "charge transfer" in hypothesis:
+        return {"ict"}, {"restriction"}
+    if any(token in hypothesis for token in ("aggregate", "packing", "excimer")):
+        return {"aggregation", "packing"}, {"ict"}
+    return set(), {"ict"}
+
+
+def _interpret_mock_verifier_cards(
+    current_hypothesis: str,
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    support_tags, conflict_tags = _mock_verifier_tag_profile(current_hypothesis)
+    support_cards: list[dict[str, Any]] = []
+    conflict_cards: list[dict[str, Any]] = []
+    neutral_cards: list[dict[str, Any]] = []
+
+    for card in cards:
+        tags = {str(tag).strip().lower() for tag in card.get("topic_tags", []) if str(tag).strip()}
+        if support_tags and tags & support_tags:
+            support_cards.append(card)
+        elif conflict_tags and tags & conflict_tags:
+            conflict_cards.append(card)
+        else:
+            neutral_cards.append(card)
+
+    conflict_topics = sorted(
+        {
+            str(tag).strip().lower()
+            for card in conflict_cards
+            for tag in card.get("topic_tags", [])
+            if str(tag).strip()
+        }
+    )
+    support_topics = sorted(
+        {
+            str(tag).strip().lower()
+            for card in support_cards
+            for tag in card.get("topic_tags", [])
+            if str(tag).strip()
+        }
+    )
+    return {
+        "support_cards": support_cards,
+        "conflict_cards": conflict_cards,
+        "neutral_cards": neutral_cards,
+        "support_count": len(support_cards),
+        "conflict_count": len(conflict_cards),
+        "neutral_count": len(neutral_cards),
+        "support_topics": support_topics,
+        "conflict_topics": conflict_topics,
+        "topic_summary": _verifier_topic_summary(cards),
+    }
+
+
 def _has_meaningful_uncertainty(report: dict[str, Any]) -> bool:
     uncertainty = str(report.get("remaining_local_uncertainty") or "").strip()
     return bool(
@@ -569,9 +637,13 @@ class MockPlannerBackend:
         verifier_report = payload["verifier_report"] or {}
         verifier_cards = verifier_report.get("structured_results", {}).get("evidence_cards", [])
         verifier_result_summary = str(verifier_report.get("result_summary") or "").strip()
-        support_count = sum(card.get("relation_to_hypothesis") == "support" for card in verifier_cards)
-        conflict_count = sum(card.get("relation_to_hypothesis") == "conflict" for card in verifier_cards)
-        neutral_count = sum(card.get("relation_to_hypothesis") == "neutral" for card in verifier_cards)
+        interpreted = _interpret_mock_verifier_cards(payload["current_hypothesis"], verifier_cards)
+        support_count = interpreted["support_count"]
+        conflict_count = interpreted["conflict_count"]
+        neutral_count = interpreted["neutral_count"]
+        support_topics = interpreted["support_topics"]
+        conflict_topics = interpreted["conflict_topics"]
+        topic_summary = interpreted["topic_summary"]
         current_confidence = float(payload["current_confidence"] or 0.5)
         current_hypothesis = payload["current_hypothesis"]
         next_hypothesis = _best_alternative_hypothesis(
@@ -585,17 +657,20 @@ class MockPlannerBackend:
         evidence_summary = (
             verifier_result_summary
             or (
-                f"Verifier returned {support_count} support card(s), "
-                f"{conflict_count} conflict card(s), and {neutral_count} neutral card(s)."
+                f"Verifier returned {len(verifier_cards)} raw evidence card(s) covering these topics: {topic_summary}. "
+                f"The mock Planner interprets them as {support_count} supportive, {conflict_count} competing, "
+                f"and {neutral_count} neutral cards for the current hypothesis."
             )
         )
+        strong_conflict = conflict_count >= 2 or (support_count == 0 and len(conflict_topics) >= 2)
+        weak_conflict = conflict_count > 0 and not strong_conflict
 
-        if conflict_count > support_count:
+        if strong_conflict:
             confidence = round(max(0.34, current_confidence - 0.18), 3)
             conflict_status = "strong"
             hypothesis_uncertainty_note = (
-                "The previous leading hypothesis is now materially weakened because verifier conflict outweighs support, "
-                "so the Planner should demote it rather than keep refining it blindly."
+                "The current hypothesis is materially weakened because the Planner reads multiple verifier cards as "
+                "pointing toward competing explanations."
             )
             capability_assessment = (
                 "Current specialized agents can still gather bounded evidence for a switched hypothesis, but they should "
@@ -625,9 +700,11 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence conflicts with the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), "
-                f"and {neutral_count} neutral card(s), so the conflict is strong. "
+                f"Planner interpretation of verifier evidence now materially conflicts with the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {conflict_count} card(s) as competing and {support_count} card(s) as supportive, "
+                f"with conflict topics such as {', '.join(conflict_topics) if conflict_topics else 'none identified'}. "
+                "This is treated as strong conflict. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -655,12 +732,12 @@ class MockPlannerBackend:
                 gap_trend="The previous gap is replaced by a new switched-hypothesis validation gap.",
                 stagnation_detected=False,
             )
-        elif support_count > 0 and conflict_count > 0:
+        elif weak_conflict:
             confidence = round(max(0.46, current_confidence - 0.03), 3)
             conflict_status = "weak"
             hypothesis_uncertainty_note = (
-                "The current hypothesis remains viable, but a weak verifier conflict means the supporting story is not "
-                "yet clean enough for closure."
+                "The current hypothesis remains viable, but the Planner reads part of the verifier evidence as pointing "
+                "toward a competing explanation, so the story is not yet clean enough for closure."
             )
             capability_assessment = (
                 "Current specialized agents can still perform one bounded microscopic follow-up on the verifier-exposed "
@@ -692,9 +769,11 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence both supports and conflicts with the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s), so the conflict is weak rather than decisive. "
+                f"Planner interpretation of verifier evidence introduces a weak conflict with the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {support_count} card(s) as supportive, {conflict_count} as competing, and {neutral_count} as neutral. "
+                f"Support topics include {', '.join(support_topics) if support_topics else 'none identified'}, while competing topics include {', '.join(conflict_topics) if conflict_topics else 'none identified'}. "
+                "The conflict is therefore weak rather than decisive. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -727,8 +806,8 @@ class MockPlannerBackend:
             confidence = round(max(0.36, current_confidence - 0.05), 3)
             conflict_status = "uncertain"
             hypothesis_uncertainty_note = (
-                "The current hypothesis remains provisional because neutral verifier evidence fails to separate it from "
-                "nearby alternatives or from the possibility that the current mock setup simply cannot resolve the case."
+                "The current hypothesis remains provisional because the raw verifier evidence does not yet separate it "
+                "from nearby alternatives."
             )
             capability_assessment = (
                 "The combination of neutral verifier evidence and recent repeated local uncertainty indicates that the "
@@ -764,9 +843,9 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence is neutral for the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s), so there is no external resolution yet. "
+                f"Planner interpretation of verifier evidence remains uncertain for the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}, "
+                f"but the Planner reads them as {neutral_count} neutral cards with no clear supportive or competing signal. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -799,7 +878,8 @@ class MockPlannerBackend:
             confidence = round(min(0.95, current_confidence + 0.08 + support_count * 0.02), 3)
             conflict_status = "none"
             hypothesis_uncertainty_note = (
-                "Some residual scientific uncertainty remains, but verifier support now outweighs the remaining internal ambiguity."
+                "Some residual scientific uncertainty remains, but the Planner now reads the verifier evidence as aligned "
+                "with the current hypothesis."
             )
             capability_assessment = (
                 "Current specialized-agent limitations no longer block case closure because verifier support aligned with "
@@ -811,9 +891,9 @@ class MockPlannerBackend:
             contraction_reason = "Conservatively contract to case closure because further internal expansion is unnecessary."
             main_gap = "No critical evidence gap remains in the current workflow."
             diagnosis = (
-                f"Verifier evidence supports the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s). "
+                f"Planner interpretation of verifier evidence supports the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {support_count} card(s) as supportive and no meaningful competing signal remains. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -993,7 +1073,7 @@ class OpenAIPlannerBackend:
                         {decision.action: decision.task_instruction or ""}
                     )  # type: ignore[assignment]
         else:
-            decision, conflict_status, main_gap = self._postprocess_reweight(payload, decision, conflict_status, main_gap)
+            decision, conflict_status, main_gap = self._postprocess_reweight(decision, conflict_status, main_gap)
 
         return {
             "decision": decision,
@@ -1010,116 +1090,32 @@ class OpenAIPlannerBackend:
 
     def _postprocess_reweight(
         self,
-        payload: dict[str, Any],
         decision: PlannerDecision,
         conflict_status: str,
         main_gap: str,
     ) -> tuple[PlannerDecision, str, str]:
-        verifier_report = payload["verifier_report"] or {}
-        verifier_cards = verifier_report.get("structured_results", {}).get("evidence_cards", [])
-        support_count = sum(card.get("relation_to_hypothesis") == "support" for card in verifier_cards)
-        conflict_count = sum(card.get("relation_to_hypothesis") == "conflict" for card in verifier_cards)
-        current_hypothesis = payload["current_hypothesis"]
-        fallback_switch = _best_alternative_hypothesis(current_hypothesis, payload["hypothesis_pool"])
-
-        if conflict_count > support_count:
-            conflict_status = "strong"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "macro"
-            decision.current_hypothesis = (
-                decision.current_hypothesis
-                if decision.current_hypothesis != current_hypothesis
-                else fallback_switch
-            )
-            decision.planned_agents = ["macro"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "macro",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": (
-                        decision.contraction_reason
-                        or "Conservatively contract by switching hypotheses after strong verifier conflict."
-                    ),
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"macro": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Conservatively contract by switching hypotheses after strong verifier conflict."
-            )
-            decision.stagnation_assessment = (
-                decision.stagnation_assessment
-                or "Verifier evidence changed the picture materially; this is not simple internal stagnation."
-            )
-            main_gap = "The switched hypothesis needs fresh internal evidence."
-        elif support_count > 0 and conflict_count > 0:
-            conflict_status = "weak"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "microscopic"
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = ["microscopic"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "microscopic",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": decision.contraction_reason,
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"microscopic": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Do one bounded microscopic follow-up instead of switching on weak verifier conflict."
-            )
-            main_gap = "Weak verifier conflict remains, so one more internal refinement step is needed."
-        elif support_count == 0 and conflict_count == 0:
-            conflict_status = "uncertain"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "microscopic"
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = ["microscopic"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "microscopic",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": decision.contraction_reason,
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"microscopic": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Use at most one bounded microscopic follow-up because verifier evidence is neutral."
-            )
-            main_gap = "Verifier evidence is neutral, so one more internal refinement step is needed."
-        else:
-            conflict_status = "none"
-            decision.action = "finalize"
+        decision.needs_verifier = False
+        decision.planned_agents = self._planned_agents_for_action(decision.action)
+        if decision.action == "finalize":
             decision.finalize = True
-            decision.needs_verifier = False
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = []
             decision.task_instruction = None
             decision.agent_task_instructions = {}  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Conservatively contract to case closure because verifier support is sufficient."
-            )
-            main_gap = "No critical evidence gap remains in the current workflow."
-
+        else:
+            decision.finalize = False
+            if not decision.task_instruction:
+                decision.task_instruction = _default_follow_up_task_instruction(
+                    decision.action,
+                    decision.current_hypothesis,
+                    {
+                        "main_gap": main_gap,
+                        "capability_assessment": decision.capability_assessment,
+                        "contraction_reason": decision.contraction_reason,
+                    },
+                )
+            if decision.action in {"macro", "microscopic"} and not decision.agent_task_instructions:
+                decision.agent_task_instructions = _normalize_agent_task_instructions(
+                    {decision.action: decision.task_instruction or ""}
+                )  # type: ignore[assignment]
         return decision, conflict_status, main_gap
 
     def _normalize_action(self, action: str, *, post_verifier: bool) -> str:

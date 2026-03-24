@@ -47,6 +47,7 @@ Important rules:
 - Strong verifier conflict may trigger reweighting.
 - If verifier supports the current hypothesis and the evidence chain is strong enough, you may finalize.
 - If verifier evidence is insufficient, you may continue refinement, but explain why.
+- Interpret raw verifier evidence cards yourself; do not assume verifier has already labeled them as support or conflict.
 - If current specialized-agent capability appears insufficient to keep shrinking the gap, do not blindly repeat broad internal actions.
 - Conservative contraction is allowed here as:
   - bounded follow-up
@@ -77,7 +78,7 @@ Return:
 - capability_lesson_candidates
 
 The diagnosis must explicitly include:
-- whether verifier evidence supports or conflicts with the current hypothesis
+- how the Planner interprets the raw verifier evidence with respect to the current hypothesis
 - whether the conflict is weak or strong
 - whether a hypothesis switch is necessary
 - what uncertainty remains in the current or switched hypothesis

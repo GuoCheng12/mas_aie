@@ -39,6 +39,6 @@ def test_verifier_agent_returns_specialized_local_report() -> None:
     assert report.result_summary
     assert report.remaining_local_uncertainty
     assert report.structured_results["source_count"] >= 1
-    assert "support_count" in report.structured_results
-    assert "conflict_count" in report.structured_results
+    assert report.structured_results["evidence_cards"]
+    assert "topic_tags" in report.structured_results["evidence_cards"][0]
     assert "Task understanding:" in report.planner_readable_report
