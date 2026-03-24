@@ -64,6 +64,7 @@ def _compute_shared_descriptors(
     rdkit = _import_rdkit()
     Chem = rdkit["Chem"]
     Lipinski = rdkit["Lipinski"]
+    rdMolDescriptors = rdkit["rdMolDescriptors"]
 
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
@@ -79,9 +80,21 @@ def _compute_shared_descriptors(
         for atom in mol.GetAtoms()
         if atom.GetAtomicNum() > 1 and atom.GetAtomicNum() != 6
     )
-    rotatable_bond_count = int(Lipinski.CalcNumRotatableBonds(mol))
-    donor_count = int(Lipinski.CalcNumHBD(mol))
-    acceptor_count = int(Lipinski.CalcNumHBA(mol))
+    rotatable_bond_count = _call_descriptor(
+        mol,
+        modules=(rdMolDescriptors, Lipinski),
+        names=("CalcNumRotatableBonds", "NumRotatableBonds"),
+    )
+    donor_count = _call_descriptor(
+        mol,
+        modules=(rdMolDescriptors, Lipinski),
+        names=("CalcNumHBD", "NumHDonors"),
+    )
+    acceptor_count = _call_descriptor(
+        mol,
+        modules=(rdMolDescriptors, Lipinski),
+        names=("CalcNumHBA", "NumHAcceptors"),
+    )
 
     import numpy as np
 
@@ -151,8 +164,25 @@ def _count_ring_systems(ring_sets: list[set[int]]) -> int:
     return ring_systems
 
 
+def _call_descriptor(
+    mol,
+    *,
+    modules: tuple[object, ...],
+    names: tuple[str, ...],
+) -> int:
+    for module in modules:
+        for name in names:
+            func = getattr(module, name, None)
+            if callable(func):
+                return int(func(mol))
+    raise AttributeError(
+        f"RDKit descriptor function not found for candidates {', '.join(names)}."
+    )
+
+
 def _import_rdkit() -> dict[str, object]:
     from rdkit import Chem
     from rdkit.Chem import Lipinski
+    from rdkit.Chem import rdMolDescriptors
 
-    return {"Chem": Chem, "Lipinski": Lipinski}
+    return {"Chem": Chem, "Lipinski": Lipinski, "rdMolDescriptors": rdMolDescriptors}

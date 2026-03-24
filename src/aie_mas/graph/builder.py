@@ -230,7 +230,7 @@ class AieMasWorkflow:
             },
             shared_structure_context=state.shared_structure_context,
             shared_structure_status=state.shared_structure_status,
-            allow_internal_structure_fallback=False,
+            allow_internal_structure_fallback=state.shared_structure_status != "ready",
             case_id=state.case_id,
             round_index=state.round_idx + 1,
         )

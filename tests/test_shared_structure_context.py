@@ -5,11 +5,14 @@ from pathlib import Path
 import pytest
 
 from aie_mas.cli.run_case import run_case_workflow
+from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.builder import AieMasWorkflow
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import AieMasState, SharedStructureContext
+from aie_mas.tools import shared_structure as shared_structure_module
 from aie_mas.tools.factory import ToolSet
+from aie_mas.tools.amesp import AmespBaselineRunResult, AmespExcitedState, AmespExcitedStateResult, AmespGroundStateResult
 from aie_mas.tools.macro import MockMacroStructureTool
 from aie_mas.tools.microscopic import MockS0OptimizationTool, MockS1OptimizationTool, MockTargetedMicroscopicTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
@@ -72,11 +75,80 @@ class _FailingSharedStructureTool:
         raise _SharedStructureFailure()
 
 
-class _ShouldNotRunAmespTool:
+class _FallbackAmespTool:
     name = "amesp_baseline_microscopic"
 
-    def execute(self, **kwargs):
-        raise AssertionError("Amesp execution should not run when shared structure prep failed.")
+    def __init__(self) -> None:
+        self.called = False
+        self.structure_sources: list[str] = []
+
+    def execute(
+        self,
+        *,
+        plan,
+        smiles,
+        label,
+        workdir,
+        available_artifacts,
+        progress_callback=None,
+        round_index=1,
+        case_id=None,
+        current_hypothesis=None,
+    ):
+        del progress_callback, round_index, case_id, current_hypothesis
+        self.called = True
+        self.structure_sources.append(plan.structure_source)
+        workdir.mkdir(parents=True, exist_ok=True)
+        structure_dir = workdir / "structure_prep"
+        structure_dir.mkdir(parents=True, exist_ok=True)
+        xyz_path = structure_dir / "prepared_structure.xyz"
+        sdf_path = structure_dir / "prepared_structure.sdf"
+        summary_path = structure_dir / "structure_prep_summary.json"
+        xyz_path.write_text("1\nX\nC 0.0 0.0 0.0\n", encoding="utf-8")
+        sdf_path.write_text("fake sdf\n", encoding="utf-8")
+        summary_path.write_text("{}", encoding="utf-8")
+        del smiles, label
+        return AmespBaselineRunResult(
+            structure=PreparedStructure(
+                input_smiles="C1=CC=CC=C1",
+                canonical_smiles="c1ccccc1",
+                charge=0,
+                multiplicity=1,
+                heavy_atom_count=6,
+                atom_count=12,
+                conformer_count=3,
+                selected_conformer_id=1,
+                force_field="MMFF94",
+                xyz_path=xyz_path,
+                sdf_path=sdf_path,
+                summary_path=summary_path,
+            ),
+            s0=AmespGroundStateResult(
+                final_energy_hartree=-100.0,
+                dipole_debye=(0.0, 0.0, 0.0, 0.0),
+                mulliken_charges=[0.0],
+                homo_lumo_gap_ev=2.5,
+                geometry_atom_count=12,
+                geometry_xyz_path=str(workdir / "s0.xyz"),
+                rmsd_from_prepared_structure_angstrom=0.1,
+            ),
+            s1=AmespExcitedStateResult(
+                excited_states=[
+                    AmespExcitedState(
+                        state_index=1,
+                        total_energy_hartree=-99.8,
+                        oscillator_strength=0.2,
+                        spin_square=0.0,
+                        excitation_energy_ev=3.1,
+                    )
+                ],
+                first_excitation_energy_ev=3.1,
+                first_oscillator_strength=0.2,
+                state_count=1,
+            ),
+            raw_step_results={"s0_optimization": {"exit_code": 0}, "s1_vertical_excitation": {"exit_code": 0}},
+            generated_artifacts={"prepared_xyz_path": str(xyz_path), "s0_aop_path": str(workdir / "s0.aop")},
+        )
 
 
 def test_prepare_shared_structure_context_populates_state(tmp_path: Path) -> None:
@@ -99,6 +171,8 @@ def test_prepare_shared_structure_context_populates_state(tmp_path: Path) -> Non
 
 
 def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(tmp_path: Path, monkeypatch) -> None:
+    fallback_tool = _FallbackAmespTool()
+
     def fake_build_toolset(config):
         del config
         return ToolSet(
@@ -108,7 +182,7 @@ def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(t
             s1_tool=MockS1OptimizationTool(),
             targeted_micro_tool=MockTargetedMicroscopicTool(),
             verifier_tool=MockVerifierEvidenceTool(),
-            amesp_micro_tool=_ShouldNotRunAmespTool(),
+            amesp_micro_tool=fallback_tool,
         )
 
     monkeypatch.setattr(graph_builder, "build_toolset", fake_build_toolset)
@@ -133,8 +207,11 @@ def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(t
     }
     assert state.current_hypothesis is not None
     assert state.macro_reports[0].structured_results["structure_source"] == "smiles_only_fallback"
-    assert state.microscopic_reports[0].status == "partial"
-    assert state.microscopic_reports[0].structured_results["error"]["code"] == "shared_structure_unavailable"
+    assert fallback_tool.called is True
+    assert fallback_tool.structure_sources[0] == "prepared_from_smiles"
+    assert state.microscopic_reports[0].status == "success"
+    assert state.microscopic_reports[0].structured_results["structure_source"] == "prepared_from_smiles"
+    assert state.microscopic_reports[0].structured_results["s1"]["first_excitation_energy_ev"] == 3.1
 
 
 def test_shared_structure_tool_success_schema_is_serializable(tmp_path: Path) -> None:
@@ -147,6 +224,86 @@ def test_shared_structure_tool_success_schema_is_serializable(tmp_path: Path) ->
     assert context.atom_count == 12
     assert context.summary_path.endswith("structure_prep_summary.json")
     assert context.rotatable_bond_count >= 0
+
+
+def test_shared_structure_descriptor_computation_supports_rdkit_api_variants(monkeypatch) -> None:
+    class _FakeAtom:
+        def __init__(self, atomic_num: int, degree: int, aromatic: bool = False) -> None:
+            self._atomic_num = atomic_num
+            self._degree = degree
+            self._aromatic = aromatic
+
+        def GetAtomicNum(self):
+            return self._atomic_num
+
+        def GetDegree(self):
+            return self._degree
+
+        def GetIsAromatic(self):
+            return self._aromatic
+
+    class _FakeMol:
+        def __init__(self) -> None:
+            self._atoms = [
+                _FakeAtom(6, 2, aromatic=True),
+                _FakeAtom(6, 2, aromatic=True),
+                _FakeAtom(8, 1, aromatic=False),
+            ]
+
+        def GetAtoms(self):
+            return self._atoms
+
+        def GetAtomWithIdx(self, idx: int):
+            return self._atoms[idx]
+
+    class _FakeChem:
+        @staticmethod
+        def MolFromSmiles(smiles: str):
+            del smiles
+            return _FakeMol()
+
+        @staticmethod
+        def GetSymmSSSR(mol):
+            del mol
+            return [(0, 1)]
+
+    class _FakeLipinski:
+        @staticmethod
+        def NumHDonors(mol):
+            del mol
+            return 1
+
+        @staticmethod
+        def NumHAcceptors(mol):
+            del mol
+            return 2
+
+    class _FakeRdMolDescriptors:
+        @staticmethod
+        def CalcNumRotatableBonds(mol):
+            del mol
+            return 4
+
+    monkeypatch.setattr(
+        shared_structure_module,
+        "_import_rdkit",
+        lambda: {
+            "Chem": _FakeChem,
+            "Lipinski": _FakeLipinski,
+            "rdMolDescriptors": _FakeRdMolDescriptors,
+        },
+    )
+
+    prepared = type("Prepared", (), {"conformer_count": 3})()
+
+    descriptors = shared_structure_module._compute_shared_descriptors(
+        smiles="C1=CC=CC=C1",
+        atoms=_FakeAtoms(),
+        prepared=prepared,
+    )
+
+    assert descriptors["rotatable_bond_count"] == 4
+    assert descriptors["donor_acceptor_partition_proxy"] == 1.0
 
 
 class _FakePositions:
