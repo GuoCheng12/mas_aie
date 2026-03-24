@@ -198,11 +198,11 @@ def main(
     ),
     execution_profile: Optional[str] = typer.Option(
         None,
-        help="Execution profile: local-dev for local mock validation, linux-prod for Linux deployment.",
+        help="Execution profile: local-dev for local validation, linux-prod for Linux deployment.",
     ),
     tool_backend: Optional[str] = typer.Option(
         None,
-        help="Tool backend: mock for current first-stage runs, real for future Linux wrappers.",
+        help="Tool backend: mock for verifier/planner-side validation, real for real Amesp execution.",
     ),
     enable_long_term_memory: Optional[bool] = typer.Option(
         None,
@@ -235,7 +235,7 @@ def main(
     ),
     macro_backend: Optional[str] = typer.Option(
         None,
-        help="Macro reasoning backend: mock or openai_sdk.",
+        help="Macro reasoning backend: openai_sdk.",
     ),
     macro_base_url: Optional[str] = typer.Option(
         None,
@@ -259,7 +259,7 @@ def main(
     ),
     microscopic_backend: Optional[str] = typer.Option(
         None,
-        help="Microscopic reasoning backend: mock or openai_sdk.",
+        help="Microscopic reasoning backend: openai_sdk.",
     ),
     microscopic_base_url: Optional[str] = typer.Option(
         None,

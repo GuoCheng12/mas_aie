@@ -115,11 +115,11 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
 
     assert local_config.planner_backend == "mock"
     assert linux_config.planner_backend == "openai_sdk"
-    assert local_config.microscopic_backend == "mock"
+    assert local_config.microscopic_backend == "openai_sdk"
     assert linux_config.microscopic_backend == "openai_sdk"
     assert local_config.planner_model == "gpt-5.2"
     assert linux_config.planner_model == "gpt-5.2"
-    assert local_config.macro_backend == "mock"
+    assert local_config.macro_backend == "openai_sdk"
     assert linux_config.macro_backend == "openai_sdk"
     assert local_config.macro_model == "gpt-5.2"
     assert linux_config.macro_model == "gpt-5.2"

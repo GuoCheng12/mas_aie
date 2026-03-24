@@ -135,10 +135,52 @@ def test_openai_macro_reasoning_backend_uses_configured_model_and_shared_context
     assert "runtime_context" in message_payload
 
 
-def test_macro_agent_reuses_shared_structure_context_in_mock_mode(tmp_path: Path) -> None:
+def test_macro_agent_reuses_shared_structure_context_with_openai_backend(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "task_understanding": "Collect bounded macro structural evidence for the current working hypothesis using the shared prepared structure context.",
+              "reasoning_summary": "Reuse the shared structure and summarize deterministic topology and geometry proxies only.",
+              "execution_plan": {
+                "local_goal": "Collect bounded macro structural evidence only.",
+                "requested_deliverables": [
+                  "rotor topology summary",
+                  "compactness and contact proxies"
+                ],
+                "focus_areas": [
+                  "rotor topology",
+                  "compactness and contact proxies"
+                ],
+                "unsupported_requests": []
+              },
+              "capability_limit_note": "Current macro capability is bounded to deterministic low-cost structure analysis only.",
+              "expected_outputs": [
+                "rotor topology",
+                "compactness and contact proxies"
+              ],
+              "failure_policy": "Return a fallback macro report if shared structure is unavailable."
+            }
+            """
+        ]
+    )
     agent = MacroAgent(
         prompts=PromptRepository(PROMPTS_DIR),
-        config=AieMasConfig(project_root=tmp_path, execution_profile="local-dev", prompts_dir=PROMPTS_DIR),
+        config=AieMasConfig(
+            project_root=tmp_path,
+            execution_profile="local-dev",
+            macro_backend="openai_sdk",
+            prompts_dir=PROMPTS_DIR,
+        ),
+        llm_client=OpenAICompatibleMacroClient(
+            AieMasConfig(
+                project_root=tmp_path,
+                execution_profile="local-dev",
+                macro_backend="openai_sdk",
+                prompts_dir=PROMPTS_DIR,
+            ),
+            client=fake_client,
+        ),
     )
 
     report = agent.run(

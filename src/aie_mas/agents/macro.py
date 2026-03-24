@@ -14,7 +14,7 @@ from aie_mas.graph.state import (
     SharedStructureContext,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMacroClient
-from aie_mas.tools.macro import MockMacroStructureTool
+from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -43,61 +43,6 @@ class MacroReasoningBackend(Protocol):
         ...
 
 
-class MockMacroReasoningBackend:
-    def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MacroReasoningResponse:
-        _ = rendered_prompt
-        shared_context = payload.get("shared_structure_context")
-        focus_areas = _infer_focus_areas(str(payload["task_instruction"]))
-        if shared_context:
-            structure_note = (
-                "A prepared shared 3D structure context is available and should be reused as the primary local evidence source."
-            )
-        else:
-            structure_note = (
-                "Shared 3D structure context is unavailable, so the macro task must degrade to a SMILES-only structural fallback."
-            )
-        return MacroReasoningResponse(
-            task_understanding=(
-                f"Use the Planner instruction to collect local macro-level structural evidence for the current working hypothesis "
-                f"'{payload['current_hypothesis']}' without making any global mechanism judgment: {payload['task_instruction']}"
-            ),
-            reasoning_summary=(
-                f"Interpret the Planner instruction as a bounded macro structural evidence task. {structure_note} "
-                f"Recent round context count: {len(payload.get('recent_rounds_context', []))}. "
-                "Only deterministic low-cost topology and geometry proxies are in scope."
-            ),
-            execution_plan=MacroReasoningPlanDraft(
-                local_goal="Collect local macro structural evidence and return only planner-readable structural results.",
-                requested_deliverables=[
-                    "rotor topology summary",
-                    "ring and conjugation summary",
-                    "donor-acceptor layout",
-                    "planarity and torsion summary",
-                    "compactness and contact proxies",
-                    "conformer dispersion summary",
-                ],
-                focus_areas=focus_areas,
-                unsupported_requests=_unsupported_macro_requests(str(payload["task_instruction"])),
-            ),
-            capability_limit_note=(
-                "Current macro capability is limited to deterministic low-cost single-molecule structural and geometry-proxy analysis. "
-                "It cannot perform packing simulation, aggregate-state modeling, or global mechanism adjudication."
-            ),
-            expected_outputs=[
-                "rotor topology",
-                "ring and conjugation summary",
-                "donor-acceptor layout",
-                "planarity and torsion summary",
-                "compactness and contact proxies",
-                "conformer dispersion summary",
-            ],
-            failure_policy=(
-                "If shared structure context is unavailable, return a local fallback report based on SMILES-only structural proxies "
-                "instead of escalating into tool-heavy structure generation."
-            ),
-        )
-
-
 class OpenAIMacroReasoningBackend:
     def __init__(
         self,
@@ -119,12 +64,12 @@ class OpenAIMacroReasoningBackend:
 class MacroAgent:
     def __init__(
         self,
-        tool: MockMacroStructureTool | None = None,
+        tool: DeterministicMacroStructureTool | None = None,
         prompts: PromptRepository | None = None,
         config: Optional[AieMasConfig] = None,
         llm_client: Optional[OpenAICompatibleMacroClient] = None,
     ) -> None:
-        self._tool = tool or MockMacroStructureTool()
+        self._tool = tool or DeterministicMacroStructureTool()
         self._prompts = prompts or _default_prompt_repository()
         self._config = config or AieMasConfig()
         self._reasoning_backend = self._build_reasoning_backend(self._config, llm_client)
@@ -218,9 +163,7 @@ class MacroAgent:
         config: AieMasConfig,
         llm_client: Optional[OpenAICompatibleMacroClient],
     ) -> MacroReasoningBackend:
-        if config.macro_backend == "openai_sdk":
-            return OpenAIMacroReasoningBackend(config, client=llm_client)
-        return MockMacroReasoningBackend()
+        return OpenAIMacroReasoningBackend(config, client=llm_client)
 
     def _normalize_execution_plan(
         self,
@@ -346,41 +289,3 @@ class MacroAgent:
             f"compactness_proxy={raw_result['compactness_and_contact_proxies']['compactness_proxy']}, and "
             f"conformer_dispersion_proxy={raw_result['conformer_dispersion_summary']['conformer_dispersion_proxy']}."
         )
-
-
-def _infer_focus_areas(task_instruction: str) -> list[str]:
-    lower = task_instruction.lower()
-    focus_areas: list[str] = []
-    mapping = {
-        "rotor topology": ("rotatable", "rotation", "rotor", "rim", "rir"),
-        "donor-acceptor layout": ("ict", "charge transfer", "donor", "acceptor", "tict"),
-        "planarity and torsion": ("planarity", "torsion", "twist", "dihedral"),
-        "compactness and contact proxies": ("cluster", "cte", "packing", "compact", "contact"),
-        "conformer dispersion": ("conformer", "dispersion", "flexibility"),
-    }
-    for label, tokens in mapping.items():
-        if any(token in lower for token in tokens):
-            focus_areas.append(label)
-    if not focus_areas:
-        focus_areas.extend(
-            [
-                "rotor topology",
-                "ring and conjugation summary",
-                "planarity and torsion",
-            ]
-        )
-    return focus_areas
-
-
-def _unsupported_macro_requests(task_instruction: str) -> list[str]:
-    lower = task_instruction.lower()
-    unsupported: list[str] = []
-    mapping = {
-        "aggregate-state simulation": ("aggregate", "packing simulation", "crystal"),
-        "heavy conformer search": ("heavy conformer", "exhaustive conformer"),
-        "global mechanism adjudication": ("dominant mechanism", "final mechanism"),
-    }
-    for label, tokens in mapping.items():
-        if any(token in lower for token in tokens):
-            unsupported.append(label)
-    return unsupported

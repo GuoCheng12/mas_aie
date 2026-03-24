@@ -19,12 +19,7 @@ from aie_mas.tools.amesp import (
     AmespBaselineRunResult,
 )
 from aie_mas.tools.factory import ToolSet
-from aie_mas.tools.macro import MockMacroStructureTool
-from aie_mas.tools.microscopic import (
-    MockS0OptimizationTool,
-    MockS1OptimizationTool,
-    MockTargetedMicroscopicTool,
-)
+from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
 from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
@@ -421,7 +416,11 @@ class _SuccessfulAmespTool:
         )
 
 
-def test_real_microscopic_agent_builds_understanding_and_execution_plan(tmp_path: Path) -> None:
+def test_real_microscopic_agent_builds_understanding_and_execution_plan(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     progress_events: list[dict[str, object]] = []
     agent = MicroscopicAgent(
         amesp_tool=_SuccessfulAmespTool(),
@@ -498,7 +497,11 @@ class _FailingAmespTool:
         )
 
 
-def test_real_microscopic_agent_returns_partial_report_on_runner_failure(tmp_path: Path) -> None:
+def test_real_microscopic_agent_returns_partial_report_on_runner_failure(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     agent = MicroscopicAgent(
         amesp_tool=_FailingAmespTool(),
         tools_work_dir=tmp_path / "tools",
@@ -525,20 +528,14 @@ def test_real_microscopic_agent_returns_partial_report_on_runner_failure(tmp_pat
     assert "partial" in report.result_summary.lower()
 
 
-def test_real_tool_backend_failure_does_not_break_workflow(tmp_path: Path, monkeypatch) -> None:
-    def fake_build_toolset(config):
-        del config
-        return ToolSet(
-            shared_structure_tool=SharedStructurePrepTool(structure_preparer=_fake_structure_preparer),
-            macro_tool=MockMacroStructureTool(),
-            s0_tool=MockS0OptimizationTool(),
-            s1_tool=MockS1OptimizationTool(),
-            targeted_micro_tool=MockTargetedMicroscopicTool(),
-            verifier_tool=MockVerifierEvidenceTool(),
-            amesp_micro_tool=_FailingAmespTool(),
-        )
-
-    monkeypatch.setattr(graph_builder, "build_toolset", fake_build_toolset)
+def test_real_tool_backend_failure_does_not_break_workflow(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles(
+        shared_structure_tool=SharedStructurePrepTool(structure_preparer=_fake_structure_preparer),
+        amesp_tool=_FailingAmespTool(),
+    )
 
     state = run_case_workflow(
         smiles="C1=CCCCC1",

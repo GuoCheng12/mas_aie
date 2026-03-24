@@ -8,15 +8,10 @@ from aie_mas.cli.run_case import run_case_workflow
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.builder import AieMasWorkflow
-from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import AieMasState, SharedStructureContext
 from aie_mas.tools import shared_structure as shared_structure_module
-from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.amesp import AmespBaselineRunResult, AmespExcitedState, AmespExcitedStateResult, AmespGroundStateResult
-from aie_mas.tools.macro import MockMacroStructureTool
-from aie_mas.tools.microscopic import MockS0OptimizationTool, MockS1OptimizationTool, MockTargetedMicroscopicTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
-from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
 
 PROMPTS_DIR = Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts"
@@ -170,22 +165,15 @@ def test_prepare_shared_structure_context_populates_state(tmp_path: Path) -> Non
     assert updated.shared_structure_context.prepared_xyz_path.endswith("prepared_structure.xyz")
 
 
-def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(tmp_path: Path, monkeypatch) -> None:
+def test_shared_structure_failure_does_not_break_workflow_and_macro_falls_back(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
     fallback_tool = _FallbackAmespTool()
-
-    def fake_build_toolset(config):
-        del config
-        return ToolSet(
-            shared_structure_tool=_FailingSharedStructureTool(),
-            macro_tool=MockMacroStructureTool(),
-            s0_tool=MockS0OptimizationTool(),
-            s1_tool=MockS1OptimizationTool(),
-            targeted_micro_tool=MockTargetedMicroscopicTool(),
-            verifier_tool=MockVerifierEvidenceTool(),
-            amesp_micro_tool=fallback_tool,
-        )
-
-    monkeypatch.setattr(graph_builder, "build_toolset", fake_build_toolset)
+    install_specialized_test_doubles(
+        shared_structure_tool=_FailingSharedStructureTool(),
+        amesp_tool=fallback_tool,
+    )
 
     state = run_case_workflow(
         smiles="C1=CC=CC=C1",

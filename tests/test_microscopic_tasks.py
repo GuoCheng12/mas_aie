@@ -4,8 +4,9 @@ from aie_mas.agents.result_agents import MicroscopicAgent
 from aie_mas.graph.state import MicroscopicTaskSpec
 
 
-def test_targeted_microscopic_task_interface_is_available() -> None:
-    agent = MicroscopicAgent()
+def test_targeted_microscopic_task_interface_is_available(install_specialized_test_doubles) -> None:
+    fake_amesp = install_specialized_test_doubles()
+    agent = MicroscopicAgent(amesp_tool=fake_amesp)
     task_spec = MicroscopicTaskSpec(
         mode="targeted_follow_up",
         task_label="round-2-targeted",
@@ -27,6 +28,9 @@ def test_targeted_microscopic_task_interface_is_available() -> None:
     assert report.result_summary
     assert report.remaining_local_uncertainty
     assert report.structured_results["task_mode"] == "targeted_follow_up"
-    assert report.structured_results["target_property"] == "weak_conflict_resolution"
-    assert "targeted_follow_up" in report.raw_results
+    assert report.structured_results["task_label"] == "round-2-targeted"
+    assert "targeted microscopic follow-up beyond the current Amesp baseline workflow" in " ".join(
+        report.structured_results["unsupported_requests"]
+    )
+    assert fake_amesp.called is True
     assert "Task understanding:" in report.planner_readable_report

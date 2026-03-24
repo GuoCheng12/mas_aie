@@ -9,8 +9,8 @@ from pydantic import BaseModel, Field
 ExecutionProfile = Literal["local-dev", "linux-prod"]
 ToolBackend = Literal["mock", "real"]
 PlannerBackend = Literal["mock", "openai_sdk"]
-MicroscopicBackend = Literal["mock", "openai_sdk"]
-MacroBackend = Literal["mock", "openai_sdk"]
+MicroscopicBackend = Literal["openai_sdk"]
+MacroBackend = Literal["openai_sdk"]
 
 
 def _default_project_root() -> Path:
@@ -161,7 +161,7 @@ class AieMasConfig(BaseModel):
         if self.planner_backend is None:
             self.planner_backend = "mock" if self.execution_profile == "local-dev" else "openai_sdk"
         if self.microscopic_backend is None:
-            self.microscopic_backend = self.planner_backend
+            self.microscopic_backend = "openai_sdk"
         if self.microscopic_base_url is None:
             self.microscopic_base_url = self.planner_base_url
         if self.microscopic_model is None:
@@ -173,7 +173,7 @@ class AieMasConfig(BaseModel):
         if self.microscopic_timeout_seconds is None:
             self.microscopic_timeout_seconds = self.planner_timeout_seconds
         if self.macro_backend is None:
-            self.macro_backend = self.planner_backend
+            self.macro_backend = "openai_sdk"
         if self.macro_base_url is None:
             self.macro_base_url = self.planner_base_url
         if self.macro_model is None:

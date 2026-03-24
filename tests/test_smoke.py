@@ -26,7 +26,8 @@ def _parse_terminal_summary(stdout: str) -> dict[str, str]:
     return payload
 
 
-def test_minimal_workflow_smoke(tmp_path: Path) -> None:
+def test_minimal_workflow_smoke(tmp_path: Path, install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
     state = run_case_workflow(
         smiles=smiles,
@@ -59,7 +60,11 @@ def test_minimal_workflow_smoke(tmp_path: Path) -> None:
     assert state.finalize is True
 
 
-def test_run_case_workflow_emits_progress_events_with_round_and_agent(tmp_path: Path) -> None:
+def test_run_case_workflow_emits_progress_events_with_round_and_agent(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     events: list[dict[str, object]] = []
 
     state = run_case_workflow(
@@ -102,7 +107,11 @@ def test_run_case_workflow_emits_progress_events_with_round_and_agent(tmp_path: 
     assert any(event["phase"] == "end" and event["details"] for event in events)
 
 
-def test_live_run_tracer_writes_live_trace_and_status_files(tmp_path: Path) -> None:
+def test_live_run_tracer_writes_live_trace_and_status_files(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     config = AieMasConfig(
         project_root=tmp_path,
         execution_profile="local-dev",
@@ -172,7 +181,8 @@ def test_live_run_tracer_writes_live_trace_and_status_files(tmp_path: Path) -> N
     assert "remaining_local_uncertainty" in live_status_text
 
 
-def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
+def test_summary_payload_groups_information_by_round(tmp_path: Path, install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
     state = run_case_workflow(
         smiles=smiles,
@@ -204,7 +214,11 @@ def test_summary_payload_groups_information_by_round(tmp_path: Path) -> None:
     assert "local_uncertainty_summary" in first_round["working_memory"]
 
 
-def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> None:
+def test_cli_writes_report_files_and_prints_concise_summary(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     runner = CliRunner()
     report_dir = tmp_path / "reports_cli"
     result = runner.invoke(
@@ -267,7 +281,11 @@ def test_cli_writes_report_files_and_prints_concise_summary(tmp_path: Path) -> N
     assert full_state_payload["state_snapshot"]["case_id"] == summary_payload["case_id"]
 
 
-def test_cli_can_enable_long_term_memory_for_a_run(tmp_path: Path) -> None:
+def test_cli_can_enable_long_term_memory_for_a_run(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     runner = CliRunner()
     memory_dir = tmp_path / "memory_cli_on"
     result = runner.invoke(
@@ -310,7 +328,9 @@ def test_cli_can_enable_long_term_memory_for_a_run(tmp_path: Path) -> None:
 def test_cli_uses_environment_defaults_when_flags_are_omitted(
     tmp_path: Path,
     monkeypatch,
+    install_specialized_test_doubles,
 ) -> None:
+    install_specialized_test_doubles()
     runner = CliRunner()
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "linux-prod")
     monkeypatch.setenv("AIE_MAS_TOOL_BACKEND", "mock")
@@ -347,7 +367,12 @@ def test_cli_uses_environment_defaults_when_flags_are_omitted(
     assert full_state_payload["runtime_context"]["report_dir"] == str(tmp_path / "reports_env")
 
 
-def test_cli_uses_default_project_report_dir_when_unspecified(tmp_path: Path, monkeypatch) -> None:
+def test_cli_uses_default_project_report_dir_when_unspecified(
+    tmp_path: Path,
+    monkeypatch,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     runner = CliRunner()
     monkeypatch.setenv("AIE_MAS_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("AIE_MAS_EXECUTION_PROFILE", "local-dev")

@@ -19,11 +19,6 @@ from aie_mas.graph.state import (
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
 from aie_mas.tools.amesp import AmespBaselineMicroscopicTool, AmespExecutionError
-from aie_mas.tools.microscopic import (
-    MockS0OptimizationTool,
-    MockS1OptimizationTool,
-    MockTargetedMicroscopicTool,
-)
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -61,81 +56,6 @@ class MicroscopicReasoningBackend(Protocol):
         ...
 
 
-class MockMicroscopicReasoningBackend:
-    def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
-        _ = rendered_prompt
-        task_instruction = str(payload["task_instruction"])
-        requested_deliverables = list(payload["requested_deliverables"])
-        unsupported_requests = list(payload["unsupported_requests"])
-        structure_context = payload["available_structure_context"]
-        task_mode = payload["task_mode"]
-        recent_rounds_context = payload["recent_rounds_context"]
-
-        if structure_context.get("has_prepared_structure"):
-            structure_strategy: MicroscopicStructureStrategy = "reuse_if_available_else_prepare_from_smiles"
-            structure_note = "A prepared 3D structure is already available and should be reused if possible."
-        else:
-            structure_strategy = "prepare_from_smiles"
-            structure_note = "No prepared 3D structure is available, so the run must start from SMILES-to-3D preparation."
-
-        recent_note = (
-            f"Recent microscopic context includes {len(recent_rounds_context)} prior round(s)."
-            if recent_rounds_context
-            else "No prior microscopic round context is available."
-        )
-        capability_limit_note = (
-            "Current microscopic capability is bounded to a low-cost Amesp baseline only: structure preparation or "
-            "reuse, low-cost S0 optimization, and bounded S1 vertical excitation. No global mechanism judgment is allowed."
-        )
-        if unsupported_requests:
-            capability_limit_note = (
-                f"{capability_limit_note} Unsupported requests are being conservatively contracted: "
-                f"{'; '.join(unsupported_requests)}."
-            )
-        if task_mode == "targeted_follow_up":
-            capability_limit_note = (
-                f"{capability_limit_note} The requested targeted follow-up is reduced to the same baseline S0/S1 workflow "
-                "in the current stage."
-            )
-
-        expected_outputs = [
-            "Low-cost S0 optimized geometry",
-            "Low-cost S0 final energy",
-            "S0 dipole",
-            "S0 Mulliken charges",
-            "S0 HOMO-LUMO gap",
-            "S1 first excitation energy",
-            "S1 first oscillator strength",
-        ]
-        reasoning_summary = (
-            f"Interpret the Planner instruction as a bounded Amesp baseline task. {structure_note} "
-            f"{recent_note} Requested local deliverables: {', '.join(requested_deliverables)}. "
-            f"{capability_limit_note}"
-        )
-        return MicroscopicReasoningResponse(
-            task_understanding=(
-                f"Use the Planner instruction to collect local microscopic evidence for the current working hypothesis "
-                f"'{payload['current_hypothesis']}' without making any global mechanism judgment: {task_instruction}"
-            ),
-            reasoning_summary=reasoning_summary,
-            execution_plan=MicroscopicReasoningPlanDraft(
-                local_goal=(
-                "Collect bounded low-cost microscopic evidence through the Amesp baseline workflow and return only local results."
-            ),
-                requested_deliverables=requested_deliverables,
-                structure_strategy=structure_strategy,
-                step_sequence=["structure_prep", "s0_optimization", "s1_vertical_excitation"],
-                unsupported_requests=unsupported_requests,
-            ),
-            capability_limit_note=capability_limit_note,
-            expected_outputs=expected_outputs,
-            failure_policy=(
-                "If any Amesp step fails, return a local failed or partial report with the available artifacts and "
-                "do not escalate into a global mechanism decision."
-            ),
-        )
-
-
 class OpenAIMicroscopicReasoningBackend:
     def __init__(
         self,
@@ -157,20 +77,14 @@ class OpenAIMicroscopicReasoningBackend:
 class MicroscopicAgent:
     def __init__(
         self,
-        s0_tool: Optional[MockS0OptimizationTool] = None,
-        s1_tool: Optional[MockS1OptimizationTool] = None,
-        targeted_tool: Optional[MockTargetedMicroscopicTool] = None,
-        *,
         amesp_tool: Optional[AmespBaselineMicroscopicTool] = None,
+        *,
         prompts: Optional[PromptRepository] = None,
         tools_work_dir: Optional[Path] = None,
         config: Optional[AieMasConfig] = None,
         llm_client: Optional[OpenAICompatibleMicroscopicClient] = None,
         progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
     ) -> None:
-        self._s0_tool = s0_tool or MockS0OptimizationTool()
-        self._s1_tool = s1_tool or MockS1OptimizationTool()
-        self._targeted_tool = targeted_tool or MockTargetedMicroscopicTool()
         self._amesp_tool = amesp_tool
         self._prompts = prompts or _default_prompt_repository()
         self._tools_work_dir = tools_work_dir
@@ -284,13 +198,8 @@ class MicroscopicAgent:
                 case_id=resolved_case_id,
                 round_index=round_index,
             )
-        return self._run_mock(
-            smiles=smiles,
-            task_received=task_received,
-            task_spec=task_spec,
-            current_hypothesis=current_hypothesis,
-            reasoning=reasoning,
-            plan=plan,
+        raise RuntimeError(
+            "MicroscopicAgent requires an Amesp baseline tool; mock microscopic execution paths have been removed."
         )
 
     def _run_real(
@@ -442,105 +351,6 @@ class MicroscopicAgent:
             planner_readable_report=rendered["planner_readable_report"],
         )
 
-    def _run_mock(
-        self,
-        *,
-        smiles: str,
-        task_received: str,
-        task_spec: MicroscopicTaskSpec,
-        current_hypothesis: str,
-        reasoning: MicroscopicReasoningResponse,
-        plan: MicroscopicExecutionPlan,
-    ) -> AgentReport:
-        render_payload = {
-            "task_received": task_received,
-            "current_hypothesis": current_hypothesis,
-            "task_mode": task_spec.mode,
-            "reasoning_summary_text": reasoning.reasoning_summary,
-            "execution_plan_text": self._plan_steps_text(plan),
-            "targeted_summary": self._targeted_summary_text(None),
-            "local_uncertainty_detail": self._micro_uncertainty_text(task_spec, reasoning.capability_limit_note),
-            "s0_energy": "pending",
-            "s1_energy": "pending",
-            "rigidity_proxy": "pending",
-            "geometry_change_proxy": "pending",
-            "oscillator_strength_proxy": "pending",
-            "relaxation_gap": "pending",
-        }
-        draft = self._prompts.render_sections("microscopic_specialized", render_payload)
-
-        s0_result = self._s0_tool.invoke(smiles)
-        s1_result = self._s1_tool.invoke(smiles)
-        relaxation_gap = round(abs(s1_result["optimized_energy"] - s0_result["optimized_energy"]), 4)
-        structured_results = {
-            "reasoning_backend": self._config.microscopic_backend,
-            "reasoning": reasoning.model_dump(mode="json"),
-            "execution_plan": plan.model_dump(mode="json"),
-            "task_mode": task_spec.mode,
-            "task_label": task_spec.task_label,
-            "task_objective": task_spec.objective,
-            "target_property": task_spec.target_property,
-            "s0_energy": s0_result["optimized_energy"],
-            "s1_energy": s1_result["optimized_energy"],
-            "rigidity_proxy": s0_result["rigidity_proxy"],
-            "geometry_change_proxy": s1_result["geometry_change_proxy"],
-            "oscillator_strength_proxy": s1_result["oscillator_strength_proxy"],
-            "relaxation_gap": relaxation_gap,
-        }
-        tool_calls = [
-            "microscopic_reasoning(task_instruction_to_execution_plan)",
-            f"{self._s0_tool.name}(smiles='{smiles}')",
-            f"{self._s1_tool.name}(smiles='{smiles}')",
-        ]
-        raw_results = {
-            "reasoning_output": reasoning.model_dump(mode="json"),
-            "s0_optimization": s0_result,
-            "s1_optimization": s1_result,
-        }
-
-        targeted_result: Optional[dict[str, Any]] = None
-        if task_spec.mode == "targeted_follow_up":
-            targeted_result = self._targeted_tool.invoke(
-                smiles,
-                objective=task_spec.objective,
-                target_property=task_spec.target_property,
-            )
-            structured_results["targeted_follow_up"] = targeted_result
-            raw_results["targeted_follow_up"] = targeted_result
-            tool_calls.append(
-                f"{self._targeted_tool.name}(smiles='{smiles}', objective='{task_spec.objective}')"
-            )
-
-        rendered = self._prompts.render_sections(
-            "microscopic_specialized",
-            {
-                **render_payload,
-                "targeted_summary": self._targeted_summary_text(targeted_result),
-                "s0_energy": structured_results["s0_energy"],
-                "s1_energy": structured_results["s1_energy"],
-                "rigidity_proxy": structured_results["rigidity_proxy"],
-                "geometry_change_proxy": structured_results["geometry_change_proxy"],
-                "oscillator_strength_proxy": structured_results["oscillator_strength_proxy"],
-                "relaxation_gap": structured_results["relaxation_gap"],
-            },
-        )
-
-        return AgentReport(
-            agent_name="microscopic",
-            task_received=task_received,
-            task_understanding=draft["task_understanding"],
-            reasoning_summary=rendered["reasoning_summary"],
-            execution_plan=rendered["execution_plan"],
-            result_summary=rendered["result_summary"],
-            remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
-            tool_calls=tool_calls,
-            raw_results=raw_results,
-            structured_results=structured_results,
-            generated_artifacts={},
-            status="success",
-            planner_readable_report=rendered["planner_readable_report"],
-        )
-
     def _shared_structure_unavailable_report(
         self,
         *,
@@ -643,9 +453,7 @@ class MicroscopicAgent:
         config: AieMasConfig,
         llm_client: Optional[OpenAICompatibleMicroscopicClient],
     ) -> MicroscopicReasoningBackend:
-        if config.microscopic_backend == "openai_sdk":
-            return OpenAIMicroscopicReasoningBackend(config, client=llm_client)
-        return MockMicroscopicReasoningBackend()
+        return OpenAIMicroscopicReasoningBackend(config, client=llm_client)
 
     def _build_reasoning_payload(
         self,
@@ -999,24 +807,3 @@ class MicroscopicAgent:
 
     def _failed_result_summary(self, exc: AmespExecutionError) -> str:
         return f"Amesp baseline execution returned status={exc.status} with {exc.code}: {exc.message}"
-
-    def _targeted_summary_text(self, targeted_result: Optional[dict[str, Any]]) -> str:
-        if targeted_result is None:
-            return "No targeted follow-up result was produced in this run."
-        return (
-            "Targeted follow-up recorded "
-            f"consistency_proxy={targeted_result['consistency_proxy']} and "
-            f"constraint_sensitivity={targeted_result['constraint_sensitivity']}."
-        )
-
-    def _micro_uncertainty_text(
-        self,
-        task_spec: MicroscopicTaskSpec,
-        capability_limit_note: str,
-    ) -> str:
-        if task_spec.mode == "targeted_follow_up":
-            return (
-                "the targeted micro follow-up still cannot establish verifier-aligned mechanism selection "
-                f"without Planner-level synthesis. {capability_limit_note}"
-            )
-        return f"the bounded low-cost baseline S0/S1 run still cannot determine external consistency or final mechanism. {capability_limit_note}"

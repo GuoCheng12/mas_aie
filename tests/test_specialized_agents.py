@@ -3,7 +3,8 @@ from __future__ import annotations
 from aie_mas.agents.result_agents import MacroAgent, VerifierAgent
 
 
-def test_macro_agent_returns_specialized_local_report() -> None:
+def test_macro_agent_returns_specialized_local_report(install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     agent = MacroAgent()
     report = agent.run(
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",

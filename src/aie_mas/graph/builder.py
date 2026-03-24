@@ -36,9 +36,6 @@ class AieMasWorkflow:
         self.shared_structure_tool = toolset.shared_structure_tool
         self.macro_agent = MacroAgent(tool=toolset.macro_tool, prompts=self.prompts, config=self.config)
         self.microscopic_agent = MicroscopicAgent(
-            s0_tool=toolset.s0_tool,
-            s1_tool=toolset.s1_tool,
-            targeted_tool=toolset.targeted_micro_tool,
             amesp_tool=toolset.amesp_micro_tool,
             prompts=self.prompts,
             tools_work_dir=self.config.tools_work_dir,

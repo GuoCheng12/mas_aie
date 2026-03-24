@@ -6,7 +6,7 @@ from aie_mas.graph.state import SharedStructureContext
 from aie_mas.utils.smiles import extract_smiles_features
 
 
-class MockMacroStructureTool:
+class DeterministicMacroStructureTool:
     name = "deterministic_macro_structure_scan"
 
     def invoke(

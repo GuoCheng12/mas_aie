@@ -6,7 +6,8 @@ from pathlib import Path
 from aie_mas.cli.run_case import run_case_workflow
 
 
-def test_current_case_does_not_hit_its_own_case_memory(tmp_path: Path) -> None:
+def test_current_case_does_not_hit_its_own_case_memory(tmp_path: Path, install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     memory_dir = tmp_path / "memory"
     smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
 
@@ -50,7 +51,8 @@ def test_current_case_does_not_hit_its_own_case_memory(tmp_path: Path) -> None:
     assert second_state.case_memory_hits[0].case_id == first_state.case_id
 
 
-def test_long_term_memory_can_be_disabled_for_a_run(tmp_path: Path) -> None:
+def test_long_term_memory_can_be_disabled_for_a_run(tmp_path: Path, install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     memory_dir = tmp_path / "memory_disabled"
     smiles = "C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1"
 
