@@ -19,12 +19,8 @@ from aie_mas.tools.amesp import (
     AmespBaselineRunResult,
 )
 from aie_mas.tools.factory import ToolSet
-from aie_mas.tools.macro import MockMacroStructureTool
-from aie_mas.tools.microscopic import (
-    MockS0OptimizationTool,
-    MockS1OptimizationTool,
-    MockTargetedMicroscopicTool,
-)
+from aie_mas.tools.macro import DeterministicMacroStructureTool
+from aie_mas.tools.shared_structure import SharedStructurePrepTool
 from aie_mas.tools.verifier import MockVerifierEvidenceTool
 
 
@@ -58,7 +54,9 @@ Normal termination of Amesp!
 
 S1_AOP_TEXT = """
 ========= Excitation energies and oscillator strengths =========
+State    1 : E =    3.8474 eV     322.276 nm      31032.13 cm-1
 E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.1234
+State    2 : E =    4.6637 eV     265.850 nm      37615.42 cm-1
 E(TD) =   -55.620000000      <S**2>= 0.000     f=  0.0100
 
 Final Geometry(angstroms):
@@ -221,6 +219,7 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert result.s0.final_energy_hartree == -55.7914717877
     assert result.s0.homo_lumo_gap_ev == 13.991547
     assert len(result.s0.mulliken_charges) == 4
+    assert result.s1.first_excitation_energy_ev == 3.8474
     assert result.s1.first_oscillator_strength == 0.1234
     assert result.s1.state_count == 2
     assert "prepared_xyz_path" in result.generated_artifacts
@@ -244,6 +243,28 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         and event["details"].get("probe_status") == "end"
         for event in progress_events
     )
+
+
+def test_parse_excited_states_prefers_reported_excitation_energy_over_total_energy_difference() -> None:
+    from aie_mas.tools.amesp import _parse_excited_states
+
+    text = """
+========= Excitation energies and oscillator strengths =========
+State    1 : E =    3.0587 eV     405.350 nm      24669.99 cm-1
+E(TD) =  -2708.578180955      <S**2>= 0.000     f=  1.0346
+"""
+
+    states = _parse_excited_states(
+        text,
+        reference_energy_hartree=-123.2527000504,
+    )
+
+    assert len(states) == 1
+    assert states[0].state_index == 1
+    assert states[0].total_energy_hartree == -2708.578180955
+    assert states[0].oscillator_strength == 1.0346
+    assert states[0].spin_square == 0.0
+    assert states[0].excitation_energy_ev == 3.0587
 
 
 def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_path: Path) -> None:
@@ -279,7 +300,13 @@ def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_pat
 
     assert "% npara 20" in s0_input
     assert "% maxcore 12000" in s0_input
-    assert "! atb1 opt" in s0_input
+    assert "! atb opt force" in s0_input
+    assert ">opt" in s0_input
+    assert "maxcyc 2000" in s0_input
+    assert "gediis off" in s0_input
+    assert "maxstep 0.3" in s0_input
+    assert ">scf" in s0_input
+    assert "vshift 500" in s0_input
     assert "! b3lyp sto-3g td RICOSX" in s1_input
     assert "nstates 1" in s1_input
     assert "tout 1" in s1_input
@@ -389,7 +416,11 @@ class _SuccessfulAmespTool:
         )
 
 
-def test_real_microscopic_agent_builds_understanding_and_execution_plan(tmp_path: Path) -> None:
+def test_real_microscopic_agent_builds_understanding_and_execution_plan(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     progress_events: list[dict[str, object]] = []
     agent = MicroscopicAgent(
         amesp_tool=_SuccessfulAmespTool(),
@@ -466,7 +497,11 @@ class _FailingAmespTool:
         )
 
 
-def test_real_microscopic_agent_returns_partial_report_on_runner_failure(tmp_path: Path) -> None:
+def test_real_microscopic_agent_returns_partial_report_on_runner_failure(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
     agent = MicroscopicAgent(
         amesp_tool=_FailingAmespTool(),
         tools_work_dir=tmp_path / "tools",
@@ -486,26 +521,24 @@ def test_real_microscopic_agent_returns_partial_report_on_runner_failure(tmp_pat
     )
 
     assert report.status == "partial"
+    assert report.task_completion_status == "partial"
     assert report.reasoning_summary
     assert report.generated_artifacts["s0_aop_path"] == "/tmp/s0.aop"
     assert report.structured_results["error"]["code"] == "subprocess_failed"
+    assert report.structured_results["task_completion_status"] == "partial"
+    assert "runtime execution was incomplete" in report.task_completion
     assert "torsion scan" in " ".join(report.structured_results["execution_plan"]["unsupported_requests"]).lower()
     assert "partial" in report.result_summary.lower()
 
 
-def test_real_tool_backend_failure_does_not_break_workflow(tmp_path: Path, monkeypatch) -> None:
-    def fake_build_toolset(config):
-        del config
-        return ToolSet(
-            macro_tool=MockMacroStructureTool(),
-            s0_tool=MockS0OptimizationTool(),
-            s1_tool=MockS1OptimizationTool(),
-            targeted_micro_tool=MockTargetedMicroscopicTool(),
-            verifier_tool=MockVerifierEvidenceTool(),
-            amesp_micro_tool=_FailingAmespTool(),
-        )
-
-    monkeypatch.setattr(graph_builder, "build_toolset", fake_build_toolset)
+def test_real_tool_backend_failure_does_not_break_workflow(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles(
+        shared_structure_tool=SharedStructurePrepTool(structure_preparer=_fake_structure_preparer),
+        amesp_tool=_FailingAmespTool(),
+    )
 
     state = run_case_workflow(
         smiles="C1=CCCCC1",

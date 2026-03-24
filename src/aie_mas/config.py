@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 ExecutionProfile = Literal["local-dev", "linux-prod"]
 ToolBackend = Literal["mock", "real"]
 PlannerBackend = Literal["mock", "openai_sdk"]
-MicroscopicBackend = Literal["mock", "openai_sdk"]
+MicroscopicBackend = Literal["openai_sdk"]
+MacroBackend = Literal["openai_sdk"]
 
 
 def _default_project_root() -> Path:
@@ -33,6 +34,12 @@ class AieMasConfig(BaseModel):
     microscopic_api_key: Optional[str] = None
     microscopic_temperature: Optional[float] = None
     microscopic_timeout_seconds: Optional[float] = None
+    macro_backend: Optional[MacroBackend] = None
+    macro_base_url: Optional[str] = None
+    macro_model: Optional[str] = None
+    macro_api_key: Optional[str] = None
+    macro_temperature: Optional[float] = None
+    macro_timeout_seconds: Optional[float] = None
     amesp_npara: Optional[int] = None
     amesp_maxcore_mb: Optional[int] = None
     amesp_use_ricosx: bool = True
@@ -69,6 +76,10 @@ class AieMasConfig(BaseModel):
             "microscopic_base_url": "AIE_MAS_MICROSCOPIC_BASE_URL",
             "microscopic_model": "AIE_MAS_MICROSCOPIC_MODEL",
             "microscopic_api_key": "AIE_MAS_MICROSCOPIC_API_KEY",
+            "macro_backend": "AIE_MAS_MACRO_BACKEND",
+            "macro_base_url": "AIE_MAS_MACRO_BASE_URL",
+            "macro_model": "AIE_MAS_MACRO_MODEL",
+            "macro_api_key": "AIE_MAS_MACRO_API_KEY",
             "amesp_npara": "AIE_MAS_AMESP_NPARA",
             "amesp_maxcore_mb": "AIE_MAS_AMESP_MAXCORE_MB",
             "prompts_dir": "AIE_MAS_PROMPTS_DIR",
@@ -121,6 +132,10 @@ class AieMasConfig(BaseModel):
             env_values["microscopic_timeout_seconds"] = float(
                 os.getenv("AIE_MAS_MICROSCOPIC_TIMEOUT", "120.0")
             )
+        if os.getenv("AIE_MAS_MACRO_TEMPERATURE"):
+            env_values["macro_temperature"] = float(os.getenv("AIE_MAS_MACRO_TEMPERATURE", "0.0"))
+        if os.getenv("AIE_MAS_MACRO_TIMEOUT"):
+            env_values["macro_timeout_seconds"] = float(os.getenv("AIE_MAS_MACRO_TIMEOUT", "120.0"))
         if os.getenv("AIE_MAS_AMESP_USE_RICOSX"):
             env_values["amesp_use_ricosx"] = cls._parse_bool(
                 os.getenv("AIE_MAS_AMESP_USE_RICOSX", "1")
@@ -146,7 +161,7 @@ class AieMasConfig(BaseModel):
         if self.planner_backend is None:
             self.planner_backend = "mock" if self.execution_profile == "local-dev" else "openai_sdk"
         if self.microscopic_backend is None:
-            self.microscopic_backend = self.planner_backend
+            self.microscopic_backend = "openai_sdk"
         if self.microscopic_base_url is None:
             self.microscopic_base_url = self.planner_base_url
         if self.microscopic_model is None:
@@ -157,6 +172,18 @@ class AieMasConfig(BaseModel):
             self.microscopic_temperature = self.planner_temperature
         if self.microscopic_timeout_seconds is None:
             self.microscopic_timeout_seconds = self.planner_timeout_seconds
+        if self.macro_backend is None:
+            self.macro_backend = "openai_sdk"
+        if self.macro_base_url is None:
+            self.macro_base_url = self.planner_base_url
+        if self.macro_model is None:
+            self.macro_model = self.planner_model
+        if self.macro_api_key is None:
+            self.macro_api_key = self.planner_api_key
+        if self.macro_temperature is None:
+            self.macro_temperature = self.planner_temperature
+        if self.macro_timeout_seconds is None:
+            self.macro_timeout_seconds = self.planner_timeout_seconds
         if self.amesp_npara is None:
             if self.execution_profile == "linux-prod":
                 self.amesp_npara = max(1, min(20, os.cpu_count() or 1))
@@ -223,6 +250,12 @@ class AieMasConfig(BaseModel):
             "microscopic_api_key_configured": bool(self.microscopic_api_key),
             "microscopic_temperature": self.microscopic_temperature,
             "microscopic_timeout_seconds": self.microscopic_timeout_seconds,
+            "macro_backend": self.macro_backend,
+            "macro_base_url": self.macro_base_url,
+            "macro_model": self.macro_model,
+            "macro_api_key_configured": bool(self.macro_api_key),
+            "macro_temperature": self.macro_temperature,
+            "macro_timeout_seconds": self.macro_timeout_seconds,
             "amesp_npara": self.amesp_npara,
             "amesp_maxcore_mb": self.amesp_maxcore_mb,
             "amesp_use_ricosx": self.amesp_use_ricosx,

@@ -35,6 +35,8 @@ System rules:
 You will be given:
 - user_query
 - smiles
+- shared_structure_status
+- shared_structure_context
 - runtime_context
 
 Output requirements:
@@ -67,6 +69,7 @@ The diagnosis should explain:
 - what the current leading hypothesis is
 - why this is only an initial working hypothesis
 - what uncertainty is already visible in the leading hypothesis
+- whether shared prepared structure context is already available for downstream agents
 - what the current specialized agents can and cannot realistically do
 - why the current microscopic baseline must stay low-cost and bounded
 - why the first round should gather both macro and microscopic evidence
@@ -83,6 +86,7 @@ These instructions should:
 - define the local task for the specialized agent
 - stay within that agent's local scope
 - stay within current specialized-agent capability
+- tell Macro and Microscopic to reuse shared prepared structure context when it is available
 - keep the first-round microscopic task low-cost and bounded
 - not ask the agent to decide the global mechanism
 - not ask the agent to choose the system-level next action

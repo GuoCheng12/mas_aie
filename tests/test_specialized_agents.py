@@ -3,7 +3,8 @@ from __future__ import annotations
 from aie_mas.agents.result_agents import MacroAgent, VerifierAgent
 
 
-def test_macro_agent_returns_specialized_local_report() -> None:
+def test_macro_agent_returns_specialized_local_report(install_specialized_test_doubles) -> None:
+    install_specialized_test_doubles()
     agent = MacroAgent()
     report = agent.run(
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
@@ -18,7 +19,10 @@ def test_macro_agent_returns_specialized_local_report() -> None:
     assert report.execution_plan
     assert report.result_summary
     assert report.remaining_local_uncertainty
+    assert report.task_completion_status == "completed"
+    assert "Task completed successfully" in report.task_completion
     assert report.structured_results["aromatic_atom_count"] >= 1
+    assert report.planner_readable_report.startswith("Task completion:")
     assert "global mechanism judgment" in report.task_understanding
     assert "Task understanding:" in report.planner_readable_report
 
@@ -38,7 +42,10 @@ def test_verifier_agent_returns_specialized_local_report() -> None:
     assert report.execution_plan
     assert report.result_summary
     assert report.remaining_local_uncertainty
+    assert report.task_completion_status == "completed"
+    assert "retrieving raw verifier evidence" in report.task_completion
     assert report.structured_results["source_count"] >= 1
-    assert "support_count" in report.structured_results
-    assert "conflict_count" in report.structured_results
+    assert report.structured_results["evidence_cards"]
+    assert "topic_tags" in report.structured_results["evidence_cards"][0]
+    assert report.planner_readable_report.startswith("Task completion:")
     assert "Task understanding:" in report.planner_readable_report

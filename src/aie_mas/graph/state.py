@@ -9,6 +9,10 @@ PendingAgent = Literal["macro", "microscopic", "verifier"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_vertical_excitation"]
 MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
+MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
+MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
+VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
+SharedStructureStatus = Literal["missing", "ready", "failed"]
 WorkflowProgressPhase = Literal["start", "probe", "end"]
 
 
@@ -32,6 +36,8 @@ class HypothesisEntry(BaseModel):
 class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
+    task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
+    task_completion: str = "Task completion was not provided."
     task_understanding: str = "Task understanding was not provided."
     reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str = "Execution plan was not provided."
@@ -45,9 +51,19 @@ class AgentReport(BaseModel):
     planner_readable_report: str
 
 
+class VerifierEvidenceCard(BaseModel):
+    card_id: str
+    source: str
+    observation: str
+    topic_tags: list[str] = Field(default_factory=list)
+    evidence_kind: VerifierEvidenceKind
+
+
 class WorkingMemoryAgentEntry(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
+    task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
+    task_completion: str = "Task completion was not provided."
     task_understanding: str
     reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str
@@ -137,6 +153,51 @@ class MicroscopicExecutionPlan(BaseModel):
     failure_reporting: str
 
 
+class SharedStructureContext(BaseModel):
+    input_smiles: str
+    canonical_smiles: str
+    charge: int
+    multiplicity: int
+    atom_count: int
+    conformer_count: int
+    selected_conformer_id: int
+    prepared_xyz_path: str
+    prepared_sdf_path: str
+    summary_path: str
+    rotatable_bond_count: int
+    aromatic_ring_count: int
+    ring_system_count: int
+    hetero_atom_count: int
+    branch_point_count: int
+    donor_acceptor_partition_proxy: float
+    planarity_proxy: float
+    compactness_proxy: float
+    torsion_candidate_count: int
+    principal_span_proxy: float
+    conformer_dispersion_proxy: float
+
+
+class MacroExecutionStep(BaseModel):
+    step_id: str
+    step_type: MacroPlanStepType
+    description: str
+    input_source: str
+    expected_outputs: list[str] = Field(default_factory=list)
+
+
+class MacroExecutionPlan(BaseModel):
+    plan_version: str = "macro_context_v1"
+    local_goal: str
+    requested_deliverables: list[str] = Field(default_factory=list)
+    structure_source: MacroStructureSource
+    focus_areas: list[str] = Field(default_factory=list)
+    supported_scope: list[str] = Field(default_factory=list)
+    unsupported_requests: list[str] = Field(default_factory=list)
+    steps: list[MacroExecutionStep] = Field(default_factory=list)
+    expected_outputs: list[str] = Field(default_factory=list)
+    failure_reporting: str
+
+
 class CaseMemoryEntry(BaseModel):
     case_id: Optional[str] = None
     smiles: str
@@ -201,6 +262,9 @@ class AieMasState(BaseModel):
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
     next_microscopic_task: Optional[MicroscopicTaskSpec] = None
     last_microscopic_task: Optional[MicroscopicTaskSpec] = None
+    shared_structure_status: SharedStructureStatus = "missing"
+    shared_structure_context: Optional[SharedStructureContext] = None
+    shared_structure_error: Optional[dict[str, Any]] = None
 
     case_memory_hits: list[CaseMemoryEntry] = Field(default_factory=list)
     strategy_memory_hits: list[StrategyMemoryEntry] = Field(default_factory=list)
@@ -208,6 +272,9 @@ class AieMasState(BaseModel):
     long_term_memory_path: Optional[str] = None
 
     last_planner_decision: Optional[PlannerDecision] = None
+    last_planner_raw_response: Optional[dict[str, Any]] = None
+    last_planner_normalized_response: Optional[dict[str, Any]] = None
+    planner_response_history: list[dict[str, Any]] = Field(default_factory=list)
     final_answer: Optional[dict[str, Any]] = None
     state_snapshot: Optional[dict[str, Any]] = None
     finalize: bool = False

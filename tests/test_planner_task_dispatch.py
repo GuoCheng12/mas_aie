@@ -43,3 +43,5 @@ def test_initial_planner_dispatch_contains_agent_task_instructions(tmp_path: Pat
     assert top_hypothesis.candidate_strength == "medium"
     assert "generic mock fallback" in decision.hypothesis_uncertainty_note.lower()
     assert "specialized agents" in decision.capability_assessment.lower()
+    assert result["raw_response"]["action"] == "macro_and_microscopic"
+    assert result["normalized_response"]["decision"]["action"] == "macro_and_microscopic"

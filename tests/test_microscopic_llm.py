@@ -4,7 +4,7 @@ from pathlib import Path
 
 from aie_mas.agents.result_agents import MicroscopicAgent
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import MicroscopicTaskSpec
+from aie_mas.graph.state import MicroscopicTaskSpec, SharedStructureContext
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
 from aie_mas.utils.prompts import PromptRepository
 
@@ -173,6 +173,29 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         task_received="Use Amesp to optimize S0, summarize the dipole, characterize S1, and also do a torsion scan if possible.",
         current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
         recent_rounds_context=[{"round_id": 1, "action_taken": "macro, microscopic", "main_gap": "Need more microscopic evidence."}],
+        shared_structure_context=SharedStructureContext(
+            input_smiles="C1=CCCCC1",
+            canonical_smiles="C1=CCCCC1",
+            charge=0,
+            multiplicity=1,
+            atom_count=16,
+            conformer_count=2,
+            selected_conformer_id=0,
+            prepared_xyz_path=str(tmp_path / "prepared.xyz"),
+            prepared_sdf_path=str(tmp_path / "prepared.sdf"),
+            summary_path=str(tmp_path / "summary.json"),
+            rotatable_bond_count=2,
+            aromatic_ring_count=1,
+            ring_system_count=1,
+            hetero_atom_count=0,
+            branch_point_count=1,
+            donor_acceptor_partition_proxy=0.0,
+            planarity_proxy=0.6,
+            compactness_proxy=0.4,
+            torsion_candidate_count=2,
+            principal_span_proxy=6.0,
+            conformer_dispersion_proxy=0.4,
+        ),
         task_spec=MicroscopicTaskSpec(
             mode="baseline_s0_s1",
             task_label="initial-baseline",
@@ -192,4 +215,5 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "recent_rounds_context" in message_payload
     assert "available_structure_context" in message_payload
+    assert "shared_structure_context" in message_payload
     assert "runtime_context" in message_payload

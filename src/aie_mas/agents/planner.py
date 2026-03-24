@@ -60,6 +60,54 @@ def _normalize_agent_task_instructions(raw_mapping: dict[str, str]) -> dict[str,
     }
 
 
+def _serialize_hypothesis_pool(hypothesis_pool: list[HypothesisEntry]) -> list[dict[str, Any]]:
+    return [entry.model_dump(mode="json") for entry in hypothesis_pool]
+
+
+def _serialize_planner_decision(decision: PlannerDecision) -> dict[str, Any]:
+    return decision.model_dump(mode="json")
+
+
+def _planner_normalized_payload(
+    *,
+    decision: PlannerDecision,
+    hypothesis_pool: list[HypothesisEntry] | None = None,
+    evidence_summary: str | None = None,
+    main_gap: str | None = None,
+    conflict_status: str | None = None,
+    hypothesis_uncertainty_note: str | None = None,
+    capability_assessment: str | None = None,
+    stagnation_assessment: str | None = None,
+    contraction_reason: str | None = None,
+    information_gain_assessment: str | None = None,
+    gap_trend: str | None = None,
+) -> dict[str, Any]:
+    payload = {
+        "decision": _serialize_planner_decision(decision),
+    }
+    if hypothesis_pool is not None:
+        payload["hypothesis_pool"] = _serialize_hypothesis_pool(hypothesis_pool)
+    if evidence_summary is not None:
+        payload["evidence_summary"] = evidence_summary
+    if main_gap is not None:
+        payload["main_gap"] = main_gap
+    if conflict_status is not None:
+        payload["conflict_status"] = conflict_status
+    if hypothesis_uncertainty_note is not None:
+        payload["hypothesis_uncertainty_note"] = hypothesis_uncertainty_note
+    if capability_assessment is not None:
+        payload["capability_assessment"] = capability_assessment
+    if stagnation_assessment is not None:
+        payload["stagnation_assessment"] = stagnation_assessment
+    if contraction_reason is not None:
+        payload["contraction_reason"] = contraction_reason
+    if information_gain_assessment is not None:
+        payload["information_gain_assessment"] = information_gain_assessment
+    if gap_trend is not None:
+        payload["gap_trend"] = gap_trend
+    return payload
+
+
 def _strength_from_confidence(confidence: float) -> str:
     if confidence >= 0.5:
         return "strong"
@@ -77,12 +125,13 @@ def _default_initial_agent_task_instructions(
     return {
         "macro": (
             f"Assess macro-level structural evidence relevant to the current working hypothesis "
-            f"'{current_hypothesis}'. Summarize low-cost structural indicators only, and stay within "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure context when available, summarize low-cost "
+            f"structural indicators only, and stay within "
             f"current macro capability. Hypothesis uncertainty to keep in mind: {hypothesis_uncertainty_note}"
         ),
         "microscopic": (
             f"Run the first-round low-cost S0/S1 microscopic baseline task for the current working hypothesis "
-            f"'{current_hypothesis}'. Prioritize semi-empirical or otherwise low-cost bounded evidence collection, "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure context when available. Prioritize semi-empirical or otherwise low-cost bounded evidence collection, "
             f"not heavy exhaustive geometry optimization. Report local microscopic results only, and do not attempt "
             f"mechanism discrimination beyond current microscopic capability. Capability note: {capability_assessment}"
         ),
@@ -97,10 +146,12 @@ def _default_follow_up_task_instruction(
     main_gap = payload.get("main_gap") or "clarify the unresolved signal."
     capability_assessment = payload.get("capability_assessment") or "Stay within current specialized-agent capability."
     contraction_reason = payload.get("contraction_reason") or ""
+    shared_structure_note = payload.get("shared_structure_note") or ""
     if action == "macro":
         return (
             f"Collect additional macro-level structural evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
+            f"{shared_structure_note} "
             f"Only use low-cost structural proxies; do not attempt excited-state adjudication. "
             f"Capability note: {capability_assessment}"
         )
@@ -108,6 +159,7 @@ def _default_follow_up_task_instruction(
         return (
             f"Collect additional microscopic evidence for the current working hypothesis "
             f"'{current_hypothesis}'. Focus on the current gap: {main_gap} "
+            f"{shared_structure_note} "
             f"Keep the task low-cost and bounded to current microscopic capability. "
             f"{contraction_reason or capability_assessment}"
         )
@@ -166,6 +218,74 @@ def _collect_local_uncertainties(*reports: dict[str, Any]) -> list[str]:
         if uncertainty and uncertainty != "Remaining local uncertainty was not provided.":
             uncertainties.append(uncertainty)
     return uncertainties
+
+
+def _verifier_topic_summary(cards: list[dict[str, Any]]) -> str:
+    topics: list[str] = []
+    for card in cards:
+        for tag in card.get("topic_tags", []):
+            tag_text = str(tag).strip().lower()
+            if tag_text and tag_text not in topics:
+                topics.append(tag_text)
+    return ", ".join(topics) if topics else "no specific external topics"
+
+
+def _mock_verifier_tag_profile(current_hypothesis: str) -> tuple[set[str], set[str]]:
+    hypothesis = current_hypothesis.lower()
+    if any(token in hypothesis for token in ("restriction", "rotation", "motion", "rim", "rir")):
+        return {"restriction"}, {"ict"}
+    if "ict" in hypothesis or "charge transfer" in hypothesis:
+        return {"ict"}, {"restriction"}
+    if any(token in hypothesis for token in ("aggregate", "packing", "excimer")):
+        return {"aggregation", "packing"}, {"ict"}
+    return set(), {"ict"}
+
+
+def _interpret_mock_verifier_cards(
+    current_hypothesis: str,
+    cards: list[dict[str, Any]],
+) -> dict[str, Any]:
+    support_tags, conflict_tags = _mock_verifier_tag_profile(current_hypothesis)
+    support_cards: list[dict[str, Any]] = []
+    conflict_cards: list[dict[str, Any]] = []
+    neutral_cards: list[dict[str, Any]] = []
+
+    for card in cards:
+        tags = {str(tag).strip().lower() for tag in card.get("topic_tags", []) if str(tag).strip()}
+        if support_tags and tags & support_tags:
+            support_cards.append(card)
+        elif conflict_tags and tags & conflict_tags:
+            conflict_cards.append(card)
+        else:
+            neutral_cards.append(card)
+
+    conflict_topics = sorted(
+        {
+            str(tag).strip().lower()
+            for card in conflict_cards
+            for tag in card.get("topic_tags", [])
+            if str(tag).strip()
+        }
+    )
+    support_topics = sorted(
+        {
+            str(tag).strip().lower()
+            for card in support_cards
+            for tag in card.get("topic_tags", [])
+            if str(tag).strip()
+        }
+    )
+    return {
+        "support_cards": support_cards,
+        "conflict_cards": conflict_cards,
+        "neutral_cards": neutral_cards,
+        "support_count": len(support_cards),
+        "conflict_count": len(conflict_cards),
+        "neutral_count": len(neutral_cards),
+        "support_topics": support_topics,
+        "conflict_topics": conflict_topics,
+        "topic_summary": _verifier_topic_summary(cards),
+    }
 
 
 def _has_meaningful_uncertainty(report: dict[str, Any]) -> bool:
@@ -243,32 +363,55 @@ class MockPlannerBackend:
             hypothesis_uncertainty_note=hypothesis_uncertainty_note,
             capability_assessment=capability_assessment,
         )
+        shared_structure_status = payload.get("shared_structure_status", "missing")
+        shared_structure_note = {
+            "ready": "A shared prepared 3D structure context is already available for the first round.",
+            "failed": "Shared 3D structure preparation failed, so specialized agents may need to degrade to fallback behavior.",
+        }.get(shared_structure_status, "Shared 3D structure context is not yet available.")
         diagnosis = (
             f"Current task: assess the likely emission mechanism for SMILES {payload['smiles']}. "
             f"The leading working hypothesis is {current_hypothesis}. "
             f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
-            "This remains preliminary because only the user query and raw SMILES are available so far. "
+            f"{shared_structure_note} "
+            "This remains preliminary because only the initial task context and bounded structural inputs are available so far. "
             "The first round should therefore collect both macro structural evidence and low-cost microscopic S0/S1 "
             f"baseline evidence before any external verification or finalization. Capability note: "
             f"{capability_assessment}"
         )
+        raw_response = {
+            "hypothesis_pool": _serialize_hypothesis_pool(hypothesis_pool),
+            "current_hypothesis": current_hypothesis,
+            "confidence": confidence,
+            "diagnosis": diagnosis,
+            "action": "macro_and_microscopic",
+            "task_instruction": "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis.",
+            "agent_task_instructions": _normalize_agent_task_instructions(agent_task_instructions),
+            "hypothesis_uncertainty_note": hypothesis_uncertainty_note,
+            "capability_assessment": capability_assessment,
+        }
+        decision = PlannerDecision(
+            diagnosis=diagnosis,
+            action="macro_and_microscopic",
+            current_hypothesis=current_hypothesis,
+            confidence=confidence,
+            needs_verifier=False,
+            finalize=False,
+            planned_agents=["macro", "microscopic"],
+            task_instruction=(
+                "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis."
+            ),
+            agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
+            hypothesis_uncertainty_note=hypothesis_uncertainty_note,
+            capability_assessment=capability_assessment,
+            stagnation_assessment="No stagnation is present in the initial round.",
+        )
         return {
             "hypothesis_pool": hypothesis_pool,
-            "decision": PlannerDecision(
-                diagnosis=diagnosis,
-                action="macro_and_microscopic",
-                current_hypothesis=current_hypothesis,
-                confidence=confidence,
-                needs_verifier=False,
-                finalize=False,
-                planned_agents=["macro", "microscopic"],
-                task_instruction=(
-                    "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis."
-                ),
-                agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
-                hypothesis_uncertainty_note=hypothesis_uncertainty_note,
-                capability_assessment=capability_assessment,
-                stagnation_assessment="No stagnation is present in the initial round.",
+            "decision": decision,
+            "raw_response": raw_response,
+            "normalized_response": _planner_normalized_payload(
+                decision=decision,
+                hypothesis_pool=hypothesis_pool,
             ),
         }
 
@@ -282,10 +425,14 @@ class MockPlannerBackend:
         macro_reasoning_summary = str(macro_report.get("reasoning_summary") or "").strip()
         macro_execution_plan = str(macro_report.get("execution_plan") or "").strip()
         macro_result_summary = str(macro_report.get("result_summary") or "").strip()
+        macro_task_completion = str(macro_report.get("task_completion") or "").strip()
+        macro_task_completion_status = str(macro_report.get("task_completion_status") or "").strip()
         micro_task_understanding = str(microscopic_report.get("task_understanding") or "").strip()
         micro_reasoning_summary = str(microscopic_report.get("reasoning_summary") or "").strip()
         micro_execution_plan = str(microscopic_report.get("execution_plan") or "").strip()
         micro_result_summary = str(microscopic_report.get("result_summary") or "").strip()
+        micro_task_completion = str(microscopic_report.get("task_completion") or "").strip()
+        micro_task_completion_status = str(microscopic_report.get("task_completion_status") or "").strip()
         local_uncertainty_bits = _collect_local_uncertainties(macro_report, microscopic_report)
         recent_rounds_context = payload.get("recent_rounds_context", [])
         recent_capability_context = payload.get("recent_capability_context", {})
@@ -303,6 +450,10 @@ class MockPlannerBackend:
             for entry in recent_rounds_context
             if str(entry.get("action_taken") or "").strip()
         ]
+        shared_structure_note = {
+            "ready": "Reuse the shared prepared structure context that is already available for this case.",
+            "failed": "Shared 3D structure preparation previously failed, so any follow-up must stay compatible with fallback behavior.",
+        }.get(payload.get("shared_structure_status"), "")
         recent_gap_repetition_detected = (
             len(recent_gap_values) >= 2 and len(set(recent_gap_values[-2:])) == 1
         )
@@ -328,6 +479,10 @@ class MockPlannerBackend:
                 support_score += 0.08
             if macro_task_understanding:
                 evidence_bits.append(f"macro task understanding: {macro_task_understanding}")
+            if macro_task_completion:
+                evidence_bits.append(
+                    f"macro task completion ({macro_task_completion_status or 'unknown'}): {macro_task_completion}"
+                )
             if macro_reasoning_summary and macro_reasoning_summary != "Reasoning summary was not provided.":
                 evidence_bits.append(f"macro reasoning summary: {macro_reasoning_summary}")
             if macro_execution_plan:
@@ -349,6 +504,10 @@ class MockPlannerBackend:
                 support_score += 0.07
             if micro_task_understanding:
                 evidence_bits.append(f"microscopic task understanding: {micro_task_understanding}")
+            if micro_task_completion:
+                evidence_bits.append(
+                    f"microscopic task completion ({micro_task_completion_status or 'unknown'}): {micro_task_completion}"
+                )
             if micro_reasoning_summary and micro_reasoning_summary != "Reasoning summary was not provided.":
                 evidence_bits.append(f"microscopic reasoning summary: {micro_reasoning_summary}")
             if micro_execution_plan:
@@ -378,7 +537,11 @@ class MockPlannerBackend:
             and float(micro_results.get("relaxation_gap", 0.0)) < 0.2
             and float(micro_results.get("oscillator_strength_proxy", 0.0)) < 0.4
         )
-        capability_limit_triggered = bool(repeated_local_uncertainties) or bool(low_signal_micro)
+        degraded_task_completion = any(
+            status in {"contracted", "partial", "failed"}
+            for status in (macro_task_completion_status, micro_task_completion_status)
+        )
+        capability_limit_triggered = bool(repeated_local_uncertainties) or bool(low_signal_micro) or degraded_task_completion
         if repeated_main_gaps and repeated_actions:
             capability_limit_triggered = True
         if recent_gap_repetition_detected and recent_action_repetition_detected:
@@ -456,16 +619,17 @@ class MockPlannerBackend:
                 "external verifier check before any temporary conclusion."
             )
         elif capability_limit_triggered:
-            action = "verifier"
-            needs_verifier = True
-            planned_agents = ["verifier"]
+            action = "finalize"
+            needs_verifier = False
+            planned_agents = []
             main_gap = (
-                "Capability-limited stagnation: internal evidence is no longer shrinking the gap effectively under "
-                "current specialized-agent capability."
+                "Capability-limited stagnation: remaining uncertainty cannot be reduced effectively under current "
+                "specialized-agent capability."
             )
             contraction_reason = (
                 "Further repetition of the same internal action is unlikely to close the gap under current mock agent "
-                "capability, so the Planner is conservatively contracting to verifier."
+                "capability. Verifier should not be used as exploratory search, so the Planner is conservatively "
+                "stopping with bounded uncertainty."
             )
         elif not macro_results:
             action = "macro"
@@ -484,6 +648,7 @@ class MockPlannerBackend:
                 "main_gap": main_gap,
                 "capability_assessment": capability_assessment,
                 "contraction_reason": contraction_reason,
+                "shared_structure_note": shared_structure_note,
             },
         )
         agent_task_instructions = (
@@ -518,26 +683,50 @@ class MockPlannerBackend:
             f"Contraction reason: {contraction_reason or 'No conservative contraction is required yet.'} "
             f"The chosen next action is {action} because it addresses the highest-value missing evidence now."
         )
+        decision = PlannerDecision(
+            diagnosis=diagnosis,
+            action=action,
+            current_hypothesis=payload["current_hypothesis"],
+            confidence=confidence,
+            needs_verifier=needs_verifier,
+            finalize=action == "finalize",
+            planned_agents=planned_agents,
+            task_instruction=task_instruction,
+            agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
+            hypothesis_uncertainty_note=hypothesis_uncertainty_note,
+            capability_assessment=capability_assessment,
+            stagnation_assessment=stagnation_assessment,
+            contraction_reason=contraction_reason,
+            capability_lesson_candidates=capability_lesson_candidates,
+            information_gain_assessment=information_gain_assessment,
+            gap_trend=gap_trend,
+            stagnation_detected=stagnation_detected,
+        )
+        raw_response = {
+            "diagnosis": diagnosis,
+            "action": action,
+            "current_hypothesis": payload["current_hypothesis"],
+            "confidence": confidence,
+            "needs_verifier": needs_verifier,
+            "finalize": action == "finalize",
+            "task_instruction": task_instruction,
+            "agent_task_instructions": _normalize_agent_task_instructions(agent_task_instructions),
+            "hypothesis_uncertainty_note": hypothesis_uncertainty_note,
+            "capability_assessment": capability_assessment,
+            "stagnation_assessment": stagnation_assessment,
+            "contraction_reason": contraction_reason,
+            "evidence_summary": evidence_summary,
+            "main_gap": main_gap,
+            "conflict_status": "none",
+            "information_gain_assessment": information_gain_assessment,
+            "gap_trend": gap_trend,
+            "stagnation_detected": stagnation_detected,
+            "capability_lesson_candidates": [
+                entry.model_dump(mode="json") for entry in capability_lesson_candidates
+            ],
+        }
         return {
-            "decision": PlannerDecision(
-                diagnosis=diagnosis,
-                action=action,
-                current_hypothesis=payload["current_hypothesis"],
-                confidence=confidence,
-                needs_verifier=needs_verifier,
-                finalize=False,
-                planned_agents=planned_agents,
-                task_instruction=task_instruction,
-                agent_task_instructions=_normalize_agent_task_instructions(agent_task_instructions),
-                hypothesis_uncertainty_note=hypothesis_uncertainty_note,
-                capability_assessment=capability_assessment,
-                stagnation_assessment=stagnation_assessment,
-                contraction_reason=contraction_reason,
-                capability_lesson_candidates=capability_lesson_candidates,
-                information_gain_assessment=information_gain_assessment,
-                gap_trend=gap_trend,
-                stagnation_detected=stagnation_detected,
-            ),
+            "decision": decision,
             "evidence_summary": evidence_summary,
             "main_gap": main_gap,
             "conflict_status": "none",
@@ -547,6 +736,19 @@ class MockPlannerBackend:
             "contraction_reason": contraction_reason,
             "information_gain_assessment": information_gain_assessment,
             "gap_trend": gap_trend,
+            "raw_response": raw_response,
+            "normalized_response": _planner_normalized_payload(
+                decision=decision,
+                evidence_summary=evidence_summary,
+                main_gap=main_gap,
+                conflict_status="none",
+                hypothesis_uncertainty_note=hypothesis_uncertainty_note,
+                capability_assessment=capability_assessment,
+                stagnation_assessment=stagnation_assessment,
+                contraction_reason=contraction_reason,
+                information_gain_assessment=information_gain_assessment,
+                gap_trend=gap_trend,
+            ),
         }
 
     def plan_reweight_or_finalize(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
@@ -554,9 +756,13 @@ class MockPlannerBackend:
         verifier_report = payload["verifier_report"] or {}
         verifier_cards = verifier_report.get("structured_results", {}).get("evidence_cards", [])
         verifier_result_summary = str(verifier_report.get("result_summary") or "").strip()
-        support_count = sum(card.get("relation_to_hypothesis") == "support" for card in verifier_cards)
-        conflict_count = sum(card.get("relation_to_hypothesis") == "conflict" for card in verifier_cards)
-        neutral_count = sum(card.get("relation_to_hypothesis") == "neutral" for card in verifier_cards)
+        interpreted = _interpret_mock_verifier_cards(payload["current_hypothesis"], verifier_cards)
+        support_count = interpreted["support_count"]
+        conflict_count = interpreted["conflict_count"]
+        neutral_count = interpreted["neutral_count"]
+        support_topics = interpreted["support_topics"]
+        conflict_topics = interpreted["conflict_topics"]
+        topic_summary = interpreted["topic_summary"]
         current_confidence = float(payload["current_confidence"] or 0.5)
         current_hypothesis = payload["current_hypothesis"]
         next_hypothesis = _best_alternative_hypothesis(
@@ -570,17 +776,20 @@ class MockPlannerBackend:
         evidence_summary = (
             verifier_result_summary
             or (
-                f"Verifier returned {support_count} support card(s), "
-                f"{conflict_count} conflict card(s), and {neutral_count} neutral card(s)."
+                f"Verifier returned {len(verifier_cards)} raw evidence card(s) covering these topics: {topic_summary}. "
+                f"The mock Planner interprets them as {support_count} supportive, {conflict_count} competing, "
+                f"and {neutral_count} neutral cards for the current hypothesis."
             )
         )
+        strong_conflict = conflict_count >= 2 or (support_count == 0 and len(conflict_topics) >= 2)
+        weak_conflict = conflict_count > 0 and not strong_conflict
 
-        if conflict_count > support_count:
+        if strong_conflict:
             confidence = round(max(0.34, current_confidence - 0.18), 3)
             conflict_status = "strong"
             hypothesis_uncertainty_note = (
-                "The previous leading hypothesis is now materially weakened because verifier conflict outweighs support, "
-                "so the Planner should demote it rather than keep refining it blindly."
+                "The current hypothesis is materially weakened because the Planner reads multiple verifier cards as "
+                "pointing toward competing explanations."
             )
             capability_assessment = (
                 "Current specialized agents can still gather bounded evidence for a switched hypothesis, but they should "
@@ -610,9 +819,11 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence conflicts with the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), "
-                f"and {neutral_count} neutral card(s), so the conflict is strong. "
+                f"Planner interpretation of verifier evidence now materially conflicts with the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {conflict_count} card(s) as competing and {support_count} card(s) as supportive, "
+                f"with conflict topics such as {', '.join(conflict_topics) if conflict_topics else 'none identified'}. "
+                "This is treated as strong conflict. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -640,12 +851,12 @@ class MockPlannerBackend:
                 gap_trend="The previous gap is replaced by a new switched-hypothesis validation gap.",
                 stagnation_detected=False,
             )
-        elif support_count > 0 and conflict_count > 0:
+        elif weak_conflict:
             confidence = round(max(0.46, current_confidence - 0.03), 3)
             conflict_status = "weak"
             hypothesis_uncertainty_note = (
-                "The current hypothesis remains viable, but a weak verifier conflict means the supporting story is not "
-                "yet clean enough for closure."
+                "The current hypothesis remains viable, but the Planner reads part of the verifier evidence as pointing "
+                "toward a competing explanation, so the story is not yet clean enough for closure."
             )
             capability_assessment = (
                 "Current specialized agents can still perform one bounded microscopic follow-up on the verifier-exposed "
@@ -677,9 +888,11 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence both supports and conflicts with the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s), so the conflict is weak rather than decisive. "
+                f"Planner interpretation of verifier evidence introduces a weak conflict with the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {support_count} card(s) as supportive, {conflict_count} as competing, and {neutral_count} as neutral. "
+                f"Support topics include {', '.join(support_topics) if support_topics else 'none identified'}, while competing topics include {', '.join(conflict_topics) if conflict_topics else 'none identified'}. "
+                "The conflict is therefore weak rather than decisive. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -712,8 +925,8 @@ class MockPlannerBackend:
             confidence = round(max(0.36, current_confidence - 0.05), 3)
             conflict_status = "uncertain"
             hypothesis_uncertainty_note = (
-                "The current hypothesis remains provisional because neutral verifier evidence fails to separate it from "
-                "nearby alternatives or from the possibility that the current mock setup simply cannot resolve the case."
+                "The current hypothesis remains provisional because the raw verifier evidence does not yet separate it "
+                "from nearby alternatives."
             )
             capability_assessment = (
                 "The combination of neutral verifier evidence and recent repeated local uncertainty indicates that the "
@@ -749,9 +962,9 @@ class MockPlannerBackend:
                 contraction_reason=contraction_reason,
             )
             diagnosis = (
-                f"Verifier evidence is neutral for the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s), so there is no external resolution yet. "
+                f"Planner interpretation of verifier evidence remains uncertain for the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}, "
+                f"but the Planner reads them as {neutral_count} neutral cards with no clear supportive or competing signal. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -784,7 +997,8 @@ class MockPlannerBackend:
             confidence = round(min(0.95, current_confidence + 0.08 + support_count * 0.02), 3)
             conflict_status = "none"
             hypothesis_uncertainty_note = (
-                "Some residual scientific uncertainty remains, but verifier support now outweighs the remaining internal ambiguity."
+                "Some residual scientific uncertainty remains, but the Planner now reads the verifier evidence as aligned "
+                "with the current hypothesis."
             )
             capability_assessment = (
                 "Current specialized-agent limitations no longer block case closure because verifier support aligned with "
@@ -796,9 +1010,9 @@ class MockPlannerBackend:
             contraction_reason = "Conservatively contract to case closure because further internal expansion is unnecessary."
             main_gap = "No critical evidence gap remains in the current workflow."
             diagnosis = (
-                f"Verifier evidence supports the current hypothesis {current_hypothesis}. "
-                f"The verifier returned {support_count} supportive card(s), {conflict_count} conflicting card(s), and "
-                f"{neutral_count} neutral card(s). "
+                f"Planner interpretation of verifier evidence supports the current hypothesis {current_hypothesis}. "
+                f"The verifier returned {len(verifier_cards)} raw evidence card(s) covering {topic_summary}. "
+                f"The Planner reads {support_count} card(s) as supportive and no meaningful competing signal remains. "
                 f"Hypothesis uncertainty: {hypothesis_uncertainty_note} "
                 f"Capability assessment: {capability_assessment} "
                 f"Stagnation assessment: {stagnation_assessment} "
@@ -823,6 +1037,29 @@ class MockPlannerBackend:
                 stagnation_detected=False,
             )
 
+        raw_response = {
+            "diagnosis": decision.diagnosis,
+            "action": decision.action,
+            "current_hypothesis": decision.current_hypothesis,
+            "confidence": decision.confidence,
+            "needs_verifier": decision.needs_verifier,
+            "finalize": decision.finalize,
+            "task_instruction": decision.task_instruction,
+            "agent_task_instructions": dict(decision.agent_task_instructions),
+            "hypothesis_uncertainty_note": decision.hypothesis_uncertainty_note,
+            "capability_assessment": decision.capability_assessment,
+            "stagnation_assessment": decision.stagnation_assessment,
+            "contraction_reason": decision.contraction_reason,
+            "evidence_summary": evidence_summary,
+            "main_gap": main_gap,
+            "conflict_status": conflict_status,
+            "information_gain_assessment": decision.information_gain_assessment,
+            "gap_trend": decision.gap_trend,
+            "stagnation_detected": decision.stagnation_detected,
+            "capability_lesson_candidates": [
+                entry.model_dump(mode="json") for entry in decision.capability_lesson_candidates
+            ],
+        }
         return {
             "decision": decision,
             "evidence_summary": evidence_summary,
@@ -834,6 +1071,19 @@ class MockPlannerBackend:
             "contraction_reason": decision.contraction_reason,
             "information_gain_assessment": decision.information_gain_assessment,
             "gap_trend": decision.gap_trend,
+            "raw_response": raw_response,
+            "normalized_response": _planner_normalized_payload(
+                decision=decision,
+                evidence_summary=evidence_summary,
+                main_gap=main_gap,
+                conflict_status=conflict_status,
+                hypothesis_uncertainty_note=decision.hypothesis_uncertainty_note,
+                capability_assessment=decision.capability_assessment,
+                stagnation_assessment=decision.stagnation_assessment,
+                contraction_reason=decision.contraction_reason,
+                information_gain_assessment=decision.information_gain_assessment,
+                gap_trend=decision.gap_trend,
+            ),
         }
 
 
@@ -881,6 +1131,11 @@ class OpenAIPlannerBackend:
         return {
             "hypothesis_pool": response.hypothesis_pool,
             "decision": decision,
+            "raw_response": response.model_dump(mode="json"),
+            "normalized_response": _planner_normalized_payload(
+                decision=decision,
+                hypothesis_pool=response.hypothesis_pool,
+            ),
         }
 
     def plan_diagnosis(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
@@ -940,21 +1195,15 @@ class OpenAIPlannerBackend:
         conflict_status = response.conflict_status
 
         if not post_verifier:
-            if decision.finalize:
-                decision.finalize = False
-            if confidence >= self._verifier_threshold or decision.stagnation_detected:
+            if confidence >= self._verifier_threshold:
                 decision.action = "verifier"
                 decision.needs_verifier = True
                 decision.finalize = False
                 # keep the Planner's global reasoning explicit when verifier is forced
                 if not decision.contraction_reason:
                     decision.contraction_reason = (
-                        "The Planner is conservatively contracting to verifier because internal confidence or "
-                        "stagnation indicates that more internal expansion would be lower value."
-                    )
-                if not decision.stagnation_assessment and decision.stagnation_detected:
-                    decision.stagnation_assessment = (
-                        "Recent rounds indicate stagnation or low information gain, so verifier should break the deadlock."
+                        "The Planner is conservatively contracting to verifier because internal confidence is already "
+                        "high enough for an external check to be higher value than more internal expansion."
                     )
                 decision.task_instruction = _default_follow_up_task_instruction(
                     "verifier",
@@ -968,17 +1217,21 @@ class OpenAIPlannerBackend:
                 decision.agent_task_instructions = _normalize_agent_task_instructions(
                     {"verifier": decision.task_instruction or ""}
                 )  # type: ignore[assignment]
-                if decision.stagnation_detected and main_gap == response.main_gap:
-                    main_gap = "Recent rounds indicate stagnation, so external supervision is needed."
-            decision.planned_agents = self._planned_agents_for_action(decision.action)
-            if decision.action != "verifier":
+            elif decision.action == "finalize":
                 decision.needs_verifier = False
+                decision.finalize = True
+                decision.task_instruction = None
+                decision.agent_task_instructions = {}  # type: ignore[assignment]
+            decision.planned_agents = self._planned_agents_for_action(decision.action)
+            if decision.action not in {"verifier", "finalize"}:
+                decision.needs_verifier = False
+                decision.finalize = False
                 if decision.action in {"macro", "microscopic"} and not decision.agent_task_instructions:
                     decision.agent_task_instructions = _normalize_agent_task_instructions(
                         {decision.action: decision.task_instruction or ""}
                     )  # type: ignore[assignment]
         else:
-            decision, conflict_status, main_gap = self._postprocess_reweight(payload, decision, conflict_status, main_gap)
+            decision, conflict_status, main_gap = self._postprocess_reweight(decision, conflict_status, main_gap)
 
         return {
             "decision": decision,
@@ -991,126 +1244,55 @@ class OpenAIPlannerBackend:
             "contraction_reason": decision.contraction_reason,
             "information_gain_assessment": decision.information_gain_assessment,
             "gap_trend": decision.gap_trend,
+            "raw_response": response.model_dump(mode="json"),
+            "normalized_response": _planner_normalized_payload(
+                decision=decision,
+                evidence_summary=evidence_summary,
+                main_gap=main_gap,
+                conflict_status=conflict_status,
+                hypothesis_uncertainty_note=decision.hypothesis_uncertainty_note,
+                capability_assessment=decision.capability_assessment,
+                stagnation_assessment=decision.stagnation_assessment,
+                contraction_reason=decision.contraction_reason,
+                information_gain_assessment=decision.information_gain_assessment,
+                gap_trend=decision.gap_trend,
+            ),
         }
 
     def _postprocess_reweight(
         self,
-        payload: dict[str, Any],
         decision: PlannerDecision,
         conflict_status: str,
         main_gap: str,
     ) -> tuple[PlannerDecision, str, str]:
-        verifier_report = payload["verifier_report"] or {}
-        verifier_cards = verifier_report.get("structured_results", {}).get("evidence_cards", [])
-        support_count = sum(card.get("relation_to_hypothesis") == "support" for card in verifier_cards)
-        conflict_count = sum(card.get("relation_to_hypothesis") == "conflict" for card in verifier_cards)
-        current_hypothesis = payload["current_hypothesis"]
-        fallback_switch = _best_alternative_hypothesis(current_hypothesis, payload["hypothesis_pool"])
-
-        if conflict_count > support_count:
-            conflict_status = "strong"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "macro"
-            decision.current_hypothesis = (
-                decision.current_hypothesis
-                if decision.current_hypothesis != current_hypothesis
-                else fallback_switch
-            )
-            decision.planned_agents = ["macro"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "macro",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": (
-                        decision.contraction_reason
-                        or "Conservatively contract by switching hypotheses after strong verifier conflict."
-                    ),
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"macro": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Conservatively contract by switching hypotheses after strong verifier conflict."
-            )
-            decision.stagnation_assessment = (
-                decision.stagnation_assessment
-                or "Verifier evidence changed the picture materially; this is not simple internal stagnation."
-            )
-            main_gap = "The switched hypothesis needs fresh internal evidence."
-        elif support_count > 0 and conflict_count > 0:
-            conflict_status = "weak"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "microscopic"
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = ["microscopic"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "microscopic",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": decision.contraction_reason,
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"microscopic": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Do one bounded microscopic follow-up instead of switching on weak verifier conflict."
-            )
-            main_gap = "Weak verifier conflict remains, so one more internal refinement step is needed."
-        elif support_count == 0 and conflict_count == 0:
-            conflict_status = "uncertain"
-            decision.finalize = False
-            decision.needs_verifier = False
-            decision.action = "microscopic"
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = ["microscopic"]
-            decision.task_instruction = _default_follow_up_task_instruction(
-                "microscopic",
-                decision.current_hypothesis,
-                {
-                    "main_gap": main_gap,
-                    "capability_assessment": decision.capability_assessment,
-                    "contraction_reason": decision.contraction_reason,
-                },
-            )
-            decision.agent_task_instructions = _normalize_agent_task_instructions(
-                {"microscopic": decision.task_instruction or ""}
-            )  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Use at most one bounded microscopic follow-up because verifier evidence is neutral."
-            )
-            main_gap = "Verifier evidence is neutral, so one more internal refinement step is needed."
-        else:
-            conflict_status = "none"
-            decision.action = "finalize"
+        decision.needs_verifier = False
+        decision.planned_agents = self._planned_agents_for_action(decision.action)
+        if decision.action == "finalize":
             decision.finalize = True
-            decision.needs_verifier = False
-            decision.current_hypothesis = current_hypothesis
-            decision.planned_agents = []
             decision.task_instruction = None
             decision.agent_task_instructions = {}  # type: ignore[assignment]
-            decision.contraction_reason = (
-                decision.contraction_reason
-                or "Conservatively contract to case closure because verifier support is sufficient."
-            )
-            main_gap = "No critical evidence gap remains in the current workflow."
-
+        else:
+            decision.finalize = False
+            if not decision.task_instruction:
+                decision.task_instruction = _default_follow_up_task_instruction(
+                    decision.action,
+                    decision.current_hypothesis,
+                    {
+                        "main_gap": main_gap,
+                        "capability_assessment": decision.capability_assessment,
+                        "contraction_reason": decision.contraction_reason,
+                    },
+                )
+            if decision.action in {"macro", "microscopic"} and not decision.agent_task_instructions:
+                decision.agent_task_instructions = _normalize_agent_task_instructions(
+                    {decision.action: decision.task_instruction or ""}
+                )  # type: ignore[assignment]
         return decision, conflict_status, main_gap
 
     def _normalize_action(self, action: str, *, post_verifier: bool) -> str:
         if post_verifier:
             return action if action in {"macro", "microscopic", "finalize"} else "microscopic"
-        return action if action in {"macro", "microscopic", "verifier"} else "microscopic"
+        return action if action in {"macro", "microscopic", "verifier", "finalize"} else "microscopic"
 
     def _planned_agents_for_action(self, action: str) -> list[str]:
         if action == "macro":
@@ -1141,7 +1323,14 @@ class PlannerAgent:
         payload = {
             "user_query": state.user_query,
             "smiles": state.smiles,
+            "shared_structure_status": state.shared_structure_status,
+            "shared_structure_context": (
+                state.shared_structure_context.model_dump(mode="json")
+                if state.shared_structure_context is not None
+                else None
+            ),
             "runtime_context": {
+                **self._config.runtime_context(),
                 "microscopic_baseline_policy": (
                     "first-round microscopic work must stay low-cost and bounded; do not default to heavy exhaustive "
                     "DFT geometry optimization for large systems"
@@ -1173,6 +1362,12 @@ class PlannerAgent:
             "latest_microscopic_report": latest_microscopic,
             "latest_verifier_report": latest_verifier,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
+            "shared_structure_status": state.shared_structure_status,
+            "shared_structure_context": (
+                state.shared_structure_context.model_dump(mode="json")
+                if state.shared_structure_context is not None
+                else None
+            ),
         }
         rendered_prompt = self._prompts.render("planner_diagnosis", payload)
         return self._backend.plan_diagnosis(rendered_prompt, payload)
