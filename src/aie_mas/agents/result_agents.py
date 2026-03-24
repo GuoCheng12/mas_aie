@@ -29,6 +29,7 @@ class VerifierAgent:
                 "task_received": task_received,
                 "current_hypothesis": current_hypothesis,
                 "tool_name": self._tool.name,
+                "task_completion_text": "Task completion is pending verifier evidence retrieval.",
                 "source_count": "pending",
                 "topic_summary": "pending",
                 "local_uncertainty_detail": (
@@ -39,12 +40,14 @@ class VerifierAgent:
         raw_result = self._tool.invoke(smiles, current_hypothesis)
         cards = raw_result["evidence_cards"]
         topic_summary = _topic_summary(cards)
+        task_completion_status, task_completion_text = self._task_completion(raw_result["source_count"])
         rendered = self._prompts.render_sections(
             "verifier_specialized",
             {
                 "task_received": task_received,
                 "current_hypothesis": current_hypothesis,
                 "tool_name": self._tool.name,
+                "task_completion_text": task_completion_text,
                 "source_count": raw_result["source_count"],
                 "topic_summary": topic_summary,
                 "local_uncertainty_detail": (
@@ -54,9 +57,13 @@ class VerifierAgent:
         )
         structured_results = dict(raw_result)
         structured_results["topic_summary"] = topic_summary
+        structured_results["task_completion_status"] = task_completion_status
+        structured_results["task_completion"] = rendered["task_completion"]
         return AgentReport(
             agent_name="verifier",
             task_received=task_received,
+            task_completion_status=task_completion_status,
+            task_completion=rendered["task_completion"],
             task_understanding=draft["task_understanding"],
             execution_plan=draft["execution_plan"],
             result_summary=rendered["result_summary"],
@@ -69,6 +76,17 @@ class VerifierAgent:
             generated_artifacts={},
             status="success",
             planner_readable_report=rendered["planner_readable_report"],
+        )
+
+    def _task_completion(self, source_count: int) -> tuple[str, str]:
+        if source_count <= 0:
+            return (
+                "partial",
+                "Task only partially completed. The verifier executed the retrieval step, but no relevant evidence cards were found.",
+            )
+        return (
+            "completed",
+            "Task completed successfully by retrieving raw verifier evidence for Planner review.",
         )
 
 

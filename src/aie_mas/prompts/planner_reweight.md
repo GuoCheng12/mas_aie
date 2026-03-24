@@ -21,6 +21,8 @@ You will be given:
 - hypothesis_pool
 
 The verifier report may include:
+- task_completion
+- task_completion_status
 - task_understanding
 - execution_plan
 - result_summary

@@ -36,6 +36,8 @@ class HypothesisEntry(BaseModel):
 class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
+    task_completion_status: Literal["completed", "partial", "failed"] = "completed"
+    task_completion: str = "Task completion was not provided."
     task_understanding: str = "Task understanding was not provided."
     reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str = "Execution plan was not provided."
@@ -60,6 +62,8 @@ class VerifierEvidenceCard(BaseModel):
 class WorkingMemoryAgentEntry(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
+    task_completion_status: Literal["completed", "partial", "failed"] = "completed"
+    task_completion: str = "Task completion was not provided."
     task_understanding: str
     reasoning_summary: str = "Reasoning summary was not provided."
     execution_plan: str

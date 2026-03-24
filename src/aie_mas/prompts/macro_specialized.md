@@ -1,3 +1,6 @@
+## task_completion
+{task_completion_text}
+
 ## task_understanding
 Interpret the Planner instruction as a macro-level structural analysis task for the current working hypothesis "{current_hypothesis}": {task_received}
 {shared_context_note}
@@ -18,6 +21,7 @@ Key proxies: aromatic_atom_count={aromatic_atom_count}, hetero_atom_count={heter
 Macro evidence alone cannot resolve excited-state relaxation behavior or external consistency; unresolved local gap: {local_uncertainty_detail}
 
 ## planner_readable_report
+Task completion: {task_completion}
 Task understanding: {task_understanding}
 Reasoning summary: {reasoning_summary}
 Execution plan: {execution_plan}

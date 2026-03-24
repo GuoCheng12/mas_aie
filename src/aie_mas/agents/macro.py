@@ -106,10 +106,12 @@ class MacroAgent:
             shared_structure_context=shared_structure_context,
             focus_areas=plan.focus_areas,
         )
+        task_completion_status, task_completion_text = self._task_completion(plan)
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
             "tool_name": self._tool.name,
+            "task_completion_text": task_completion_text,
             "shared_context_note": self._shared_context_note(shared_structure_context),
             "reasoning_summary_text": reasoning.reasoning_summary,
             "capability_limit_note": reasoning.capability_limit_note,
@@ -139,6 +141,8 @@ class MacroAgent:
         return AgentReport(
             agent_name="macro",
             task_received=task_received,
+            task_completion_status=task_completion_status,
+            task_completion=rendered["task_completion"],
             task_understanding=reasoning.task_understanding,
             reasoning_summary=rendered["reasoning_summary"],
             execution_plan=rendered["execution_plan"],
@@ -148,6 +152,8 @@ class MacroAgent:
             raw_results={"macro_structure_scan": raw_result, "reasoning_output": reasoning.model_dump(mode="json")},
             structured_results={
                 **raw_result,
+                "task_completion_status": task_completion_status,
+                "task_completion": rendered["task_completion"],
                 "reasoning": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "supported_scope": list(plan.supported_scope),
@@ -288,4 +294,17 @@ class MacroAgent:
             f"planarity_proxy={raw_result['planarity_and_torsion_summary']['planarity_proxy']}, "
             f"compactness_proxy={raw_result['compactness_and_contact_proxies']['compactness_proxy']}, and "
             f"conformer_dispersion_proxy={raw_result['conformer_dispersion_summary']['conformer_dispersion_proxy']}."
+        )
+
+    def _task_completion(self, plan: MacroExecutionPlan) -> tuple[str, str]:
+        if plan.unsupported_requests:
+            unsupported = "; ".join(plan.unsupported_requests)
+            return (
+                "partial",
+                "Task only partially completed. The agent returned bounded macro evidence, but it could not "
+                f"complete unsupported parts of the Planner instruction: {unsupported}.",
+            )
+        return (
+            "completed",
+            "Task completed successfully within current macro capability.",
         )

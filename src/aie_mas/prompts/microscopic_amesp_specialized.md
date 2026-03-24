@@ -1,3 +1,6 @@
+## task_completion
+{task_completion_text}
+
 ## task_understanding
 Interpret the Planner instruction as a bounded low-cost microscopic Amesp task for the current working hypothesis "{current_hypothesis}": {task_received}
 Requested local focus: {requested_focus}
@@ -24,6 +27,7 @@ If Amesp fails, return the available partial artifacts and local uncertainty onl
 Microscopic local uncertainty after this Amesp run: {local_uncertainty_detail}
 
 ## planner_readable_report
+Task completion: {task_completion}
 Task understanding: {task_understanding}
 Reasoning summary: {reasoning_summary}
 Execution plan: {execution_plan}

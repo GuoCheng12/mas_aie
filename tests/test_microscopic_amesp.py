@@ -521,9 +521,12 @@ def test_real_microscopic_agent_returns_partial_report_on_runner_failure(
     )
 
     assert report.status == "partial"
+    assert report.task_completion_status == "partial"
     assert report.reasoning_summary
     assert report.generated_artifacts["s0_aop_path"] == "/tmp/s0.aop"
     assert report.structured_results["error"]["code"] == "subprocess_failed"
+    assert report.structured_results["task_completion_status"] == "partial"
+    assert "runtime execution was incomplete" in report.task_completion
     assert "torsion scan" in " ".join(report.structured_results["execution_plan"]["unsupported_requests"]).lower()
     assert "partial" in report.result_summary.lower()
 

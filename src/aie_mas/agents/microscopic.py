@@ -221,6 +221,7 @@ class MicroscopicAgent:
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
             "requested_focus": ", ".join(plan.requested_deliverables),
+            "task_completion_text": "Task completion is pending Amesp baseline execution.",
             "recent_context_note": self._recent_context_note(recent_rounds_context),
             "capability_scope": self._capability_scope_text(),
             "structure_source_note": self._structure_source_note(
@@ -327,10 +328,20 @@ class MicroscopicAgent:
             result_summary_text = self._failed_result_summary(exc)
             status = exc.status
 
+        task_completion_status, task_completion_text = self._task_completion_for_result(
+            run_status=status,
+            unsupported_requests=plan.unsupported_requests,
+            task_mode=task_spec.mode,
+            error_message=result_summary_text if status in {"partial", "failed"} else None,
+        )
+        structured_results["task_completion_status"] = task_completion_status
+        structured_results["task_completion"] = task_completion_text
+
         rendered = self._prompts.render_sections(
             "microscopic_amesp_specialized",
             {
                 **render_payload,
+                "task_completion_text": task_completion_text,
                 "result_summary_text": result_summary_text,
             },
         )
@@ -338,6 +349,8 @@ class MicroscopicAgent:
         return AgentReport(
             agent_name="microscopic",
             task_received=task_received,
+            task_completion_status=task_completion_status,  # type: ignore[arg-type]
+            task_completion=rendered["task_completion"],
             task_understanding=draft["task_understanding"],
             reasoning_summary=rendered["reasoning_summary"],
             execution_plan=rendered["execution_plan"],
@@ -361,6 +374,10 @@ class MicroscopicAgent:
         plan: MicroscopicExecutionPlan,
         shared_structure_status: SharedStructureStatus,
     ) -> AgentReport:
+        task_completion_text = (
+            "Task could not be completed. The requested microscopic instruction depended on a prepared structure, "
+            "but shared structure context was unavailable and private structure preparation was not allowed in this path."
+        )
         result_summary_text = (
             "Microscopic execution returned status=partial because shared structure context was not available and "
             "the normal graph path does not allow private structure preparation."
@@ -369,6 +386,7 @@ class MicroscopicAgent:
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
             "requested_focus": ", ".join(plan.requested_deliverables),
+            "task_completion_text": task_completion_text,
             "recent_context_note": "No additional microscopic runtime step was executed.",
             "capability_scope": self._capability_scope_text(),
             "structure_source_note": (
@@ -390,6 +408,8 @@ class MicroscopicAgent:
         return AgentReport(
             agent_name="microscopic",
             task_received=task_received,
+            task_completion_status="failed",
+            task_completion=rendered["task_completion"],
             task_understanding=reasoning.task_understanding,
             reasoning_summary=rendered["reasoning_summary"],
             execution_plan=rendered["execution_plan"],
@@ -406,6 +426,8 @@ class MicroscopicAgent:
                 "task_mode": task_spec.mode,
                 "task_label": task_spec.task_label,
                 "task_objective": task_spec.objective,
+                "task_completion_status": "failed",
+                "task_completion": rendered["task_completion"],
                 "reasoning": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "error": {
@@ -807,3 +829,40 @@ class MicroscopicAgent:
 
     def _failed_result_summary(self, exc: AmespExecutionError) -> str:
         return f"Amesp baseline execution returned status={exc.status} with {exc.code}: {exc.message}"
+
+    def _task_completion_for_result(
+        self,
+        *,
+        run_status: str,
+        unsupported_requests: list[str],
+        task_mode: str,
+        error_message: Optional[str],
+    ) -> tuple[str, str]:
+        if run_status == "failed":
+            return (
+                "failed",
+                f"Task could not be completed because microscopic runtime execution failed: {error_message or 'no error details were provided.'}",
+            )
+        if run_status == "partial":
+            return (
+                "partial",
+                f"Task was only partially completed because microscopic runtime execution was incomplete: {error_message or 'no partial-execution details were provided.'}",
+            )
+        if unsupported_requests:
+            unsupported = "; ".join(unsupported_requests)
+            if task_mode == "targeted_follow_up":
+                return (
+                    "partial",
+                    "Task was only partially completed. The requested targeted microscopic follow-up could not be executed "
+                    f"within current Amesp capability, so the agent returned contracted baseline S0/S1 evidence instead. "
+                    f"Unsupported parts were: {unsupported}.",
+                )
+            return (
+                "partial",
+                "Task was only partially completed. The agent returned bounded Amesp baseline evidence, but it could not "
+                f"execute unsupported parts of the Planner instruction: {unsupported}.",
+            )
+        return (
+            "completed",
+            "Task completed successfully within current microscopic capability.",
+        )

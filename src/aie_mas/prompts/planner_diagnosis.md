@@ -23,6 +23,8 @@ You will be given:
 - latest_verifier_report (optional)
 
 Each non-Planner agent report may include:
+- task_completion
+- task_completion_status
 - task_understanding
 - execution_plan
 - result_summary

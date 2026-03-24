@@ -27,10 +27,14 @@ def test_targeted_microscopic_task_interface_is_available(install_specialized_te
     assert report.execution_plan
     assert report.result_summary
     assert report.remaining_local_uncertainty
+    assert report.task_completion_status == "partial"
+    assert "targeted microscopic follow-up could not be executed" in report.task_completion
     assert report.structured_results["task_mode"] == "targeted_follow_up"
     assert report.structured_results["task_label"] == "round-2-targeted"
+    assert report.structured_results["task_completion_status"] == "partial"
     assert "targeted microscopic follow-up beyond the current Amesp baseline workflow" in " ".join(
         report.structured_results["unsupported_requests"]
     )
     assert fake_amesp.called is True
+    assert report.planner_readable_report.startswith("Task completion:")
     assert "Task understanding:" in report.planner_readable_report

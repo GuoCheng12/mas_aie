@@ -28,6 +28,8 @@ class WorkingMemoryManager:
             WorkingMemoryAgentEntry(
                 agent_name=report.agent_name,
                 task_received=report.task_received,
+                task_completion_status=report.task_completion_status,
+                task_completion=report.task_completion,
                 task_understanding=report.task_understanding,
                 reasoning_summary=report.reasoning_summary,
                 execution_plan=report.execution_plan,
