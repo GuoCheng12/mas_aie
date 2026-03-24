@@ -18,6 +18,7 @@ class VerifierGatewaySmokeResponse(BaseModel):
 def main() -> int:
     config = AieMasConfig.from_env(
         project_root=Path(__file__).resolve().parents[1],
+        tool_backend="real",
         verifier_backend="openai_sdk",
     )
 
