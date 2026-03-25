@@ -10,7 +10,11 @@ from aie_mas.cli.run_case import run_case_workflow
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import MicroscopicTaskSpec
 from aie_mas.graph.state import MicroscopicExecutionPlan
+from aie_mas.graph.state import DihedralDescriptor
+from aie_mas.graph.state import MicroscopicToolCall
+from aie_mas.graph.state import MicroscopicToolPlan
 from aie_mas.graph.state import MicroscopicToolRequest
+from aie_mas.graph.state import SelectionPolicy
 from aie_mas.tools.amesp import (
     AmespBaselineMicroscopicTool,
     AmespExecutionError,
@@ -132,10 +136,11 @@ def _fake_structure_preparer(request):
     return atoms, prepared
 
 
-def _fake_torsion_snapshot_bundle(*, smiles, prepared, max_total, target_angles, output_dir):
+def _fake_torsion_snapshot_bundle(*, smiles, prepared, max_total, target_angles, target_dihedral_atoms, output_dir):
     del smiles
     output_dir.mkdir(parents=True, exist_ok=True)
     angles = list(target_angles or [-120.0, 0.0, 120.0])
+    dihedral_atoms = list(target_dihedral_atoms or [0, 1, 2, 3])
     snapshots = []
     for index, angle in enumerate(angles[:max_total], start=1):
         snapshot_label = f"torsion_{index:02d}"
@@ -163,7 +168,7 @@ def _fake_torsion_snapshot_bundle(*, smiles, prepared, max_total, target_angles,
         snapshots.append(
             {
                 "snapshot_label": snapshot_label,
-                "dihedral_atoms": [0, 1, 2, 3],
+                "dihedral_atoms": dihedral_atoms,
                 "target_angle_deg": float(angle),
                 "prepared": snapshot_prepared,
                 "atoms": _FakeAtoms(
@@ -484,13 +489,15 @@ def test_amesp_torsion_capability_honors_structured_snapshot_parameters(
             local_goal="Run an exact two-point torsion follow-up.",
             requested_deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
             capability_route="torsion_snapshot_follow_up",
-            microscopic_tool_request=MicroscopicToolRequest(
-                capability_name="run_torsion_snapshots",
-                perform_new_calculation=True,
-                artifact_scope="torsion_snapshots",
-                snapshot_count=2,
-                angle_offsets_deg=[25.0, -25.0],
-                state_window=[1, 2, 3],
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="run_torsion_snapshots",
+                    perform_new_calculation=True,
+                    artifact_scope="torsion_snapshots",
+                    dihedral_id="dih_0_1_2_3",
+                    dihedral_atom_indices=[0, 1, 2, 3],
+                    snapshot_count=2,
+                    angle_offsets_deg=[25.0, -25.0],
+                    state_window=[1, 2, 3],
                 deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
                 requested_route_summary="Use exactly two torsion snapshots at ±25 degrees.",
             ),
@@ -505,9 +512,11 @@ def test_amesp_torsion_capability_honors_structured_snapshot_parameters(
 
     assert result.executed_capability == "run_torsion_snapshots"
     assert result.performed_new_calculations is True
+    assert result.resolved_target_ids["dihedral_id"] == "dih_0_1_2_3"
     assert len(result.route_records) == 2
     assert result.generated_artifacts["torsion_snapshot_count"] == 2
     assert [record["target_angle_deg"] for record in result.route_records] == [25.0, -25.0]
+    assert all(record["dihedral_atoms"] == [0, 1, 2, 3] for record in result.route_records)
     assert len(result.generated_artifacts["snapshot_artifacts"]) == 2
     assert any("nstates 3" in aip_text for label, aip_text in captured_inputs.items() if label.endswith("_s1"))
 
@@ -530,13 +539,15 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
             local_goal="Generate bounded torsion snapshots for later parsing.",
             requested_deliverables=["torsion sensitivity summary"],
             capability_route="torsion_snapshot_follow_up",
-            microscopic_tool_request=MicroscopicToolRequest(
-                capability_name="run_torsion_snapshots",
-                perform_new_calculation=True,
-                artifact_scope="torsion_snapshots",
-                snapshot_count=2,
-                angle_offsets_deg=[25.0, -25.0],
-                state_window=[1, 2],
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="run_torsion_snapshots",
+                    perform_new_calculation=True,
+                    artifact_scope="torsion_snapshots",
+                    dihedral_id="dih_0_1_2_3",
+                    dihedral_atom_indices=[0, 1, 2, 3],
+                    snapshot_count=2,
+                    angle_offsets_deg=[25.0, -25.0],
+                    state_window=[1, 2],
                 deliverables=["torsion sensitivity summary"],
                 requested_route_summary="Generate two torsion snapshots for later reuse.",
             ),
@@ -560,13 +571,14 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
                 "CT/localization proxy",
             ],
             capability_route="artifact_parse_only",
-            microscopic_tool_request=MicroscopicToolRequest(
-                capability_name="parse_snapshot_outputs",
-                perform_new_calculation=False,
-                reuse_existing_artifacts_only=True,
-                artifact_source_round=2,
-                artifact_scope="torsion_snapshots",
-                state_window=[1, 2],
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="parse_snapshot_outputs",
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    artifact_bundle_id="round_02_torsion_snapshots",
+                    artifact_source_round=2,
+                    artifact_scope="torsion_snapshots",
+                    state_window=[1, 2],
                 deliverables=[
                     "per-snapshot excitation records",
                     "state-ordering summaries",
@@ -591,6 +603,99 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
     assert len(parsed_result.parsed_snapshot_records) == 2
     assert len(captured_inputs) == input_count_before_parse
     assert "CT/localization proxy" in parsed_result.missing_deliverables
+
+
+def test_amesp_tool_uses_discovery_before_torsion_execution_when_dihedral_id_is_missing(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    monkeypatch.setattr(
+        "aie_mas.tools.amesp._list_rotatable_dihedral_descriptors",
+        lambda prepared: [
+            DihedralDescriptor(
+                dihedral_id="dih_9_10_11_12",
+                atom_indices=[9, 10, 11, 12],
+                central_bond_indices=[10, 11],
+                label="peripheral aryl-aryl",
+                bond_type="aryl-aryl",
+                adjacent_to_nsnc_core=False,
+                central_conjugation_relevance="medium",
+                peripheral=True,
+                rotatable=True,
+            ),
+            DihedralDescriptor(
+                dihedral_id="dih_0_1_2_3",
+                atom_indices=[0, 1, 2, 3],
+                central_bond_indices=[1, 2],
+                label="core-adjacent heteroaryl linkage",
+                bond_type="heteroaryl-linkage",
+                adjacent_to_nsnc_core=True,
+                central_conjugation_relevance="high",
+                peripheral=False,
+                rotatable=True,
+            ),
+        ],
+    )
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Discover a core-adjacent dihedral and execute two torsion snapshots.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_plan=MicroscopicToolPlan(
+                calls=[
+                    MicroscopicToolCall(
+                        call_id="discover_dihedrals",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_rotatable_dihedrals",
+                            structure_source="round_s0_optimized_geometry",
+                            min_relevance="high",
+                            include_peripheral=False,
+                            requested_route_summary="Discover usable dihedral IDs.",
+                        ),
+                    ),
+                    MicroscopicToolCall(
+                        call_id="execute_torsion",
+                        call_kind="execution",
+                        request=MicroscopicToolRequest(
+                            capability_name="run_torsion_snapshots",
+                            perform_new_calculation=True,
+                            snapshot_count=2,
+                            angle_offsets_deg=[35.0, 70.0],
+                            state_window=[1, 2],
+                            deliverables=["torsion sensitivity summary"],
+                            requested_route_summary="Use the discovered core-adjacent dihedral for exact torsion snapshots.",
+                        ),
+                    ),
+                ],
+                selection_policy=SelectionPolicy(
+                    prefer_adjacent_to_nsnc_core=True,
+                    min_relevance="high",
+                    include_peripheral=False,
+                    preferred_bond_types=["heteroaryl-linkage"],
+                ),
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="two_stage_case",
+        workdir=tmp_path / "two_stage_workdir",
+        available_artifacts={},
+    )
+
+    assert result.executed_capability == "run_torsion_snapshots"
+    assert result.resolved_target_ids["dihedral_id"] == "dih_0_1_2_3"
+    assert any("NSNC-like core" in note or "NSNC-like" in note for note in result.honored_constraints)
+    assert all(record["dihedral_atoms"] == [0, 1, 2, 3] for record in result.route_records)
 
 
 def test_amesp_parse_snapshot_outputs_fails_when_artifacts_are_missing(tmp_path: Path) -> None:

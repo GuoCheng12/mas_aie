@@ -25,6 +25,9 @@ MicroscopicCapabilityRoute = Literal[
     "excited_state_relaxation_follow_up",
 ]
 MicroscopicCapabilityName = Literal[
+    "list_rotatable_dihedrals",
+    "list_available_conformers",
+    "list_artifact_bundles",
     "run_baseline_bundle",
     "run_conformer_bundle",
     "run_torsion_snapshots",
@@ -33,6 +36,12 @@ MicroscopicCapabilityName = Literal[
 ]
 AmespCapabilityName = MicroscopicCapabilityName
 MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
+MicroscopicToolCallKind = Literal["discovery", "execution"]
+DihedralBondType = Literal["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]
+DihedralRelevance = Literal["high", "medium", "low"]
+ArtifactBundleKind = Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]
+ConformerSource = Literal["shared_structure", "microscopic_follow_up"]
+DiscoveryStructureSource = Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]
 MicroscopicCompletionReasonCode = Literal[
     "capability_unsupported",
     "runtime_failed",
@@ -196,18 +205,86 @@ class MicroscopicExecutionStep(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
 
 
+class DihedralDescriptor(BaseModel):
+    dihedral_id: str
+    atom_indices: list[int] = Field(default_factory=list)
+    central_bond_indices: list[int] = Field(default_factory=list)
+    label: str
+    bond_type: DihedralBondType = "other"
+    adjacent_to_nsnc_core: bool = False
+    central_conjugation_relevance: DihedralRelevance = "low"
+    peripheral: bool = False
+    rotatable: bool = True
+
+
+class ConformerDescriptor(BaseModel):
+    conformer_id: str
+    source: ConformerSource = "shared_structure"
+    rank: int
+    prepared_xyz_path: str
+    summary_label: str
+
+
+class ArtifactBundleDescriptor(BaseModel):
+    artifact_bundle_id: str
+    source_round: int
+    source_capability: str
+    artifact_kind: ArtifactBundleKind
+    snapshot_count: int = 0
+    available_files: list[str] = Field(default_factory=list)
+    available_deliverables: list[str] = Field(default_factory=list)
+
+
+class SelectionPolicy(BaseModel):
+    exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    prefer_adjacent_to_nsnc_core: bool = False
+    min_relevance: DihedralRelevance = "medium"
+    include_peripheral: bool = True
+    preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    artifact_kind: Optional[ArtifactBundleKind] = None
+    source_round_preference: Optional[int] = None
+
+
 class MicroscopicToolRequest(BaseModel):
     capability_name: MicroscopicCapabilityName
+    structure_source: Optional[DiscoveryStructureSource] = None
     perform_new_calculation: bool = True
     reuse_existing_artifacts_only: bool = False
     artifact_source_round: Optional[int] = None
     artifact_scope: Optional[str] = None
+    artifact_bundle_id: Optional[str] = None
+    artifact_kind: Optional[ArtifactBundleKind] = None
+    source_round_preference: Optional[int] = None
+    min_relevance: Optional[DihedralRelevance] = None
+    include_peripheral: Optional[bool] = None
+    preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    dihedral_id: Optional[str] = None
+    dihedral_atom_indices: list[int] = Field(default_factory=list)
+    conformer_id: Optional[str] = None
+    conformer_ids: list[str] = Field(default_factory=list)
+    max_conformers: Optional[int] = None
     snapshot_count: Optional[int] = None
     angle_offsets_deg: list[float] = Field(default_factory=list)
     state_window: list[int] = Field(default_factory=list)
+    honor_exact_target: bool = True
+    allow_fallback: bool = False
     deliverables: list[str] = Field(default_factory=list)
     budget_profile: MicroscopicBudgetProfile = "balanced"
     requested_route_summary: str = "No microscopic tool-request summary was provided."
+
+
+class MicroscopicToolCall(BaseModel):
+    call_id: str
+    call_kind: MicroscopicToolCallKind
+    request: MicroscopicToolRequest
+
+
+class MicroscopicToolPlan(BaseModel):
+    calls: list[MicroscopicToolCall] = Field(default_factory=list)
+    requested_route_summary: str = "No microscopic tool-plan summary was provided."
+    requested_deliverables: list[str] = Field(default_factory=list)
+    selection_policy: SelectionPolicy = Field(default_factory=SelectionPolicy)
+    failure_reporting: str = "Return a local failed or partial report if the selected microscopic capability cannot be completed."
 
 
 class MicroscopicExecutionPlan(BaseModel):
@@ -215,7 +292,8 @@ class MicroscopicExecutionPlan(BaseModel):
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
     capability_route: MicroscopicCapabilityRoute = "baseline_bundle"
-    microscopic_tool_request: MicroscopicToolRequest
+    microscopic_tool_plan: MicroscopicToolPlan = Field(default_factory=MicroscopicToolPlan)
+    microscopic_tool_request: Optional[MicroscopicToolRequest] = None
     budget_profile: MicroscopicBudgetProfile = "balanced"
     requested_route_summary: str = "No microscopic route summary was provided."
     structure_source: MicroscopicStructureSource

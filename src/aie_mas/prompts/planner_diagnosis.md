@@ -29,6 +29,9 @@ Each non-Planner agent report may include:
 - executed_capability
 - performed_new_calculations
 - reused_existing_artifacts
+- resolved_target_ids
+- honored_constraints
+- unmet_constraints
 - missing_deliverables
 - task_understanding
 - execution_plan
@@ -47,8 +50,8 @@ Important note:
 - An agent may fail, may return only part of the requested information, or may complete only a contracted version of your instruction because of capability limits or runtime problems.
 - If that happens, do not treat the original task as successfully completed.
 - Use `completion_reason_code` when present to distinguish true capability limits from runtime failures, parse failures, missing preconditions, or partial substitute observables.
-- Use `requested_capability`, `executed_capability`, `performed_new_calculations`, `reused_existing_artifacts`, and `missing_deliverables` to check whether the agent actually did what you asked.
-- If an agent says it executed a different capability than requested, or if `missing_deliverables` is non-empty, treat the task as not fully completed.
+- Use `requested_capability`, `executed_capability`, `performed_new_calculations`, `reused_existing_artifacts`, `resolved_target_ids`, `honored_constraints`, `unmet_constraints`, and `missing_deliverables` to check whether the agent actually did what you asked.
+- If an agent says it executed a different capability than requested, if `unmet_constraints` is non-empty, or if `missing_deliverables` is non-empty, treat the task as not fully completed.
 - Do not be harsh and do not blindly repeat the same request. Try a different bounded indirect follow-up, or stop with explicit uncertainty if the current capability is exhausted.
 - Verifier is an external evidence retrieval tool. Use it when external discrimination or external consistency evidence is the right next step, not to search for more internal evidence.
 - If confidence is already high enough for a temporary conclusion, the next action should be Verifier.

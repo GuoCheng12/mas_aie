@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, Protocol
 
@@ -11,12 +12,16 @@ from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AmespCapabilityName,
     AgentReport,
+    DihedralBondType,
     MicroscopicCapabilityRoute,
     MicroscopicCompletionReasonCode,
     MicroscopicExecutionPlan,
     MicroscopicExecutionStep,
+    MicroscopicToolCall,
+    MicroscopicToolPlan,
     MicroscopicToolRequest,
     MicroscopicTaskSpec,
+    SelectionPolicy,
     SharedStructureContext,
     SharedStructureStatus,
     WorkflowProgressEvent,
@@ -47,6 +52,7 @@ class MicroscopicReasoningPlanDraft(BaseModel):
     capability_route: Optional[MicroscopicCapabilityRoute] = None
     requested_route_summary: Optional[str] = None
     microscopic_tool_request: Optional["MicroscopicToolRequestDraft"] = None
+    microscopic_tool_plan: Optional["MicroscopicToolPlanDraft"] = None
     structure_strategy: MicroscopicStructureStrategy = "reuse_if_available_else_prepare_from_smiles"
     step_sequence: list[
         Literal[
@@ -64,16 +70,54 @@ class MicroscopicReasoningPlanDraft(BaseModel):
 
 class MicroscopicToolRequestDraft(BaseModel):
     capability_name: Optional[AmespCapabilityName] = None
+    structure_source: Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]] = None
     perform_new_calculation: Optional[bool] = None
     reuse_existing_artifacts_only: Optional[bool] = None
     artifact_source_round: Optional[int] = None
     artifact_scope: Optional[str] = None
+    artifact_bundle_id: Optional[str] = None
+    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    source_round_preference: Optional[int] = None
+    min_relevance: Optional[Literal["high", "medium", "low"]] = None
+    include_peripheral: Optional[bool] = None
+    preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    dihedral_id: Optional[str] = None
+    dihedral_atom_indices: list[int] = Field(default_factory=list)
+    conformer_id: Optional[str] = None
+    conformer_ids: list[str] = Field(default_factory=list)
+    max_conformers: Optional[int] = None
     snapshot_count: Optional[int] = None
     angle_offsets_deg: list[float] = Field(default_factory=list)
     state_window: list[int] = Field(default_factory=list)
+    honor_exact_target: Optional[bool] = None
+    allow_fallback: Optional[bool] = None
     deliverables: list[str] = Field(default_factory=list)
     budget_profile: Optional[Literal["conservative", "balanced", "aggressive"]] = None
     requested_route_summary: Optional[str] = None
+
+
+class SelectionPolicyDraft(BaseModel):
+    exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    prefer_adjacent_to_nsnc_core: Optional[bool] = None
+    min_relevance: Optional[Literal["high", "medium", "low"]] = None
+    include_peripheral: Optional[bool] = None
+    preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    source_round_preference: Optional[int] = None
+
+
+class MicroscopicToolCallDraft(BaseModel):
+    call_id: Optional[str] = None
+    call_kind: Optional[Literal["discovery", "execution"]] = None
+    request: Optional[MicroscopicToolRequestDraft] = None
+
+
+class MicroscopicToolPlanDraft(BaseModel):
+    calls: list[MicroscopicToolCallDraft] = Field(default_factory=list)
+    requested_route_summary: Optional[str] = None
+    requested_deliverables: list[str] = Field(default_factory=list)
+    selection_policy: Optional[SelectionPolicyDraft] = None
+    failure_reporting: Optional[str] = None
 
 
 class MicroscopicReasoningResponse(BaseModel):
@@ -85,6 +129,7 @@ class MicroscopicReasoningResponse(BaseModel):
     failure_policy: str
 
 
+MicroscopicToolPlanDraft.model_rebuild()
 MicroscopicReasoningPlanDraft.model_rebuild()
 
 
@@ -263,6 +308,9 @@ class MicroscopicAgent:
             "executed_capability": plan.microscopic_tool_request.capability_name,
             "performed_new_calculations": str(plan.microscopic_tool_request.perform_new_calculation).lower(),
             "reused_existing_artifacts": str(plan.microscopic_tool_request.reuse_existing_artifacts_only).lower(),
+            "resolved_target_ids_text": "No target IDs have been resolved yet.",
+            "honored_constraints_text": "No honored constraints have been recorded yet.",
+            "unmet_constraints_text": "No unmet constraints have been recorded yet.",
             "missing_deliverables_text": "No missing deliverables have been identified yet.",
             "requested_route_summary": plan.requested_route_summary,
             "task_completion_text": "Task completion is pending Amesp microscopic execution.",
@@ -327,6 +375,9 @@ class MicroscopicAgent:
                 "executed_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
                 "performed_new_calculations": getattr(run_result, "performed_new_calculations", True),
                 "reused_existing_artifacts": getattr(run_result, "reused_existing_artifacts", False),
+                "resolved_target_ids": dict(getattr(run_result, "resolved_target_ids", {})),
+                "honored_constraints": list(getattr(run_result, "honored_constraints", [])),
+                "unmet_constraints": list(getattr(run_result, "unmet_constraints", [])),
                 "missing_deliverables": list(getattr(run_result, "missing_deliverables", [])),
                 "structure_source": plan.structure_source,
                 "supported_scope": plan.supported_scope,
@@ -389,6 +440,21 @@ class MicroscopicAgent:
                     if isinstance(exc.structured_results, dict)
                     else plan.microscopic_tool_request.reuse_existing_artifacts_only
                 ),
+                "resolved_target_ids": (
+                    dict(exc.structured_results.get("resolved_target_ids") or {})
+                    if isinstance(exc.structured_results, dict)
+                    else {}
+                ),
+                "honored_constraints": (
+                    list(exc.structured_results.get("honored_constraints") or [])
+                    if isinstance(exc.structured_results, dict)
+                    else []
+                ),
+                "unmet_constraints": (
+                    list(exc.structured_results.get("unmet_constraints") or [])
+                    if isinstance(exc.structured_results, dict)
+                    else []
+                ),
                 "missing_deliverables": [],
                 "structure_source": plan.structure_source,
                 "supported_scope": plan.supported_scope,
@@ -416,6 +482,9 @@ class MicroscopicAgent:
             executed_capability=structured_results.get("executed_capability"),
             performed_new_calculations=bool(structured_results.get("performed_new_calculations")),
             reused_existing_artifacts=bool(structured_results.get("reused_existing_artifacts")),
+            resolved_target_ids=dict(structured_results.get("resolved_target_ids") or {}),
+            honored_constraints=list(structured_results.get("honored_constraints") or []),
+            unmet_constraints=list(structured_results.get("unmet_constraints") or []),
             missing_deliverables=list(structured_results.get("missing_deliverables") or []),
             error_message=result_summary_text if status in {"partial", "failed"} else None,
             error_payload=structured_results.get("error"),
@@ -432,6 +501,17 @@ class MicroscopicAgent:
                 "executed_capability": structured_results.get("executed_capability") or plan.microscopic_tool_request.capability_name,
                 "performed_new_calculations": str(bool(structured_results.get("performed_new_calculations"))).lower(),
                 "reused_existing_artifacts": str(bool(structured_results.get("reused_existing_artifacts"))).lower(),
+                "resolved_target_ids_text": self._resolved_target_ids_text(
+                    dict(structured_results.get("resolved_target_ids") or {})
+                ),
+                "honored_constraints_text": self._constraint_text(
+                    list(structured_results.get("honored_constraints") or []),
+                    default_text="No honored constraints were recorded.",
+                ),
+                "unmet_constraints_text": self._constraint_text(
+                    list(structured_results.get("unmet_constraints") or []),
+                    default_text="No unmet constraints were recorded.",
+                ),
                 "missing_deliverables_text": self._missing_deliverables_text(
                     list(structured_results.get("missing_deliverables") or [])
                 ),
@@ -485,6 +565,9 @@ class MicroscopicAgent:
             "executed_capability": plan.microscopic_tool_request.capability_name,
             "performed_new_calculations": "false",
             "reused_existing_artifacts": "false",
+            "resolved_target_ids_text": "No target IDs were resolved because execution stopped before tool runtime.",
+            "honored_constraints_text": "No honored constraints were recorded because execution stopped before tool runtime.",
+            "unmet_constraints_text": "Shared-structure preconditions were not met before tool execution.",
             "missing_deliverables_text": "No deliverables were produced because execution stopped before tool runtime.",
             "requested_route_summary": plan.requested_route_summary,
             "task_completion_text": task_completion_text,
@@ -537,6 +620,9 @@ class MicroscopicAgent:
                 "executed_capability": plan.microscopic_tool_request.capability_name,
                 "performed_new_calculations": False,
                 "reused_existing_artifacts": False,
+                "resolved_target_ids": {},
+                "honored_constraints": [],
+                "unmet_constraints": ["shared_structure_context was unavailable before tool execution"],
                 "missing_deliverables": list(plan.requested_deliverables),
                 "error": {
                     "code": "shared_structure_unavailable",
@@ -632,12 +718,13 @@ class MicroscopicAgent:
             if reasoning.execution_plan.requested_deliverables
             else self._requested_deliverables(task_received)
         )
-        tool_request = self._build_tool_request(
+        tool_plan = self._build_tool_plan(
             task_received=task_received,
             task_spec=task_spec,
             requested_deliverables=requested_deliverables,
             reasoning=reasoning,
         )
+        tool_request = self._compatibility_tool_request(tool_plan)
         capability_route = self._compatibility_route_for_capability(tool_request.capability_name)
         unsupported_requests = list(reasoning.execution_plan.unsupported_requests)
         structure_is_reusable = bool(shared_structure_context is not None) or self._has_reusable_structure(
@@ -703,13 +790,18 @@ class MicroscopicAgent:
             local_goal=reasoning.execution_plan.local_goal,
             requested_deliverables=requested_deliverables,
             capability_route=capability_route,
+            microscopic_tool_plan=tool_plan,
             microscopic_tool_request=tool_request,
             budget_profile=self._config.microscopic_budget_profile or "balanced",
             requested_route_summary=reasoning.execution_plan.requested_route_summary
+            or tool_plan.requested_route_summary
             or tool_request.requested_route_summary
             or self._requested_route_summary(capability_route, task_received),
             structure_source=structure_source,  # type: ignore[arg-type]
             supported_scope=[
+                "list_rotatable_dihedrals: discovery-only rotatable dihedral enumeration with stable IDs",
+                "list_available_conformers: discovery-only conformer enumeration with stable IDs",
+                "list_artifact_bundles: discovery-only artifact bundle enumeration with stable IDs",
                 "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
                 "run_conformer_bundle: bounded conformer ensemble follow-up",
                 "run_torsion_snapshots: bounded torsion snapshot follow-up",
@@ -721,14 +813,155 @@ class MicroscopicAgent:
             failure_reporting=reasoning.failure_policy,
         )
 
-    def _build_tool_request(
+    def _build_tool_plan(
         self,
         *,
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         requested_deliverables: list[str],
         reasoning: MicroscopicReasoningResponse,
+    ) -> MicroscopicToolPlan:
+        draft_plan = reasoning.execution_plan.microscopic_tool_plan
+        selection_policy = self._build_selection_policy(task_received=task_received, draft=draft_plan.selection_policy if draft_plan is not None else None)
+        calls = self._normalize_tool_calls(
+            task_received=task_received,
+            task_spec=task_spec,
+            requested_deliverables=requested_deliverables,
+            reasoning=reasoning,
+        )
+        return MicroscopicToolPlan(
+            calls=calls,
+            requested_route_summary=(
+                draft_plan.requested_route_summary
+                if draft_plan is not None and draft_plan.requested_route_summary
+                else reasoning.execution_plan.requested_route_summary
+                or self._requested_route_summary(self._compatibility_route_for_capability(self._compatibility_tool_request_from_calls(calls).capability_name), task_received)
+            ),
+            requested_deliverables=(
+                list(draft_plan.requested_deliverables)
+                if draft_plan is not None and draft_plan.requested_deliverables
+                else requested_deliverables
+            ),
+            selection_policy=selection_policy,
+            failure_reporting=(
+                draft_plan.failure_reporting
+                if draft_plan is not None and draft_plan.failure_reporting
+                else reasoning.failure_policy
+            ),
+        )
+
+    def _compatibility_tool_request(self, tool_plan: MicroscopicToolPlan) -> MicroscopicToolRequest:
+        return self._compatibility_tool_request_from_calls(tool_plan.calls)
+
+    def _compatibility_tool_request_from_calls(
+        self,
+        calls: list[MicroscopicToolCall],
     ) -> MicroscopicToolRequest:
+        for call in calls:
+            if call.call_kind == "execution":
+                return call.request
+        return MicroscopicToolRequest(
+            capability_name="unsupported_excited_state_relaxation",
+            perform_new_calculation=False,
+            reuse_existing_artifacts_only=False,
+            requested_route_summary="No microscopic execution call was available.",
+        )
+
+    def _build_selection_policy(
+        self,
+        *,
+        task_received: str,
+        draft: Optional[SelectionPolicyDraft],
+    ) -> SelectionPolicy:
+        lower_instruction = task_received.lower()
+        exclude_dihedral_ids = list(draft.exclude_dihedral_ids) if draft is not None else []
+        explicit_dihedral = self._explicit_dihedral_id_from_instruction(task_received)
+        if "do not use dihedral" in lower_instruction and explicit_dihedral is not None and explicit_dihedral not in exclude_dihedral_ids:
+            exclude_dihedral_ids.append(explicit_dihedral)
+        return SelectionPolicy(
+            exclude_dihedral_ids=exclude_dihedral_ids,
+            prefer_adjacent_to_nsnc_core=(
+                draft.prefer_adjacent_to_nsnc_core
+                if draft is not None and draft.prefer_adjacent_to_nsnc_core is not None
+                else "nsnc" in lower_instruction or "core-adjacent" in lower_instruction or "core adjacent" in lower_instruction
+            ),
+            min_relevance=(
+                draft.min_relevance
+                if draft is not None and draft.min_relevance is not None
+                else "high"
+                if any(token in lower_instruction for token in ("maximally conjugation-relevant", "central conjugation-relevant", "truly central"))
+                else "medium"
+            ),
+            include_peripheral=(
+                draft.include_peripheral
+                if draft is not None and draft.include_peripheral is not None
+                else not any(token in lower_instruction for token in ("avoid peripheral", "exclude peripheral", "not peripheral"))
+            ),
+            preferred_bond_types=(
+                list(draft.preferred_bond_types)
+                if draft is not None and draft.preferred_bond_types
+                else self._preferred_bond_types_from_instruction(lower_instruction)
+            ),
+            artifact_kind=(
+                draft.artifact_kind
+                if draft is not None
+                else "torsion_snapshots"
+                if "snapshot" in lower_instruction or "dihedral" in lower_instruction or "torsion" in lower_instruction
+                else None
+            ),
+            source_round_preference=(
+                draft.source_round_preference
+                if draft is not None and draft.source_round_preference is not None
+                else self._source_round_preference_from_instruction(lower_instruction)
+            ),
+        )
+
+    def _normalize_tool_calls(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        requested_deliverables: list[str],
+        reasoning: MicroscopicReasoningResponse,
+    ) -> list[MicroscopicToolCall]:
+        draft_plan = reasoning.execution_plan.microscopic_tool_plan
+        if draft_plan is not None and draft_plan.calls:
+            calls = [self._normalize_tool_call(call, requested_deliverables) for call in draft_plan.calls]
+        else:
+            calls = self._fallback_tool_calls(
+                task_received=task_received,
+                task_spec=task_spec,
+                requested_deliverables=requested_deliverables,
+                reasoning=reasoning,
+            )
+        calls = self._ensure_discovery_before_execution(calls)
+        return calls
+
+    def _normalize_tool_call(
+        self,
+        draft_call: MicroscopicToolCallDraft,
+        requested_deliverables: list[str],
+    ) -> MicroscopicToolCall:
+        request_draft = draft_call.request or MicroscopicToolRequestDraft()
+        capability_name = request_draft.capability_name or "unsupported_excited_state_relaxation"
+        return MicroscopicToolCall(
+            call_id=draft_call.call_id or f"{draft_call.call_kind or 'execution'}_{capability_name}",
+            call_kind=draft_call.call_kind or self._default_call_kind(capability_name),
+            request=self._normalize_tool_call_request(
+                draft=request_draft,
+                capability_name=capability_name,
+                requested_deliverables=requested_deliverables,
+            ),
+        )
+
+    def _fallback_tool_calls(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        requested_deliverables: list[str],
+        reasoning: MicroscopicReasoningResponse,
+    ) -> list[MicroscopicToolCall]:
         draft = reasoning.execution_plan.microscopic_tool_request
         capability_name = (
             draft.capability_name
@@ -739,56 +972,177 @@ class MicroscopicAgent:
                 task_spec,
             )
         )
+        calls: list[MicroscopicToolCall] = []
+        execution_request = self._normalize_tool_call_request(
+            draft=draft or MicroscopicToolRequestDraft(),
+            capability_name=capability_name,
+            requested_deliverables=requested_deliverables,
+        )
+        if capability_name == "run_torsion_snapshots" and not execution_request.dihedral_id:
+            calls.append(
+                MicroscopicToolCall(
+                    call_id="discover_rotatable_dihedrals",
+                    call_kind="discovery",
+                    request=MicroscopicToolRequest(
+                        capability_name="list_rotatable_dihedrals",
+                        structure_source="round_s0_optimized_geometry",
+                        min_relevance="medium",
+                        include_peripheral=True,
+                        requested_route_summary="Discover reusable rotatable dihedrals before torsion execution.",
+                    ),
+                )
+            )
+        if capability_name == "parse_snapshot_outputs" and not execution_request.artifact_bundle_id:
+            calls.append(
+                MicroscopicToolCall(
+                    call_id="discover_artifact_bundles",
+                    call_kind="discovery",
+                    request=MicroscopicToolRequest(
+                        capability_name="list_artifact_bundles",
+                        artifact_kind="torsion_snapshots",
+                        requested_route_summary="Discover reusable artifact bundles before parse-only execution.",
+                        perform_new_calculation=False,
+                        reuse_existing_artifacts_only=True,
+                    ),
+                )
+            )
+        calls.append(
+            MicroscopicToolCall(
+                call_id=f"execute_{capability_name}",
+                call_kind="execution",
+                request=execution_request,
+            )
+        )
+        return calls
+
+    def _ensure_discovery_before_execution(
+        self,
+        calls: list[MicroscopicToolCall],
+    ) -> list[MicroscopicToolCall]:
+        has_dihedral_discovery = any(call.request.capability_name == "list_rotatable_dihedrals" for call in calls)
+        has_artifact_discovery = any(call.request.capability_name == "list_artifact_bundles" for call in calls)
+        normalized: list[MicroscopicToolCall] = []
+        for call in calls:
+            if call.call_kind == "execution" and call.request.capability_name == "run_torsion_snapshots" and not call.request.dihedral_id and not has_dihedral_discovery:
+                normalized.append(
+                    MicroscopicToolCall(
+                        call_id="discover_rotatable_dihedrals",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_rotatable_dihedrals",
+                            structure_source="round_s0_optimized_geometry",
+                            min_relevance="medium",
+                            include_peripheral=True,
+                            requested_route_summary="Auto-inserted dihedral discovery before torsion execution.",
+                        ),
+                    )
+                )
+                has_dihedral_discovery = True
+            if call.call_kind == "execution" and call.request.capability_name == "parse_snapshot_outputs" and not call.request.artifact_bundle_id and not has_artifact_discovery:
+                normalized.append(
+                    MicroscopicToolCall(
+                        call_id="discover_artifact_bundles",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_artifact_bundles",
+                            artifact_kind="torsion_snapshots",
+                            perform_new_calculation=False,
+                            reuse_existing_artifacts_only=True,
+                            requested_route_summary="Auto-inserted artifact-bundle discovery before parse-only execution.",
+                        ),
+                    )
+                )
+                has_artifact_discovery = True
+            normalized.append(call)
+        return normalized
+
+    def _normalize_tool_call_request(
+        self,
+        *,
+        draft: MicroscopicToolRequestDraft,
+        capability_name: AmespCapabilityName,
+        requested_deliverables: list[str],
+    ) -> MicroscopicToolRequest:
         capability = AMESP_CAPABILITY_REGISTRY[capability_name]
-        snapshot_count = draft.snapshot_count if draft is not None else None
-        state_window = list(draft.state_window) if draft is not None else []
-        angle_offsets = list(draft.angle_offsets_deg) if draft is not None else []
-        if capability_name == "run_conformer_bundle" and snapshot_count is None:
+        snapshot_count = draft.snapshot_count
+        state_window = list(draft.state_window)
+        if capability_name == "run_conformer_bundle" and snapshot_count is None and draft.max_conformers is None:
             snapshot_count = self._config.amesp_follow_up_max_conformers
         if capability_name == "run_torsion_snapshots" and snapshot_count is None:
-            snapshot_count = self._config.amesp_follow_up_max_torsion_snapshots_total
+            snapshot_count = 2 if draft.angle_offsets_deg else self._config.amesp_follow_up_max_torsion_snapshots_total
         if capability_name == "run_baseline_bundle" and not state_window:
             state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
-        if capability_name in {"run_torsion_snapshots", "run_conformer_bundle"} and not state_window:
+        if capability_name in {"run_torsion_snapshots", "run_conformer_bundle", "parse_snapshot_outputs"} and not state_window:
             state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
         return MicroscopicToolRequest(
             capability_name=capability_name,
+            structure_source=draft.structure_source,
             perform_new_calculation=(
                 draft.perform_new_calculation
-                if draft is not None and draft.perform_new_calculation is not None
+                if draft.perform_new_calculation is not None
                 else capability.requires_new_calculation
             ),
             reuse_existing_artifacts_only=(
                 draft.reuse_existing_artifacts_only
-                if draft is not None and draft.reuse_existing_artifacts_only is not None
+                if draft.reuse_existing_artifacts_only is not None
                 else not capability.requires_new_calculation
             ),
-            artifact_source_round=draft.artifact_source_round if draft is not None else None,
-            artifact_scope=(
-                draft.artifact_scope
-                if draft is not None and draft.artifact_scope is not None
-                else "latest_bundle" if capability_name == "parse_snapshot_outputs" else None
-            ),
+            artifact_source_round=draft.artifact_source_round,
+            artifact_scope=draft.artifact_scope,
+            artifact_bundle_id=draft.artifact_bundle_id,
+            artifact_kind=draft.artifact_kind,
+            source_round_preference=draft.source_round_preference,
+            min_relevance=draft.min_relevance,
+            include_peripheral=draft.include_peripheral,
+            preferred_bond_types=list(draft.preferred_bond_types),
+            dihedral_id=draft.dihedral_id,
+            dihedral_atom_indices=list(draft.dihedral_atom_indices),
+            conformer_id=draft.conformer_id,
+            conformer_ids=list(draft.conformer_ids),
+            max_conformers=draft.max_conformers,
             snapshot_count=snapshot_count,
-            angle_offsets_deg=angle_offsets,
+            angle_offsets_deg=list(draft.angle_offsets_deg),
             state_window=state_window,
-            deliverables=(
-                list(draft.deliverables)
-                if draft is not None and draft.deliverables
-                else requested_deliverables
-            ),
-            budget_profile=(
-                draft.budget_profile
-                if draft is not None and draft.budget_profile is not None
-                else self._config.microscopic_budget_profile
-            ),
-            requested_route_summary=(
-                draft.requested_route_summary
-                if draft is not None and draft.requested_route_summary
-                else reasoning.execution_plan.requested_route_summary
-                or self._requested_route_summary(self._compatibility_route_for_capability(capability_name), task_received)
-            ),
+            honor_exact_target=draft.honor_exact_target if draft.honor_exact_target is not None else True,
+            allow_fallback=draft.allow_fallback if draft.allow_fallback is not None else False,
+            deliverables=list(draft.deliverables) if draft.deliverables else requested_deliverables,
+            budget_profile=draft.budget_profile or self._config.microscopic_budget_profile,
+            requested_route_summary=draft.requested_route_summary or f"Use capability '{capability_name}' for the current microscopic task.",
         )
+
+    def _default_call_kind(self, capability_name: AmespCapabilityName) -> Literal["discovery", "execution"]:
+        if capability_name in {"list_rotatable_dihedrals", "list_available_conformers", "list_artifact_bundles"}:
+            return "discovery"
+        return "execution"
+
+    def _preferred_bond_types_from_instruction(
+        self,
+        lower_instruction: str,
+    ) -> list[DihedralBondType]:
+        preferred: list[DihedralBondType] = []
+        if "aryl–vinyl" in lower_instruction or "aryl-vinyl" in lower_instruction:
+            preferred.append("aryl-vinyl")
+        if "aryl–aryl" in lower_instruction or "aryl-aryl" in lower_instruction:
+            preferred.append("aryl-aryl")
+        if "heteroaryl" in lower_instruction or "nsnc" in lower_instruction:
+            preferred.append("heteroaryl-linkage")
+        return preferred
+
+    def _source_round_preference_from_instruction(self, lower_instruction: str) -> Optional[int]:
+        match = self._round_reference_pattern().search(lower_instruction)
+        if not match:
+            return None
+        return int(match.group(1))
+
+    def _explicit_dihedral_id_from_instruction(self, task_received: str) -> Optional[str]:
+        match = re.search(r"\[(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\]", task_received)
+        if not match:
+            return None
+        atoms = [int(match.group(index)) for index in range(1, 5)]
+        return "dih_" + "_".join(str(atom) for atom in atoms)
+
+    def _round_reference_pattern(self) -> re.Pattern[str]:
+        return re.compile(r"round[_\s-]?0*(\d+)")
 
     def _capability_name_from_route_or_task(
         self,
@@ -1181,6 +1535,9 @@ class MicroscopicAgent:
         executed_capability: Optional[str],
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
+        resolved_target_ids: dict[str, Any],
+        honored_constraints: list[str],
+        unmet_constraints: list[str],
         missing_deliverables: list[str],
         error_message: Optional[str],
         error_payload: Optional[dict[str, Any]],
@@ -1190,13 +1547,28 @@ class MicroscopicAgent:
             f"I executed `{executed_capability}`, performed {'new calculations' if performed_new_calculations else 'no new calculations'}, "
             f"and {'reused existing artifacts' if reused_existing_artifacts else 'did not rely on existing artifacts only'}."
         )
+        target_clause = (
+            f" Resolved targets: {self._resolved_target_ids_text(resolved_target_ids)}."
+            if resolved_target_ids
+            else ""
+        )
+        honored_clause = (
+            " Honored constraints: " + "; ".join(honored_constraints) + "."
+            if honored_constraints
+            else ""
+        )
+        unmet_clause = (
+            " Unmet constraints: " + "; ".join(unmet_constraints) + "."
+            if unmet_constraints
+            else ""
+        )
         if run_status == "failed":
             reason_code = self._map_error_to_completion_reason(error_payload)
             return (
                 "failed",
                 reason_code,
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task failed while using Amesp route '{capability_route}': "
                     f"{error_message or 'no error details were provided.'}"
                 ),
@@ -1207,12 +1579,12 @@ class MicroscopicAgent:
                 "partial",
                 reason_code,
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task was only partially completed because Amesp route '{capability_route}' was incomplete: "
                     f"{error_message or 'no partial-execution details were provided.'}"
                 ),
             )
-        if requested_capability != executed_capability or missing_deliverables:
+        if requested_capability != executed_capability or missing_deliverables or unmet_constraints:
             missing_note = (
                 " Missing deliverables: " + "; ".join(missing_deliverables) + "."
                 if missing_deliverables
@@ -1222,7 +1594,7 @@ class MicroscopicAgent:
                 "contracted",
                 "partial_observable_only",
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task completed in a contracted form via Amesp route '{capability_route}'.{missing_note}"
                 ),
             )
@@ -1232,7 +1604,7 @@ class MicroscopicAgent:
                 return (
                     "contracted",
                     "capability_unsupported",
-                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     "The requested excited-state relaxation follow-up is not yet validated "
                     f"within current Amesp capability, so route '{capability_route}' could not be executed. "
                     f"Unsupported parts were: {unsupported}.",
@@ -1241,7 +1613,7 @@ class MicroscopicAgent:
                 return (
                     "contracted",
                     "partial_observable_only",
-                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The requested targeted microscopic follow-up could not be executed exactly as asked, so Amesp route "
                     f"'{capability_route}' returned the closest bounded substitute instead. "
                     f"Unsupported parts were: {unsupported}.",
@@ -1249,7 +1621,7 @@ class MicroscopicAgent:
             return (
                 "contracted",
                 "partial_observable_only",
-                f"The Planner requested `{requested_capability}`. {action_clause} "
+                f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                 f"The agent returned bounded Amesp route '{capability_route}' evidence, but it could not execute unsupported "
                 f"parts of the Planner instruction: {unsupported}.",
             )
@@ -1257,7 +1629,7 @@ class MicroscopicAgent:
             "completed",
             None,
             (
-                f"The Planner requested `{requested_capability}`. {action_clause} "
+                f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                 "All requested deliverables were produced within current microscopic capability."
             ),
         )
@@ -1306,6 +1678,19 @@ class MicroscopicAgent:
         if not missing_deliverables:
             return "No requested deliverables were missing."
         return "; ".join(missing_deliverables)
+
+    def _resolved_target_ids_text(self, resolved_target_ids: dict[str, Any]) -> str:
+        if not resolved_target_ids:
+            return "No resolved target IDs were recorded."
+        parts: list[str] = []
+        for key in sorted(resolved_target_ids):
+            parts.append(f"{key}={resolved_target_ids[key]}")
+        return "; ".join(parts)
+
+    def _constraint_text(self, constraints: list[str], *, default_text: str) -> str:
+        if not constraints:
+            return default_text
+        return "; ".join(constraints)
 
     def _vertical_state_manifold(self, s1_result: Any) -> dict[str, Any]:
         excited_states = list(getattr(s1_result, "excited_states", []))

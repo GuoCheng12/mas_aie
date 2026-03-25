@@ -19,9 +19,17 @@ from aie_mas.chem.structure_prep import (
     prepare_structure_from_smiles,
 )
 from aie_mas.graph.state import (
+    ArtifactBundleDescriptor,
+    ArtifactBundleKind,
+    ConformerDescriptor,
+    DihedralBondType,
+    DihedralDescriptor,
     MicroscopicCapabilityName,
     MicroscopicExecutionPlan,
+    MicroscopicToolCall,
+    MicroscopicToolPlan,
     MicroscopicToolRequest,
+    SelectionPolicy,
     WorkflowProgressEvent,
 )
 
@@ -123,6 +131,10 @@ class AmespBaselineRunResult(BaseModel):
     executed_capability: MicroscopicCapabilityName = "run_baseline_bundle"
     performed_new_calculations: bool = True
     reused_existing_artifacts: bool = False
+    requested_capability: Optional[MicroscopicCapabilityName] = None
+    resolved_target_ids: dict[str, Any] = Field(default_factory=dict)
+    honored_constraints: list[str] = Field(default_factory=list)
+    unmet_constraints: list[str] = Field(default_factory=list)
     missing_deliverables: list[str] = Field(default_factory=list)
     structure: PreparedStructure
     s0: Optional[AmespGroundStateResult] = None
@@ -135,6 +147,33 @@ class AmespBaselineRunResult(BaseModel):
 
 
 AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefinition] = {
+    "list_rotatable_dihedrals": AmespCapabilityDefinition(
+        name="list_rotatable_dihedrals",
+        purpose="List reusable rotatable dihedrals and expose stable dihedral IDs for later execution.",
+        requires_new_calculation=False,
+        required_inputs=["prepared structure or reusable structure artifacts"],
+        optional_inputs=["structure_source", "min_relevance", "include_peripheral"],
+        supported_deliverables=["stable dihedral descriptors"],
+        default_budget_behavior="Never launches new Amesp calculations; discovery only.",
+    ),
+    "list_available_conformers": AmespCapabilityDefinition(
+        name="list_available_conformers",
+        purpose="List reusable conformers and expose stable conformer IDs for later execution.",
+        requires_new_calculation=False,
+        required_inputs=["available prepared structure or conformer artifacts"],
+        optional_inputs=["source_round_preference"],
+        supported_deliverables=["stable conformer descriptors"],
+        default_budget_behavior="Never launches new Amesp calculations; discovery only.",
+    ),
+    "list_artifact_bundles": AmespCapabilityDefinition(
+        name="list_artifact_bundles",
+        purpose="List reusable microscopic artifact bundles and expose stable artifact bundle IDs for parse-only reuse.",
+        requires_new_calculation=False,
+        required_inputs=["available microscopic artifacts"],
+        optional_inputs=["artifact_kind", "source_round_preference"],
+        supported_deliverables=["artifact bundle descriptors"],
+        default_budget_behavior="Never launches new Amesp calculations; discovery only.",
+    ),
     "run_baseline_bundle": AmespCapabilityDefinition(
         name="run_baseline_bundle",
         purpose="Run a single-conformer low-cost S0 optimization plus vertical excited-state manifold.",
@@ -259,15 +298,94 @@ class AmespMicroscopicTool:
         case_id: Optional[str] = None,
         current_hypothesis: Optional[str] = None,
     ) -> AmespBaselineRunResult:
-        request = plan.microscopic_tool_request
+        workdir.mkdir(parents=True, exist_ok=True)
+        tool_plan = self._tool_plan_from_execution_plan(plan)
+        discovery_results: dict[str, dict[str, Any]] = {}
+        execution_call: MicroscopicToolCall | None = None
+
+        for call in tool_plan.calls:
+            if call.call_kind == "discovery":
+                discovery_results[call.call_id] = self._execute_discovery_call(
+                    call.request,
+                    smiles=smiles,
+                    available_artifacts=available_artifacts,
+                    workdir=workdir,
+                    case_id=case_id,
+                    round_index=round_index,
+                )
+                continue
+            execution_call = call
+            break
+
+        if execution_call is None:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Microscopic tool plan did not contain an execution call.",
+                status="failed",
+            )
+
+        resolved_request, resolution_payload = self._resolve_execution_request(
+            execution_call.request,
+            selection_policy=tool_plan.selection_policy,
+            discovery_results=discovery_results,
+            available_artifacts=available_artifacts,
+        )
+        result = self._dispatch_execution_request(
+            request=resolved_request,
+            smiles=smiles,
+            label=label,
+            workdir=workdir,
+            available_artifacts=available_artifacts,
+            progress_callback=progress_callback,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+        )
+        result.requested_capability = execution_call.request.capability_name
+        result.resolved_target_ids = dict(resolution_payload.get("resolved_target_ids", {}))
+        result.honored_constraints = list(resolution_payload.get("honored_constraints", []))
+        result.unmet_constraints = list(resolution_payload.get("unmet_constraints", []))
+        result.generated_artifacts["resolved_target_ids"] = dict(result.resolved_target_ids)
+        return result
+
+    def _tool_plan_from_execution_plan(self, plan: MicroscopicExecutionPlan) -> MicroscopicToolPlan:
+        if getattr(plan, "microscopic_tool_plan", None) is not None and plan.microscopic_tool_plan.calls:
+            return plan.microscopic_tool_plan
+        if plan.microscopic_tool_request is None:
+            return MicroscopicToolPlan()
+        return MicroscopicToolPlan(
+            calls=[
+                MicroscopicToolCall(
+                    call_id="compat_execution",
+                    call_kind="execution",
+                    request=plan.microscopic_tool_request,
+                )
+            ],
+            requested_route_summary=plan.requested_route_summary,
+            requested_deliverables=list(plan.requested_deliverables),
+            selection_policy=SelectionPolicy(),
+            failure_reporting=plan.failure_reporting,
+        )
+
+    def _dispatch_execution_request(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        smiles: str,
+        label: str,
+        workdir: Path,
+        available_artifacts: dict[str, Any] | None,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]],
+        round_index: int,
+        case_id: Optional[str],
+        current_hypothesis: Optional[str],
+    ) -> AmespBaselineRunResult:
         capability = AMESP_CAPABILITY_REGISTRY[request.capability_name]
         if capability.requires_new_calculation and not self._amesp_bin.exists():
             raise AmespExecutionError(
                 "amesp_binary_missing",
                 f"Amesp binary was not found at {self._amesp_bin}.",
             )
-
-        workdir.mkdir(parents=True, exist_ok=True)
 
         if request.capability_name == "run_baseline_bundle":
             result = self._execute_baseline_route(
@@ -293,6 +411,7 @@ class AmespMicroscopicTool:
                 smiles=smiles,
                 label=label,
                 workdir=workdir,
+                available_artifacts=available_artifacts,
                 progress_callback=progress_callback,
                 round_index=round_index,
                 case_id=case_id,
@@ -328,6 +447,326 @@ class AmespMicroscopicTool:
                 "reused_existing_artifacts": False,
             },
         )
+
+    def _execute_discovery_call(
+        self,
+        request: MicroscopicToolRequest,
+        *,
+        smiles: str,
+        available_artifacts: dict[str, Any] | None,
+        workdir: Path,
+        case_id: Optional[str],
+        round_index: int,
+    ) -> dict[str, Any]:
+        if request.capability_name == "list_rotatable_dihedrals":
+            prepared = self._resolve_prepared_structure_for_discovery(
+                request=request,
+                smiles=smiles,
+                available_artifacts=available_artifacts,
+                workdir=workdir / "discovery_dihedrals",
+                case_id=case_id,
+                round_index=round_index,
+            )
+            descriptors = _list_rotatable_dihedral_descriptors(prepared)
+            return {
+                "capability_name": request.capability_name,
+                "items": [item.model_dump(mode="json") for item in descriptors],
+            }
+        if request.capability_name == "list_available_conformers":
+            descriptors = self._list_available_conformer_descriptors(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+            return {
+                "capability_name": request.capability_name,
+                "items": [item.model_dump(mode="json") for item in descriptors],
+            }
+        if request.capability_name == "list_artifact_bundles":
+            descriptors = self._list_artifact_bundle_descriptors(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+            return {
+                "capability_name": request.capability_name,
+                "items": [item.model_dump(mode="json") for item in descriptors],
+            }
+        raise AmespExecutionError(
+            "capability_unsupported",
+            f"Discovery capability '{request.capability_name}' is not supported by AmespMicroscopicTool.",
+            status="failed",
+        )
+
+    def _resolve_execution_request(
+        self,
+        request: MicroscopicToolRequest,
+        *,
+        selection_policy: SelectionPolicy,
+        discovery_results: dict[str, dict[str, Any]],
+        available_artifacts: dict[str, Any] | None,
+    ) -> tuple[MicroscopicToolRequest, dict[str, Any]]:
+        resolved_request = request.model_copy(deep=True)
+        resolved_target_ids: dict[str, Any] = {}
+        honored_constraints: list[str] = []
+        unmet_constraints: list[str] = []
+
+        if resolved_request.dihedral_id and not resolved_request.dihedral_atom_indices:
+            parsed_atoms = _dihedral_atoms_from_id(resolved_request.dihedral_id)
+            if parsed_atoms:
+                resolved_request.dihedral_atom_indices = parsed_atoms
+        if resolved_request.dihedral_id:
+            resolved_target_ids["dihedral_id"] = resolved_request.dihedral_id
+            honored_constraints.append(
+                f"Execution request honored explicit dihedral target `{resolved_request.dihedral_id}`."
+            )
+
+        if resolved_request.artifact_bundle_id:
+            resolved_target_ids["artifact_bundle_id"] = resolved_request.artifact_bundle_id
+            honored_constraints.append(
+                f"Execution request honored explicit artifact bundle `{resolved_request.artifact_bundle_id}`."
+            )
+
+        if request.capability_name == "run_torsion_snapshots" and not resolved_request.dihedral_id:
+            dihedral_items = self._collect_discovery_items(discovery_results, "list_rotatable_dihedrals")
+            descriptor = _select_dihedral_descriptor(dihedral_items, selection_policy)
+            if descriptor is None:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    "No discovery-listed rotatable dihedral satisfied the requested selection policy for torsion snapshots.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": "run_torsion_snapshots",
+                        "performed_new_calculations": True,
+                        "reused_existing_artifacts": False,
+                    },
+                )
+            resolved_request.dihedral_id = descriptor.dihedral_id
+            resolved_request.dihedral_atom_indices = list(descriptor.atom_indices)
+            resolved_target_ids["dihedral_id"] = descriptor.dihedral_id
+            honored_constraints.extend(
+                _describe_dihedral_constraints(descriptor=descriptor, policy=selection_policy)
+            )
+
+        if request.capability_name == "parse_snapshot_outputs" and not resolved_request.artifact_bundle_id:
+            bundle_items = self._collect_discovery_items(discovery_results, "list_artifact_bundles")
+            descriptor = _select_artifact_bundle_descriptor(bundle_items, selection_policy)
+            if descriptor is None:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    "No reusable artifact bundle satisfied the requested parse-only selection policy.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": "parse_snapshot_outputs",
+                        "performed_new_calculations": False,
+                        "reused_existing_artifacts": True,
+                    },
+                )
+            resolved_request.artifact_bundle_id = descriptor.artifact_bundle_id
+            resolved_request.artifact_kind = descriptor.artifact_kind
+            resolved_request.artifact_source_round = descriptor.source_round
+            resolved_target_ids["artifact_bundle_id"] = descriptor.artifact_bundle_id
+            honored_constraints.append(
+                f"Resolved artifact bundle to `{descriptor.artifact_bundle_id}` (kind={descriptor.artifact_kind}, round={descriptor.source_round})."
+            )
+
+        if request.capability_name == "run_conformer_bundle" and request.conformer_ids:
+            resolved_target_ids["conformer_ids"] = list(request.conformer_ids)
+        elif request.capability_name == "run_conformer_bundle" and request.conformer_id:
+            resolved_target_ids["conformer_id"] = request.conformer_id
+
+        if resolved_request.dihedral_id and selection_policy.exclude_dihedral_ids:
+            if resolved_request.dihedral_id in selection_policy.exclude_dihedral_ids:
+                unmet_constraints.append(
+                    f"Resolved dihedral `{resolved_request.dihedral_id}` violated exclude_dihedral_ids."
+                )
+                if not resolved_request.allow_fallback:
+                    raise AmespExecutionError(
+                        "precondition_missing",
+                        f"The requested dihedral `{resolved_request.dihedral_id}` is explicitly excluded by the selection policy.",
+                        status="failed",
+                        structured_results={
+                            "executed_capability": request.capability_name,
+                            "performed_new_calculations": request.perform_new_calculation,
+                            "reused_existing_artifacts": request.reuse_existing_artifacts_only,
+                        },
+                    )
+
+        if request.capability_name == "run_conformer_bundle" and request.conformer_ids:
+            available_ids = {
+                descriptor.conformer_id
+                for descriptor in self._list_available_conformer_descriptors(
+                    request=MicroscopicToolRequest(capability_name="list_available_conformers"),
+                    available_artifacts=available_artifacts,
+                )
+            }
+            missing_ids = [conf_id for conf_id in request.conformer_ids if conf_id not in available_ids]
+            if missing_ids:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    "The requested conformer IDs were not available for conformer follow-up: "
+                    + ", ".join(missing_ids),
+                    status="failed",
+                    structured_results={
+                        "executed_capability": "run_conformer_bundle",
+                        "performed_new_calculations": True,
+                        "reused_existing_artifacts": False,
+                    },
+                )
+
+        return resolved_request, {
+            "resolved_target_ids": resolved_target_ids,
+            "honored_constraints": honored_constraints,
+            "unmet_constraints": unmet_constraints,
+        }
+
+    def _collect_discovery_items(
+        self,
+        discovery_results: dict[str, dict[str, Any]],
+        capability_name: MicroscopicCapabilityName,
+    ) -> list[dict[str, Any]]:
+        items: list[dict[str, Any]] = []
+        for result in discovery_results.values():
+            if result.get("capability_name") == capability_name:
+                items.extend(list(result.get("items") or []))
+        return items
+
+    def _resolve_prepared_structure_for_discovery(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        smiles: str,
+        available_artifacts: dict[str, Any] | None,
+        workdir: Path,
+        case_id: Optional[str],
+        round_index: int,
+    ) -> PreparedStructure:
+        available_artifacts = available_artifacts or {}
+        prepared_xyz_path = available_artifacts.get("prepared_xyz_path")
+        prepared_summary_path = available_artifacts.get("prepared_summary_path")
+        prepared_sdf_path = available_artifacts.get("prepared_sdf_path")
+        if prepared_xyz_path and prepared_summary_path and prepared_sdf_path:
+            return self._load_prepared_structure_from_paths(
+                summary_path=Path(str(prepared_summary_path)),
+                xyz_path=Path(str(prepared_xyz_path)),
+                sdf_path=Path(str(prepared_sdf_path)),
+            )
+        _, prepared = self._structure_preparer(
+            StructurePrepRequest(
+                smiles=smiles,
+                label=f"{case_id or 'ad_hoc_case'}_round_{round_index:02d}_discovery",
+                workdir=workdir,
+            )
+        )
+        return prepared
+
+    def _list_available_conformer_descriptors(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> list[ConformerDescriptor]:
+        available_artifacts = available_artifacts or {}
+        descriptors: list[ConformerDescriptor] = []
+        conformer_artifacts = list(available_artifacts.get("conformer_artifacts") or [])
+        for index, artifact in enumerate(conformer_artifacts, start=1):
+            prepared_xyz_path = artifact.get("prepared_xyz_path")
+            if not prepared_xyz_path:
+                continue
+            descriptors.append(
+                ConformerDescriptor(
+                    conformer_id=f"conf_{index:02d}",
+                    source="microscopic_follow_up",
+                    rank=int(artifact.get("conformer_rank") or index),
+                    prepared_xyz_path=str(prepared_xyz_path),
+                    summary_label=f"Reusable conformer {index:02d}",
+                )
+            )
+        if descriptors:
+            return descriptors
+        prepared_xyz_path = available_artifacts.get("prepared_xyz_path")
+        if prepared_xyz_path:
+            return [
+                ConformerDescriptor(
+                    conformer_id="shared_conf_01",
+                    source="shared_structure",
+                    rank=1,
+                    prepared_xyz_path=str(prepared_xyz_path),
+                    summary_label="Shared prepared conformer",
+                )
+            ]
+        return []
+
+    def _list_artifact_bundle_descriptors(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> list[ArtifactBundleDescriptor]:
+        available_artifacts = available_artifacts or {}
+        descriptors: list[ArtifactBundleDescriptor] = []
+        source_round = int(available_artifacts.get("source_round") or 0)
+        if available_artifacts.get("snapshot_artifacts"):
+            descriptors.append(
+                ArtifactBundleDescriptor(
+                    artifact_bundle_id=f"round_{source_round:02d}_torsion_snapshots",
+                    source_round=source_round,
+                    source_capability="run_torsion_snapshots",
+                    artifact_kind="torsion_snapshots",
+                    snapshot_count=len(list(available_artifacts.get("snapshot_artifacts") or [])),
+                    available_files=_collect_available_file_keys(available_artifacts, "snapshot_artifacts"),
+                    available_deliverables=[
+                        "per-snapshot excitation energies",
+                        "per-snapshot oscillator strengths",
+                        "state-ordering summaries",
+                    ],
+                )
+            )
+        if available_artifacts.get("conformer_artifacts"):
+            descriptors.append(
+                ArtifactBundleDescriptor(
+                    artifact_bundle_id=f"round_{source_round:02d}_conformer_bundle",
+                    source_round=source_round,
+                    source_capability="run_conformer_bundle",
+                    artifact_kind="conformer_bundle",
+                    snapshot_count=len(list(available_artifacts.get("conformer_artifacts") or [])),
+                    available_files=_collect_available_file_keys(available_artifacts, "conformer_artifacts"),
+                    available_deliverables=[
+                        "bounded conformer vertical-state records",
+                        "excitation spread",
+                        "bright-state sensitivity",
+                    ],
+                )
+            )
+        if available_artifacts.get("s0_aop_path") or available_artifacts.get("s1_aop_path"):
+            descriptors.append(
+                ArtifactBundleDescriptor(
+                    artifact_bundle_id=f"round_{source_round:02d}_baseline_bundle",
+                    source_round=source_round,
+                    source_capability="run_baseline_bundle",
+                    artifact_kind="baseline_bundle",
+                    snapshot_count=1,
+                    available_files=_collect_scalar_artifact_files(available_artifacts),
+                    available_deliverables=[
+                        "S0 optimized geometry",
+                        "vertical excited-state manifold",
+                    ],
+                )
+            )
+        if request.artifact_kind is None:
+            return descriptors
+        return [descriptor for descriptor in descriptors if descriptor.artifact_kind == request.artifact_kind]
+
+    def _load_prepared_structure_from_paths(
+        self,
+        *,
+        summary_path: Path,
+        xyz_path: Path,
+        sdf_path: Path,
+    ) -> PreparedStructure:
+        payload = json.loads(summary_path.read_text(encoding="utf-8"))
+        payload["xyz_path"] = xyz_path
+        payload["sdf_path"] = sdf_path
+        payload["summary_path"] = summary_path
+        return PreparedStructure.model_validate(payload)
 
     def _execute_baseline_route(
         self,
@@ -376,19 +815,31 @@ class AmespMicroscopicTool:
         smiles: str,
         label: str,
         workdir: Path,
+        available_artifacts: dict[str, Any] | None,
         progress_callback: Optional[Callable[[WorkflowProgressEvent], None]],
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
     ) -> AmespBaselineRunResult:
+        if request.conformer_ids:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Explicit conformer-ID execution is not available unless reusable conformer artifacts are exposed to the current microscopic round.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "run_conformer_bundle",
+                    "performed_new_calculations": True,
+                    "reused_existing_artifacts": False,
+                },
+            )
         bundle = prepare_conformer_bundle_from_smiles(
             StructurePrepRequest(
                 smiles=smiles,
                 label=label,
                 workdir=workdir / "conformer_bundle",
-                num_conformers=max(request.snapshot_count or self._follow_up_max_conformers, 3),
+                num_conformers=max(request.max_conformers or request.snapshot_count or self._follow_up_max_conformers, 3),
             ),
-            max_members=request.snapshot_count or self._follow_up_max_conformers,
+            max_members=request.max_conformers or request.snapshot_count or self._follow_up_max_conformers,
         )
         if len(bundle) < 2:
             raise AmespExecutionError(
@@ -483,13 +934,19 @@ class AmespMicroscopicTool:
             prepared=prepared,
             max_total=request.snapshot_count or self._follow_up_max_torsion_snapshots_total,
             target_angles=request.angle_offsets_deg or None,
+            target_dihedral_atoms=request.dihedral_atom_indices or None,
             output_dir=workdir / "torsion_snapshots",
         )
         if not snapshots:
             raise AmespExecutionError(
                 "precondition_missing",
-                "Torsion snapshot follow-up requires at least one rotatable dihedral, but none could be generated from the prepared structure.",
+                "Torsion snapshot follow-up could not honor the requested dihedral target from the prepared structure.",
                 status="failed",
+                structured_results={
+                    "executed_capability": "run_torsion_snapshots",
+                    "performed_new_calculations": True,
+                    "reused_existing_artifacts": False,
+                },
             )
 
         route_records: list[dict[str, Any]] = []
@@ -571,6 +1028,10 @@ class AmespMicroscopicTool:
 
         artifact_scope = request.artifact_scope or "latest_bundle"
         source_round = available_artifacts.get("source_round")
+        if request.artifact_bundle_id is not None:
+            expected_bundle_id = f"round_{int(source_round or 0):02d}_{artifact_scope}"
+            if request.artifact_bundle_id.startswith("round_") and request.artifact_bundle_id != expected_bundle_id:
+                artifact_scope = _artifact_scope_from_bundle_id(request.artifact_bundle_id)
         if request.artifact_source_round is not None and source_round not in {None, request.artifact_source_round}:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -1781,12 +2242,248 @@ def _build_torsion_snapshot_summary(route_records: list[dict[str, Any]]) -> dict
     }
 
 
+def _artifact_scope_from_bundle_id(bundle_id: str) -> str:
+    lowered = bundle_id.lower()
+    if lowered.endswith("_torsion_snapshots"):
+        return "torsion_snapshots"
+    if lowered.endswith("_conformer_bundle"):
+        return "conformer_bundle"
+    if lowered.endswith("_baseline_bundle"):
+        return "baseline_bundle"
+    return "latest_bundle"
+
+
+def _dihedral_atoms_from_id(dihedral_id: str) -> list[int]:
+    if not dihedral_id.startswith("dih_"):
+        return []
+    parts = dihedral_id[4:].split("_")
+    if len(parts) != 4:
+        return []
+    try:
+        return [int(part) for part in parts]
+    except ValueError:
+        return []
+
+
+def _collect_available_file_keys(
+    available_artifacts: dict[str, Any] | None,
+    artifact_list_key: str,
+) -> list[str]:
+    available_artifacts = available_artifacts or {}
+    file_keys: set[str] = set()
+    for artifact in list(available_artifacts.get(artifact_list_key) or []):
+        if not isinstance(artifact, dict):
+            continue
+        for key, value in artifact.items():
+            if value:
+                file_keys.add(str(key))
+    return sorted(file_keys)
+
+
+def _collect_scalar_artifact_files(
+    available_artifacts: dict[str, Any] | None,
+) -> list[str]:
+    available_artifacts = available_artifacts or {}
+    candidate_keys = [
+        "prepared_xyz_path",
+        "prepared_sdf_path",
+        "prepared_summary_path",
+        "s0_aop_path",
+        "s1_aop_path",
+        "s0_stdout_path",
+        "s1_stdout_path",
+        "s0_stderr_path",
+        "s1_stderr_path",
+        "s0_mo_path",
+        "s1_mo_path",
+    ]
+    return sorted(key for key in candidate_keys if available_artifacts.get(key))
+
+
+def _list_rotatable_dihedral_descriptors(prepared: PreparedStructure) -> list[DihedralDescriptor]:
+    try:
+        from rdkit import Chem
+    except ModuleNotFoundError:
+        return []
+
+    mol = Chem.MolFromMolFile(str(prepared.sdf_path), removeHs=False)
+    if mol is None:
+        return []
+
+    descriptors: list[DihedralDescriptor] = []
+    for dihedral in _find_rotatable_dihedrals(mol):
+        atom_a, atom_b, atom_c, atom_d = dihedral
+        bond = mol.GetBondBetweenAtoms(atom_b, atom_c)
+        if bond is None:
+            continue
+        atom_b_obj = mol.GetAtomWithIdx(atom_b)
+        atom_c_obj = mol.GetAtomWithIdx(atom_c)
+        bond_type = _classify_dihedral_bond_type(bond, atom_b_obj, atom_c_obj)
+        descriptor = DihedralDescriptor(
+            dihedral_id="dih_" + "_".join(str(atom) for atom in dihedral),
+            atom_indices=[atom_a, atom_b, atom_c, atom_d],
+            central_bond_indices=[atom_b, atom_c],
+            label=_build_dihedral_label(mol, dihedral, bond_type),
+            bond_type=bond_type,
+            adjacent_to_nsnc_core=_adjacent_to_nsnc_core(mol, dihedral),
+            central_conjugation_relevance=_dihedral_relevance(mol, dihedral, bond),
+            peripheral=_is_peripheral_dihedral(mol, dihedral),
+            rotatable=True,
+        )
+        descriptors.append(descriptor)
+
+    descriptors.sort(
+        key=lambda item: (
+            _relevance_rank(item.central_conjugation_relevance),
+            0 if item.adjacent_to_nsnc_core else 1,
+            1 if item.peripheral else 0,
+            item.dihedral_id,
+        )
+    )
+    return descriptors
+
+
+def _classify_dihedral_bond_type(bond: Any, atom_b: Any, atom_c: Any) -> DihedralBondType:
+    if atom_b.GetIsAromatic() and atom_c.GetIsAromatic():
+        return "aryl-aryl"
+    if atom_b.GetIsAromatic() or atom_c.GetIsAromatic():
+        return "aryl-vinyl"
+    if atom_b.GetAtomicNum() in {7, 8, 16} or atom_c.GetAtomicNum() in {7, 8, 16}:
+        return "heteroaryl-linkage"
+    if bond.GetIsConjugated():
+        return "aryl-vinyl"
+    return "other"
+
+
+def _build_dihedral_label(mol: Any, dihedral: Sequence[int], bond_type: DihedralBondType) -> str:
+    atom_symbols = [mol.GetAtomWithIdx(index).GetSymbol() for index in dihedral]
+    return f"{bond_type} dihedral {'-'.join(atom_symbols)} ({','.join(str(index) for index in dihedral)})"
+
+
+def _adjacent_to_nsnc_core(mol: Any, dihedral: Sequence[int]) -> bool:
+    for ring in mol.GetRingInfo().AtomRings():
+        if not any(atom_idx in ring for atom_idx in dihedral):
+            continue
+        ring_atoms = [mol.GetAtomWithIdx(atom_idx) for atom_idx in ring]
+        symbols = {atom.GetSymbol() for atom in ring_atoms}
+        if "S" in symbols and list(symbols).count("N") >= 2:
+            return True
+        if "S" in symbols and sum(1 for atom in ring_atoms if atom.GetSymbol() == "N") >= 2:
+            return True
+    return False
+
+
+def _dihedral_relevance(mol: Any, dihedral: Sequence[int], bond: Any) -> Literal["high", "medium", "low"]:
+    atom_a, atom_b, atom_c, atom_d = [mol.GetAtomWithIdx(index) for index in dihedral]
+    aromatic_count = sum(1 for atom in (atom_a, atom_b, atom_c, atom_d) if atom.GetIsAromatic())
+    hetero_count = sum(1 for atom in (atom_a, atom_b, atom_c, atom_d) if atom.GetAtomicNum() not in {1, 6})
+    if bond.GetIsConjugated() or aromatic_count >= 3 or hetero_count >= 2:
+        return "high"
+    if aromatic_count >= 1 or hetero_count >= 1:
+        return "medium"
+    return "low"
+
+
+def _is_peripheral_dihedral(mol: Any, dihedral: Sequence[int]) -> bool:
+    atom_a, atom_b, atom_c, atom_d = [mol.GetAtomWithIdx(index) for index in dihedral]
+    left_degree = len([nbr for nbr in atom_b.GetNeighbors() if nbr.GetIdx() != atom_c.GetIdx()])
+    right_degree = len([nbr for nbr in atom_c.GetNeighbors() if nbr.GetIdx() != atom_b.GetIdx()])
+    aromatic_outer = atom_a.GetIsAromatic() and atom_d.GetIsAromatic()
+    return aromatic_outer and left_degree <= 1 and right_degree <= 1
+
+
+def _relevance_rank(relevance: Literal["high", "medium", "low"]) -> int:
+    if relevance == "high":
+        return 0
+    if relevance == "medium":
+        return 1
+    return 2
+
+
+def _select_dihedral_descriptor(
+    items: list[dict[str, Any]],
+    policy: SelectionPolicy,
+) -> Optional[DihedralDescriptor]:
+    descriptors = [DihedralDescriptor.model_validate(item) for item in items]
+    filtered = [item for item in descriptors if item.dihedral_id not in policy.exclude_dihedral_ids]
+    if policy.preferred_bond_types:
+        preferred = [item for item in filtered if item.bond_type in policy.preferred_bond_types]
+        if preferred:
+            filtered = preferred
+    filtered = [
+        item
+        for item in filtered
+        if _relevance_rank(item.central_conjugation_relevance) <= _relevance_rank(policy.min_relevance)
+    ]
+    if not policy.include_peripheral:
+        non_peripheral = [item for item in filtered if not item.peripheral]
+        if non_peripheral:
+            filtered = non_peripheral
+    if policy.prefer_adjacent_to_nsnc_core:
+        core_adjacent = [item for item in filtered if item.adjacent_to_nsnc_core]
+        if core_adjacent:
+            filtered = core_adjacent
+    if not filtered:
+        return None
+    filtered.sort(
+        key=lambda item: (
+            _relevance_rank(item.central_conjugation_relevance),
+            0 if item.adjacent_to_nsnc_core else 1,
+            1 if item.peripheral else 0,
+            item.dihedral_id,
+        )
+    )
+    return filtered[0]
+
+
+def _select_artifact_bundle_descriptor(
+    items: list[dict[str, Any]],
+    policy: SelectionPolicy,
+) -> Optional[ArtifactBundleDescriptor]:
+    descriptors = [ArtifactBundleDescriptor.model_validate(item) for item in items]
+    filtered = descriptors
+    if policy.artifact_kind is not None:
+        matching_kind = [item for item in filtered if item.artifact_kind == policy.artifact_kind]
+        if matching_kind:
+            filtered = matching_kind
+    if policy.source_round_preference is not None:
+        matching_round = [item for item in filtered if item.source_round == policy.source_round_preference]
+        if matching_round:
+            filtered = matching_round
+    if not filtered:
+        return None
+    filtered.sort(key=lambda item: (-int(item.source_round), item.artifact_bundle_id))
+    return filtered[0]
+
+
+def _describe_dihedral_constraints(
+    *,
+    descriptor: DihedralDescriptor,
+    policy: SelectionPolicy,
+) -> list[str]:
+    notes = [f"Resolved dihedral target to `{descriptor.dihedral_id}` with atoms {descriptor.atom_indices}."]
+    if policy.prefer_adjacent_to_nsnc_core and descriptor.adjacent_to_nsnc_core:
+        notes.append("Honored constraint: selected a dihedral adjacent to the NSNC-like core.")
+    if descriptor.central_conjugation_relevance == policy.min_relevance or (
+        policy.min_relevance == "medium" and descriptor.central_conjugation_relevance == "high"
+    ) or (policy.min_relevance == "low"):
+        notes.append(
+            f"Honored constraint: central conjugation relevance is `{descriptor.central_conjugation_relevance}`."
+        )
+    if not policy.include_peripheral and not descriptor.peripheral:
+        notes.append("Honored constraint: avoided peripheral dihedral candidates.")
+    if policy.preferred_bond_types and descriptor.bond_type in policy.preferred_bond_types:
+        notes.append(f"Honored constraint: selected preferred bond type `{descriptor.bond_type}`.")
+    return notes
+
+
 def _generate_torsion_snapshot_bundle(
     *,
     smiles: str,
     prepared: PreparedStructure,
     max_total: int,
     target_angles: Sequence[float] | None,
+    target_dihedral_atoms: Sequence[int] | None,
     output_dir: Path,
 ) -> list[dict[str, Any]]:
     try:
@@ -1803,6 +2500,9 @@ def _generate_torsion_snapshot_bundle(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     dihedrals = _find_rotatable_dihedrals(mol)
+    if target_dihedral_atoms:
+        target = tuple(int(atom) for atom in target_dihedral_atoms)
+        dihedrals = [dihedral for dihedral in dihedrals if tuple(dihedral) == target]
     if not dihedrals:
         return []
 

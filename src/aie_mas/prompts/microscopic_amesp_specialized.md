@@ -9,6 +9,9 @@ Requested capability: {requested_capability}
 Executed capability: {executed_capability}
 Performed new calculations: {performed_new_calculations}
 Reused existing artifacts only: {reused_existing_artifacts}
+Resolved target IDs: {resolved_target_ids_text}
+Honored constraints: {honored_constraints_text}
+Unmet constraints: {unmet_constraints_text}
 Missing deliverables: {missing_deliverables_text}
 Recent round context: {recent_context_note}
 Capability boundary: {capability_scope}
