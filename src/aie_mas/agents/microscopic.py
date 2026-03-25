@@ -9,18 +9,25 @@ from pydantic import BaseModel, Field
 from aie_mas.compat.langchain import prompt_value_to_messages
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
+    AmespCapabilityName,
     AgentReport,
     MicroscopicCapabilityRoute,
     MicroscopicCompletionReasonCode,
     MicroscopicExecutionPlan,
     MicroscopicExecutionStep,
+    MicroscopicToolRequest,
     MicroscopicTaskSpec,
     SharedStructureContext,
     SharedStructureStatus,
     WorkflowProgressEvent,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
-from aie_mas.tools.amesp import AmespExecutionError, AmespMicroscopicTool
+from aie_mas.tools.amesp import (
+    AMESP_CAPABILITY_REGISTRY,
+    AmespExecutionError,
+    AmespMicroscopicTool,
+    render_amesp_capability_registry,
+)
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -39,18 +46,34 @@ class MicroscopicReasoningPlanDraft(BaseModel):
     requested_deliverables: list[str] = Field(default_factory=list)
     capability_route: Optional[MicroscopicCapabilityRoute] = None
     requested_route_summary: Optional[str] = None
+    microscopic_tool_request: Optional["MicroscopicToolRequestDraft"] = None
     structure_strategy: MicroscopicStructureStrategy = "reuse_if_available_else_prepare_from_smiles"
     step_sequence: list[
         Literal[
             "structure_prep",
             "conformer_bundle_generation",
             "torsion_snapshot_generation",
+            "artifact_parse",
             "s0_optimization",
             "s0_singlepoint",
             "s1_vertical_excitation",
         ]
     ] = Field(default_factory=lambda: ["structure_prep", "s0_optimization", "s1_vertical_excitation"])
     unsupported_requests: list[str] = Field(default_factory=list)
+
+
+class MicroscopicToolRequestDraft(BaseModel):
+    capability_name: Optional[AmespCapabilityName] = None
+    perform_new_calculation: Optional[bool] = None
+    reuse_existing_artifacts_only: Optional[bool] = None
+    artifact_source_round: Optional[int] = None
+    artifact_scope: Optional[str] = None
+    snapshot_count: Optional[int] = None
+    angle_offsets_deg: list[float] = Field(default_factory=list)
+    state_window: list[int] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    budget_profile: Optional[Literal["conservative", "balanced", "aggressive"]] = None
+    requested_route_summary: Optional[str] = None
 
 
 class MicroscopicReasoningResponse(BaseModel):
@@ -60,6 +83,9 @@ class MicroscopicReasoningResponse(BaseModel):
     capability_limit_note: str
     expected_outputs: list[str] = Field(default_factory=list)
     failure_policy: str
+
+
+MicroscopicReasoningPlanDraft.model_rebuild()
 
 
 class MicroscopicReasoningBackend(Protocol):
@@ -233,6 +259,11 @@ class MicroscopicAgent:
             "current_hypothesis": current_hypothesis,
             "requested_focus": ", ".join(plan.requested_deliverables),
             "capability_route": plan.capability_route,
+            "requested_capability": plan.microscopic_tool_request.capability_name,
+            "executed_capability": plan.microscopic_tool_request.capability_name,
+            "performed_new_calculations": str(plan.microscopic_tool_request.perform_new_calculation).lower(),
+            "reused_existing_artifacts": str(plan.microscopic_tool_request.reuse_existing_artifacts_only).lower(),
+            "missing_deliverables_text": "No missing deliverables have been identified yet.",
             "requested_route_summary": plan.requested_route_summary,
             "task_completion_text": "Task completion is pending Amesp microscopic execution.",
             "recent_context_note": self._recent_context_note(recent_rounds_context),
@@ -263,7 +294,7 @@ class MicroscopicAgent:
             "microscopic_reasoning(task_instruction_to_execution_plan)",
             (
                 f"{self._amesp_tool.name}.execute("
-                f"plan_version='{plan.plan_version}', route='{plan.capability_route}', label='{label}')"
+                f"plan_version='{plan.plan_version}', capability='{plan.microscopic_tool_request.capability_name}', label='{label}')"
             ),
         ]
         if plan.structure_source == "existing_prepared_structure":
@@ -292,19 +323,25 @@ class MicroscopicAgent:
                 "reasoning": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
+                "requested_capability": plan.microscopic_tool_request.capability_name,
+                "executed_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
+                "performed_new_calculations": getattr(run_result, "performed_new_calculations", True),
+                "reused_existing_artifacts": getattr(run_result, "reused_existing_artifacts", False),
+                "missing_deliverables": list(getattr(run_result, "missing_deliverables", [])),
                 "structure_source": plan.structure_source,
                 "supported_scope": plan.supported_scope,
                 "unsupported_requests": plan.unsupported_requests,
                 "structure": run_result.structure.model_dump(mode="json"),
-                "s0": run_result.s0.model_dump(mode="json"),
-                "s1": run_result.s1.model_dump(mode="json"),
+                "s0": run_result.s0.model_dump(mode="json") if run_result.s0 is not None else None,
+                "s1": run_result.s1.model_dump(mode="json") if run_result.s1 is not None else None,
+                "parsed_snapshot_records": list(getattr(run_result, "parsed_snapshot_records", [])),
                 "route_records": list(getattr(run_result, "route_records", [])),
                 "route_summary": dict(getattr(run_result, "route_summary", {})),
-                "vertical_state_manifold": self._vertical_state_manifold(run_result.s1),
-                "s0_energy": run_result.s0.final_energy_hartree,
+                "vertical_state_manifold": self._vertical_state_manifold(run_result.s1) if run_result.s1 is not None else {},
+                "s0_energy": run_result.s0.final_energy_hartree if run_result.s0 is not None else None,
                 "s1_energy": (
                     run_result.s1.excited_states[0].total_energy_hartree
-                    if run_result.s1.excited_states
+                    if run_result.s1 is not None and run_result.s1.excited_states
                     else None
                 ),
                 "rigidity_proxy": None,
@@ -322,6 +359,7 @@ class MicroscopicAgent:
                 "amesp_raw_step_results": run_result.raw_step_results,
             }
             generated_artifacts = dict(run_result.generated_artifacts)
+            generated_artifacts["source_round"] = round_index
             result_summary_text = self._successful_result_summary(structured_results)
             status = "success"
         except AmespExecutionError as exc:
@@ -334,6 +372,24 @@ class MicroscopicAgent:
                 "reasoning": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": plan.capability_route,
+                "requested_capability": plan.microscopic_tool_request.capability_name,
+                "executed_capability": (
+                    exc.structured_results.get("executed_capability")
+                    if isinstance(exc.structured_results, dict)
+                    else None
+                )
+                or plan.microscopic_tool_request.capability_name,
+                "performed_new_calculations": (
+                    exc.structured_results.get("performed_new_calculations")
+                    if isinstance(exc.structured_results, dict)
+                    else plan.microscopic_tool_request.perform_new_calculation
+                ),
+                "reused_existing_artifacts": (
+                    exc.structured_results.get("reused_existing_artifacts")
+                    if isinstance(exc.structured_results, dict)
+                    else plan.microscopic_tool_request.reuse_existing_artifacts_only
+                ),
+                "missing_deliverables": [],
                 "structure_source": plan.structure_source,
                 "supported_scope": plan.supported_scope,
                 "unsupported_requests": plan.unsupported_requests,
@@ -347,6 +403,7 @@ class MicroscopicAgent:
                 **exc.raw_results,
             }
             generated_artifacts = dict(exc.generated_artifacts)
+            generated_artifacts["source_round"] = round_index
             result_summary_text = self._failed_result_summary(exc)
             status = exc.status
 
@@ -355,6 +412,11 @@ class MicroscopicAgent:
             unsupported_requests=plan.unsupported_requests,
             task_mode=task_spec.mode,
             capability_route=plan.capability_route,
+            requested_capability=plan.microscopic_tool_request.capability_name,
+            executed_capability=structured_results.get("executed_capability"),
+            performed_new_calculations=bool(structured_results.get("performed_new_calculations")),
+            reused_existing_artifacts=bool(structured_results.get("reused_existing_artifacts")),
+            missing_deliverables=list(structured_results.get("missing_deliverables") or []),
             error_message=result_summary_text if status in {"partial", "failed"} else None,
             error_payload=structured_results.get("error"),
         )
@@ -367,6 +429,12 @@ class MicroscopicAgent:
             {
                 **render_payload,
                 "task_completion_text": task_completion_text,
+                "executed_capability": structured_results.get("executed_capability") or plan.microscopic_tool_request.capability_name,
+                "performed_new_calculations": str(bool(structured_results.get("performed_new_calculations"))).lower(),
+                "reused_existing_artifacts": str(bool(structured_results.get("reused_existing_artifacts"))).lower(),
+                "missing_deliverables_text": self._missing_deliverables_text(
+                    list(structured_results.get("missing_deliverables") or [])
+                ),
                 "result_summary_text": result_summary_text,
             },
         )
@@ -413,6 +481,11 @@ class MicroscopicAgent:
             "current_hypothesis": current_hypothesis,
             "requested_focus": ", ".join(plan.requested_deliverables),
             "capability_route": plan.capability_route,
+            "requested_capability": plan.microscopic_tool_request.capability_name,
+            "executed_capability": plan.microscopic_tool_request.capability_name,
+            "performed_new_calculations": "false",
+            "reused_existing_artifacts": "false",
+            "missing_deliverables_text": "No deliverables were produced because execution stopped before tool runtime.",
             "requested_route_summary": plan.requested_route_summary,
             "task_completion_text": task_completion_text,
             "recent_context_note": "No additional microscopic runtime step was executed.",
@@ -460,6 +533,11 @@ class MicroscopicAgent:
                 "task_completion": rendered["task_completion"],
                 "reasoning": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
+                "requested_capability": plan.microscopic_tool_request.capability_name,
+                "executed_capability": plan.microscopic_tool_request.capability_name,
+                "performed_new_calculations": False,
+                "reused_existing_artifacts": False,
+                "missing_deliverables": list(plan.requested_deliverables),
                 "error": {
                     "code": "shared_structure_unavailable",
                     "message": result_summary_text,
@@ -526,6 +604,7 @@ class MicroscopicAgent:
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "budget_profile": self._config.microscopic_budget_profile,
+            "capability_registry": render_amesp_capability_registry(),
             "recent_rounds_context": recent_rounds_context,
             "available_structure_context": self._available_structure_context(
                 available_artifacts,
@@ -553,9 +632,13 @@ class MicroscopicAgent:
             if reasoning.execution_plan.requested_deliverables
             else self._requested_deliverables(task_received)
         )
-        capability_route = reasoning.execution_plan.capability_route or self._resolve_capability_route(
-            task_received, task_spec
+        tool_request = self._build_tool_request(
+            task_received=task_received,
+            task_spec=task_spec,
+            requested_deliverables=requested_deliverables,
+            reasoning=reasoning,
         )
+        capability_route = self._compatibility_route_for_capability(tool_request.capability_name)
         unsupported_requests = list(reasoning.execution_plan.unsupported_requests)
         structure_is_reusable = bool(shared_structure_context is not None) or self._has_reusable_structure(
             available_artifacts
@@ -571,7 +654,7 @@ class MicroscopicAgent:
             "s0_optimization",
             "s1_vertical_excitation",
         ]
-        if capability_route == "baseline_bundle":
+        if tool_request.capability_name == "run_baseline_bundle":
             step_sequence = ["structure_prep", "s0_optimization", "s1_vertical_excitation"]
             expected_outputs = list(reasoning.expected_outputs) or [
                 "S0 optimized geometry",
@@ -583,7 +666,7 @@ class MicroscopicAgent:
                 "first bright state energy",
                 "first bright state oscillator strength",
             ]
-        elif capability_route == "conformer_bundle_follow_up":
+        elif tool_request.capability_name == "run_conformer_bundle":
             step_sequence = ["conformer_bundle_generation", "s0_optimization", "s1_vertical_excitation"]
             expected_outputs = [
                 "bounded conformer bundle vertical-state records",
@@ -591,12 +674,20 @@ class MicroscopicAgent:
                 "bright-state sensitivity",
                 "conformer-dependent uncertainty note",
             ]
-        elif capability_route == "torsion_snapshot_follow_up":
+        elif tool_request.capability_name == "run_torsion_snapshots":
             step_sequence = ["torsion_snapshot_generation", "s0_optimization", "s1_vertical_excitation"]
             expected_outputs = [
                 "snapshot geometry labels",
                 "snapshot vertical-state proxies",
                 "torsion sensitivity summary",
+            ]
+        elif tool_request.capability_name == "parse_snapshot_outputs":
+            step_sequence = ["artifact_parse"]
+            expected_outputs = [
+                "per-snapshot excitation energies",
+                "per-snapshot oscillator strengths",
+                "state-ordering records",
+                "artifact reuse note",
             ]
         else:
             step_sequence = ["structure_prep"]
@@ -605,21 +696,24 @@ class MicroscopicAgent:
             if unsupported_note not in unsupported_requests:
                 unsupported_requests.append(unsupported_note)
 
-        if structure_source == "existing_prepared_structure":
+        if structure_source == "existing_prepared_structure" and tool_request.perform_new_calculation:
             step_sequence = [step for step in step_sequence if step != "structure_prep"]
         steps = [self._build_step(step_type, structure_source) for step_type in step_sequence]
         return MicroscopicExecutionPlan(
             local_goal=reasoning.execution_plan.local_goal,
             requested_deliverables=requested_deliverables,
             capability_route=capability_route,
+            microscopic_tool_request=tool_request,
             budget_profile=self._config.microscopic_budget_profile or "balanced",
             requested_route_summary=reasoning.execution_plan.requested_route_summary
+            or tool_request.requested_route_summary
             or self._requested_route_summary(capability_route, task_received),
             structure_source=structure_source,  # type: ignore[arg-type]
             supported_scope=[
-                "baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
-                "conformer_bundle_follow_up: bounded conformer ensemble follow-up",
-                "torsion_snapshot_follow_up: bounded torsion snapshot follow-up",
+                "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
+                "run_conformer_bundle: bounded conformer ensemble follow-up",
+                "run_torsion_snapshots: bounded torsion snapshot follow-up",
+                "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
             ],
             unsupported_requests=unsupported_requests,
             steps=steps,
@@ -627,12 +721,114 @@ class MicroscopicAgent:
             failure_reporting=reasoning.failure_policy,
         )
 
+    def _build_tool_request(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        requested_deliverables: list[str],
+        reasoning: MicroscopicReasoningResponse,
+    ) -> MicroscopicToolRequest:
+        draft = reasoning.execution_plan.microscopic_tool_request
+        capability_name = (
+            draft.capability_name
+            if draft is not None and draft.capability_name is not None
+            else self._capability_name_from_route_or_task(
+                reasoning.execution_plan.capability_route,
+                task_received,
+                task_spec,
+            )
+        )
+        capability = AMESP_CAPABILITY_REGISTRY[capability_name]
+        snapshot_count = draft.snapshot_count if draft is not None else None
+        state_window = list(draft.state_window) if draft is not None else []
+        angle_offsets = list(draft.angle_offsets_deg) if draft is not None else []
+        if capability_name == "run_conformer_bundle" and snapshot_count is None:
+            snapshot_count = self._config.amesp_follow_up_max_conformers
+        if capability_name == "run_torsion_snapshots" and snapshot_count is None:
+            snapshot_count = self._config.amesp_follow_up_max_torsion_snapshots_total
+        if capability_name == "run_baseline_bundle" and not state_window:
+            state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
+        if capability_name in {"run_torsion_snapshots", "run_conformer_bundle"} and not state_window:
+            state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
+        return MicroscopicToolRequest(
+            capability_name=capability_name,
+            perform_new_calculation=(
+                draft.perform_new_calculation
+                if draft is not None and draft.perform_new_calculation is not None
+                else capability.requires_new_calculation
+            ),
+            reuse_existing_artifacts_only=(
+                draft.reuse_existing_artifacts_only
+                if draft is not None and draft.reuse_existing_artifacts_only is not None
+                else not capability.requires_new_calculation
+            ),
+            artifact_source_round=draft.artifact_source_round if draft is not None else None,
+            artifact_scope=(
+                draft.artifact_scope
+                if draft is not None and draft.artifact_scope is not None
+                else "latest_bundle" if capability_name == "parse_snapshot_outputs" else None
+            ),
+            snapshot_count=snapshot_count,
+            angle_offsets_deg=angle_offsets,
+            state_window=state_window,
+            deliverables=(
+                list(draft.deliverables)
+                if draft is not None and draft.deliverables
+                else requested_deliverables
+            ),
+            budget_profile=(
+                draft.budget_profile
+                if draft is not None and draft.budget_profile is not None
+                else self._config.microscopic_budget_profile
+            ),
+            requested_route_summary=(
+                draft.requested_route_summary
+                if draft is not None and draft.requested_route_summary
+                else reasoning.execution_plan.requested_route_summary
+                or self._requested_route_summary(self._compatibility_route_for_capability(capability_name), task_received)
+            ),
+        )
+
+    def _capability_name_from_route_or_task(
+        self,
+        capability_route: Optional[MicroscopicCapabilityRoute],
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+    ) -> AmespCapabilityName:
+        if capability_route == "baseline_bundle":
+            return "run_baseline_bundle"
+        if capability_route == "conformer_bundle_follow_up":
+            return "run_conformer_bundle"
+        if capability_route == "torsion_snapshot_follow_up":
+            return "run_torsion_snapshots"
+        if capability_route == "artifact_parse_only":
+            return "parse_snapshot_outputs"
+        if capability_route == "excited_state_relaxation_follow_up":
+            return "unsupported_excited_state_relaxation"
+        return self._resolve_capability_name(task_received, task_spec)
+
+    def _compatibility_route_for_capability(
+        self,
+        capability_name: AmespCapabilityName,
+    ) -> MicroscopicCapabilityRoute:
+        if capability_name == "run_baseline_bundle":
+            return "baseline_bundle"
+        if capability_name == "run_conformer_bundle":
+            return "conformer_bundle_follow_up"
+        if capability_name == "run_torsion_snapshots":
+            return "torsion_snapshot_follow_up"
+        if capability_name == "parse_snapshot_outputs":
+            return "artifact_parse_only"
+        return "excited_state_relaxation_follow_up"
+
     def _build_step(
         self,
         step_type: Literal[
             "structure_prep",
             "conformer_bundle_generation",
             "torsion_snapshot_generation",
+            "artifact_parse",
             "s0_optimization",
             "s0_singlepoint",
             "s1_vertical_excitation",
@@ -679,6 +875,18 @@ class MicroscopicAgent:
                 expected_outputs=[
                     "snapshot geometry labels",
                     "bounded torsion snapshot structures",
+                ],
+            )
+        if step_type == "artifact_parse":
+            return MicroscopicExecutionStep(
+                step_id="artifact_parse",
+                step_type="artifact_parse",
+                description="Parse existing microscopic snapshot artifacts without generating new Amesp inputs or rerunning S0/S1 calculations.",
+                input_source="available microscopic artifact bundle",
+                expected_outputs=[
+                    "per-snapshot excitation energies",
+                    "per-snapshot oscillator strengths",
+                    "state-ordering summaries",
                 ],
             )
         if step_type == "s0_optimization":
@@ -877,9 +1085,9 @@ class MicroscopicAgent:
 
     def _capability_scope_text(self) -> str:
         return (
-            "Current microscopic capability is Amesp low-cost multi-route execution: baseline_bundle "
-            "(aTB S0 optimization plus vertical excited-state manifold), bounded conformer follow-up, "
-            "and bounded torsion snapshot follow-up. Excited-state relaxation follow-up is not yet validated."
+            "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
+            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, and parse_snapshot_outputs. "
+            "unsupported_excited_state_relaxation is a fail-fast unsupported capability and does not execute."
         )
 
     def _structure_source_note(
@@ -918,6 +1126,8 @@ class MicroscopicAgent:
             f"this bounded Amesp route '{capability_route}' does not adjudicate the global mechanism",
             "it does not execute full-DFT or heavy excited-state optimization",
         ]
+        if capability_route == "artifact_parse_only":
+            limitation_bits.append("it only parses existing artifacts and cannot create new microscopic evidence")
         if unsupported_requests:
             limitation_bits.append(
                 "it also leaves unsupported local requests unresolved: " + "; ".join(unsupported_requests)
@@ -932,11 +1142,19 @@ class MicroscopicAgent:
         return " ".join(f"[{step.step_id}] {step.description}" for step in plan.steps)
 
     def _successful_result_summary(self, structured_results: dict[str, Any]) -> str:
+        route = structured_results.get("attempted_route") or "baseline_bundle"
+        executed_capability = structured_results.get("executed_capability") or "run_baseline_bundle"
+        route_summary = structured_results.get("route_summary") or {}
+        if executed_capability == "parse_snapshot_outputs":
+            parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []
+            return (
+                f"Amesp capability '{executed_capability}' reused existing microscopic artifacts and returned "
+                f"{len(parsed_records)} parsed snapshot records without new calculations. "
+                f"Route summary={route_summary}."
+            )
         s0 = structured_results["s0"]
         s1 = structured_results["s1"]
-        route = structured_results.get("attempted_route") or "baseline_bundle"
         manifold = structured_results.get("vertical_state_manifold") or {}
-        route_summary = structured_results.get("route_summary") or {}
         return (
             f"Amesp route '{route}' finished with final_energy_hartree={s0['final_energy_hartree']}, "
             f"homo_lumo_gap_ev={s0['homo_lumo_gap_ev']}, "
@@ -959,16 +1177,27 @@ class MicroscopicAgent:
         unsupported_requests: list[str],
         task_mode: str,
         capability_route: MicroscopicCapabilityRoute,
+        requested_capability: str,
+        executed_capability: Optional[str],
+        performed_new_calculations: bool,
+        reused_existing_artifacts: bool,
+        missing_deliverables: list[str],
         error_message: Optional[str],
         error_payload: Optional[dict[str, Any]],
     ) -> tuple[str, Optional[MicroscopicCompletionReasonCode], str]:
+        executed_capability = executed_capability or requested_capability
+        action_clause = (
+            f"I executed `{executed_capability}`, performed {'new calculations' if performed_new_calculations else 'no new calculations'}, "
+            f"and {'reused existing artifacts' if reused_existing_artifacts else 'did not rely on existing artifacts only'}."
+        )
         if run_status == "failed":
             reason_code = self._map_error_to_completion_reason(error_payload)
             return (
                 "failed",
                 reason_code,
                 (
-                    f"Task could not be completed because Amesp route '{capability_route}' failed: "
+                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The task failed while using Amesp route '{capability_route}': "
                     f"{error_message or 'no error details were provided.'}"
                 ),
             )
@@ -978,8 +1207,23 @@ class MicroscopicAgent:
                 "partial",
                 reason_code,
                 (
-                    f"Task was only partially completed because Amesp route '{capability_route}' was incomplete: "
+                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The task was only partially completed because Amesp route '{capability_route}' was incomplete: "
                     f"{error_message or 'no partial-execution details were provided.'}"
+                ),
+            )
+        if requested_capability != executed_capability or missing_deliverables:
+            missing_note = (
+                " Missing deliverables: " + "; ".join(missing_deliverables) + "."
+                if missing_deliverables
+                else ""
+            )
+            return (
+                "contracted",
+                "partial_observable_only",
+                (
+                    f"The Planner requested `{requested_capability}`. {action_clause} "
+                    f"The task completed in a contracted form via Amesp route '{capability_route}'.{missing_note}"
                 ),
             )
         if unsupported_requests:
@@ -988,7 +1232,7 @@ class MicroscopicAgent:
                 return (
                     "contracted",
                     "capability_unsupported",
-                    "Task was completed only in a capability-limited contracted form. "
+                    f"The Planner requested `{requested_capability}`. {action_clause} "
                     "The requested excited-state relaxation follow-up is not yet validated "
                     f"within current Amesp capability, so route '{capability_route}' could not be executed. "
                     f"Unsupported parts were: {unsupported}.",
@@ -997,7 +1241,7 @@ class MicroscopicAgent:
                 return (
                     "contracted",
                     "partial_observable_only",
-                    "Task was completed only in a capability-limited contracted form. "
+                    f"The Planner requested `{requested_capability}`. {action_clause} "
                     f"The requested targeted microscopic follow-up could not be executed exactly as asked, so Amesp route "
                     f"'{capability_route}' returned the closest bounded substitute instead. "
                     f"Unsupported parts were: {unsupported}.",
@@ -1005,32 +1249,43 @@ class MicroscopicAgent:
             return (
                 "contracted",
                 "partial_observable_only",
-                "Task was completed only in a capability-limited contracted form. "
+                f"The Planner requested `{requested_capability}`. {action_clause} "
                 f"The agent returned bounded Amesp route '{capability_route}' evidence, but it could not execute unsupported "
                 f"parts of the Planner instruction: {unsupported}.",
             )
         return (
             "completed",
             None,
-            f"Task completed successfully using Amesp route '{capability_route}' within current microscopic capability.",
+            (
+                f"The Planner requested `{requested_capability}`. {action_clause} "
+                "All requested deliverables were produced within current microscopic capability."
+            ),
         )
 
-    def _resolve_capability_route(
+    def _resolve_capability_name(
         self,
         task_received: str,
         task_spec: MicroscopicTaskSpec,
-    ) -> MicroscopicCapabilityRoute:
+    ) -> AmespCapabilityName:
         if task_spec.mode == "baseline_s0_s1":
-            return "baseline_bundle"
+            return "run_baseline_bundle"
         lower_instruction = task_received.lower()
+        if (
+            "parse_snapshot_outputs" in lower_instruction
+            or (
+                any(token in lower_instruction for token in ("reuse existing", "reuse round_", "existing artifacts", "parse-only", "do not run new calculations"))
+                and any(token in lower_instruction for token in ("artifact", "output", "snapshot"))
+            )
+        ):
+            return "parse_snapshot_outputs"
         if any(token in lower_instruction for token in ("relax", "relaxation", "excited-state geometry", "s1 optimization")):
-            return "excited_state_relaxation_follow_up"
+            return "unsupported_excited_state_relaxation"
         if any(
             token in lower_instruction
             for token in ("torsion", "dihedral", "twist", "rotor", "rotation sensitivity", "rotational sensitivity")
         ):
-            return "torsion_snapshot_follow_up"
-        return "conformer_bundle_follow_up"
+            return "run_torsion_snapshots"
+        return "run_conformer_bundle"
 
     def _requested_route_summary(
         self,
@@ -1043,7 +1298,14 @@ class MicroscopicAgent:
             return f"Interpret the request as a bounded conformer-sensitivity follow-up: {task_received}"
         if capability_route == "torsion_snapshot_follow_up":
             return f"Interpret the request as a bounded torsion-snapshot follow-up: {task_received}"
+        if capability_route == "artifact_parse_only":
+            return f"Interpret the request as parse-only microscopic artifact reuse without new calculations: {task_received}"
         return f"Interpret the request as excited-state relaxation follow-up: {task_received}"
+
+    def _missing_deliverables_text(self, missing_deliverables: list[str]) -> str:
+        if not missing_deliverables:
+            return "No requested deliverables were missing."
+        return "; ".join(missing_deliverables)
 
     def _vertical_state_manifold(self, s1_result: Any) -> dict[str, Any]:
         excited_states = list(getattr(s1_result, "excited_states", []))

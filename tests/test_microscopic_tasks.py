@@ -28,7 +28,8 @@ def test_targeted_microscopic_task_interface_is_available(install_specialized_te
     assert report.result_summary
     assert report.remaining_local_uncertainty
     assert report.task_completion_status == "completed"
-    assert report.task_completion == "Task completed successfully using Amesp route 'conformer_bundle_follow_up' within current microscopic capability."
+    assert "The Planner requested `run_conformer_bundle`." in report.task_completion
+    assert "All requested deliverables were produced" in report.task_completion
     assert report.structured_results["task_mode"] == "targeted_follow_up"
     assert report.structured_results["task_label"] == "round-2-targeted"
     assert report.structured_results["task_completion_status"] == "completed"

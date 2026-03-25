@@ -18,7 +18,12 @@ from aie_mas.chem.structure_prep import (
     prepare_conformer_bundle_from_smiles,
     prepare_structure_from_smiles,
 )
-from aie_mas.graph.state import MicroscopicExecutionPlan, WorkflowProgressEvent
+from aie_mas.graph.state import (
+    MicroscopicCapabilityName,
+    MicroscopicExecutionPlan,
+    MicroscopicToolRequest,
+    WorkflowProgressEvent,
+)
 
 if TYPE_CHECKING:  # pragma: no cover
     from ase import Atoms
@@ -102,15 +107,111 @@ class AmespStepOutcome(BaseModel):
     elapsed_seconds: float
 
 
+class AmespCapabilityDefinition(BaseModel):
+    name: MicroscopicCapabilityName
+    purpose: str
+    requires_new_calculation: bool
+    required_inputs: list[str] = Field(default_factory=list)
+    optional_inputs: list[str] = Field(default_factory=list)
+    supported_deliverables: list[str] = Field(default_factory=list)
+    unsupported_requests_note: Optional[str] = None
+    default_budget_behavior: str
+
+
 class AmespBaselineRunResult(BaseModel):
     route: str = "baseline_bundle"
+    executed_capability: MicroscopicCapabilityName = "run_baseline_bundle"
+    performed_new_calculations: bool = True
+    reused_existing_artifacts: bool = False
+    missing_deliverables: list[str] = Field(default_factory=list)
     structure: PreparedStructure
-    s0: AmespGroundStateResult
-    s1: AmespExcitedStateResult
+    s0: Optional[AmespGroundStateResult] = None
+    s1: Optional[AmespExcitedStateResult] = None
+    parsed_snapshot_records: list[dict[str, Any]] = Field(default_factory=list)
     route_records: list[dict[str, Any]] = Field(default_factory=list)
     route_summary: dict[str, Any] = Field(default_factory=dict)
     raw_step_results: dict[str, Any] = Field(default_factory=dict)
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
+
+
+AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefinition] = {
+    "run_baseline_bundle": AmespCapabilityDefinition(
+        name="run_baseline_bundle",
+        purpose="Run a single-conformer low-cost S0 optimization plus vertical excited-state manifold.",
+        requires_new_calculation=True,
+        required_inputs=["prepared structure or SMILES"],
+        optional_inputs=["state_window"],
+        supported_deliverables=[
+            "S0 optimized geometry",
+            "S0 final energy",
+            "S0 dipole",
+            "S0 Mulliken charges",
+            "S0 HOMO-LUMO gap",
+            "vertical excited-state manifold",
+        ],
+        default_budget_behavior="Use the configured balanced vertical-state count for first-round baseline execution.",
+    ),
+    "run_conformer_bundle": AmespCapabilityDefinition(
+        name="run_conformer_bundle",
+        purpose="Run a bounded conformer bundle follow-up with the same low-cost S0 plus vertical excited-state workflow.",
+        requires_new_calculation=True,
+        required_inputs=["SMILES or reusable prepared structure"],
+        optional_inputs=["snapshot_count", "state_window"],
+        supported_deliverables=[
+            "bounded conformer vertical-state records",
+            "excitation spread",
+            "bright-state sensitivity",
+        ],
+        default_budget_behavior="Use configured follow-up conformer cap unless the request explicitly supplies a smaller count.",
+    ),
+    "run_torsion_snapshots": AmespCapabilityDefinition(
+        name="run_torsion_snapshots",
+        purpose="Run bounded torsion snapshot calculations from a prepared structure.",
+        requires_new_calculation=True,
+        required_inputs=["prepared structure or reusable structure artifacts"],
+        optional_inputs=["snapshot_count", "angle_offsets_deg", "state_window"],
+        supported_deliverables=[
+            "snapshot vertical-state records",
+            "torsion sensitivity summary",
+        ],
+        default_budget_behavior="Use configured torsion snapshot cap unless the request explicitly supplies a smaller count or angle set.",
+    ),
+    "parse_snapshot_outputs": AmespCapabilityDefinition(
+        name="parse_snapshot_outputs",
+        purpose="Parse existing snapshot artifacts and return per-snapshot excited-state summaries without new calculations.",
+        requires_new_calculation=False,
+        required_inputs=["existing snapshot artifacts"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "state_window"],
+        supported_deliverables=[
+            "per-snapshot excitation energies",
+            "per-snapshot oscillator strengths",
+            "state-ordering summaries",
+        ],
+        unsupported_requests_note="Dominant transition and CT/localization proxy extraction may be unavailable from existing files.",
+        default_budget_behavior="Reuse only the latest available microscopic snapshot artifacts and never generate new inputs.",
+    ),
+    "unsupported_excited_state_relaxation": AmespCapabilityDefinition(
+        name="unsupported_excited_state_relaxation",
+        purpose="Return a structured capability-unsupported result for excited-state relaxation requests.",
+        requires_new_calculation=False,
+        required_inputs=[],
+        optional_inputs=[],
+        supported_deliverables=[],
+        unsupported_requests_note="Low-cost excited-state relaxation has not been validated for Amesp yet.",
+        default_budget_behavior="Do not execute; fail fast with capability_unsupported.",
+    ),
+}
+
+
+def render_amesp_capability_registry() -> str:
+    lines: list[str] = []
+    for capability in AMESP_CAPABILITY_REGISTRY.values():
+        lines.append(
+            f"- `{capability.name}`: {capability.purpose} "
+            f"(requires_new_calculation={str(capability.requires_new_calculation).lower()}; "
+            f"supported_deliverables={', '.join(capability.supported_deliverables) or 'none'})"
+        )
+    return "\n".join(lines)
 
 
 class AmespMicroscopicTool:
@@ -158,7 +259,9 @@ class AmespMicroscopicTool:
         case_id: Optional[str] = None,
         current_hypothesis: Optional[str] = None,
     ) -> AmespBaselineRunResult:
-        if not self._amesp_bin.exists():
+        request = plan.microscopic_tool_request
+        capability = AMESP_CAPABILITY_REGISTRY[request.capability_name]
+        if capability.requires_new_calculation and not self._amesp_bin.exists():
             raise AmespExecutionError(
                 "amesp_binary_missing",
                 f"Amesp binary was not found at {self._amesp_bin}.",
@@ -166,8 +269,9 @@ class AmespMicroscopicTool:
 
         workdir.mkdir(parents=True, exist_ok=True)
 
-        if plan.capability_route == "baseline_bundle":
+        if request.capability_name == "run_baseline_bundle":
             result = self._execute_baseline_route(
+                request=request,
                 smiles=smiles,
                 label=label,
                 workdir=workdir,
@@ -178,11 +282,14 @@ class AmespMicroscopicTool:
                 current_hypothesis=current_hypothesis,
             )
             result.route = "baseline_bundle"
+            result.executed_capability = "run_baseline_bundle"
+            result.performed_new_calculations = True
             result.route_summary = _build_vertical_state_manifold_summary(result.s1)
             return result
 
-        if plan.capability_route == "conformer_bundle_follow_up":
+        if request.capability_name == "run_conformer_bundle":
             return self._execute_conformer_bundle_route(
+                request=request,
                 smiles=smiles,
                 label=label,
                 workdir=workdir,
@@ -192,8 +299,9 @@ class AmespMicroscopicTool:
                 current_hypothesis=current_hypothesis,
             )
 
-        if plan.capability_route == "torsion_snapshot_follow_up":
+        if request.capability_name == "run_torsion_snapshots":
             return self._execute_torsion_snapshot_route(
+                request=request,
                 smiles=smiles,
                 label=label,
                 workdir=workdir,
@@ -204,15 +312,27 @@ class AmespMicroscopicTool:
                 current_hypothesis=current_hypothesis,
             )
 
+        if request.capability_name == "parse_snapshot_outputs":
+            return self._execute_parse_snapshot_outputs_route(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+
         raise AmespExecutionError(
             "capability_unsupported",
             "A low-cost excited-state relaxation route has not been validated for Amesp yet.",
             status="failed",
+            structured_results={
+                "executed_capability": "unsupported_excited_state_relaxation",
+                "performed_new_calculations": False,
+                "reused_existing_artifacts": False,
+            },
         )
 
     def _execute_baseline_route(
         self,
         *,
+        request: MicroscopicToolRequest,
         smiles: str,
         label: str,
         workdir: Path,
@@ -243,11 +363,16 @@ class AmespMicroscopicTool:
             current_hypothesis=current_hypothesis,
             optimize_ground_state=True,
             route="baseline_bundle",
+            state_window=request.state_window,
+            executed_capability="run_baseline_bundle",
+            performed_new_calculations=True,
+            reused_existing_artifacts=False,
         )
 
     def _execute_conformer_bundle_route(
         self,
         *,
+        request: MicroscopicToolRequest,
         smiles: str,
         label: str,
         workdir: Path,
@@ -261,9 +386,9 @@ class AmespMicroscopicTool:
                 smiles=smiles,
                 label=label,
                 workdir=workdir / "conformer_bundle",
-                num_conformers=max(self._follow_up_max_conformers, 3),
+                num_conformers=max(request.snapshot_count or self._follow_up_max_conformers, 3),
             ),
-            max_members=self._follow_up_max_conformers,
+            max_members=request.snapshot_count or self._follow_up_max_conformers,
         )
         if len(bundle) < 2:
             raise AmespExecutionError(
@@ -273,6 +398,7 @@ class AmespMicroscopicTool:
             )
 
         route_records: list[dict[str, Any]] = []
+        member_artifacts: list[dict[str, Any]] = []
         primary_result: AmespBaselineRunResult | None = None
         for member in bundle:
             member_result = self._run_single_low_cost_bundle(
@@ -286,6 +412,10 @@ class AmespMicroscopicTool:
                 current_hypothesis=current_hypothesis,
                 optimize_ground_state=True,
                 route="conformer_bundle_follow_up",
+                state_window=request.state_window,
+                executed_capability="run_conformer_bundle",
+                performed_new_calculations=True,
+                reused_existing_artifacts=False,
             )
             route_records.append(
                 {
@@ -298,19 +428,37 @@ class AmespMicroscopicTool:
                     "state_count": member_result.s1.state_count,
                 }
             )
+            member_artifacts.append(
+                {
+                    "member_label": f"conformer_{member.rank:02d}",
+                    "conformer_rank": member.rank,
+                    "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
+                    "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
+                    "s0_aop_path": member_result.generated_artifacts.get("s0_aop_path"),
+                    "s1_aop_path": member_result.generated_artifacts.get("s1_aop_path"),
+                    "s0_stdout_path": member_result.generated_artifacts.get("s0_stdout_path"),
+                    "s1_stdout_path": member_result.generated_artifacts.get("s1_stdout_path"),
+                    "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path"),
+                    "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                }
+            )
             if primary_result is None or member_result.s0.final_energy_hartree < primary_result.s0.final_energy_hartree:
                 primary_result = member_result
 
         assert primary_result is not None
         primary_result.route = "conformer_bundle_follow_up"
+        primary_result.executed_capability = "run_conformer_bundle"
+        primary_result.performed_new_calculations = True
         primary_result.route_records = route_records
         primary_result.route_summary = _build_conformer_bundle_summary(route_records)
         primary_result.generated_artifacts["conformer_bundle_member_count"] = len(route_records)
+        primary_result.generated_artifacts["conformer_artifacts"] = member_artifacts
         return primary_result
 
     def _execute_torsion_snapshot_route(
         self,
         *,
+        request: MicroscopicToolRequest,
         smiles: str,
         label: str,
         workdir: Path,
@@ -333,7 +481,8 @@ class AmespMicroscopicTool:
         snapshots = _generate_torsion_snapshot_bundle(
             smiles=smiles,
             prepared=prepared,
-            max_total=self._follow_up_max_torsion_snapshots_total,
+            max_total=request.snapshot_count or self._follow_up_max_torsion_snapshots_total,
+            target_angles=request.angle_offsets_deg or None,
             output_dir=workdir / "torsion_snapshots",
         )
         if not snapshots:
@@ -344,6 +493,7 @@ class AmespMicroscopicTool:
             )
 
         route_records: list[dict[str, Any]] = []
+        snapshot_artifacts: list[dict[str, Any]] = []
         primary_result: AmespBaselineRunResult | None = None
         for snapshot in snapshots:
             snapshot_result = self._run_single_low_cost_bundle(
@@ -357,6 +507,10 @@ class AmespMicroscopicTool:
                 current_hypothesis=current_hypothesis,
                 optimize_ground_state=True,
                 route="torsion_snapshot_follow_up",
+                state_window=request.state_window,
+                executed_capability="run_torsion_snapshots",
+                performed_new_calculations=True,
+                reused_existing_artifacts=False,
             )
             route_records.append(
                 {
@@ -366,6 +520,22 @@ class AmespMicroscopicTool:
                     "final_energy_hartree": snapshot_result.s0.final_energy_hartree,
                     "first_excitation_energy_ev": snapshot_result.s1.first_excitation_energy_ev,
                     "first_oscillator_strength": snapshot_result.s1.first_oscillator_strength,
+                    "state_count": snapshot_result.s1.state_count,
+                }
+            )
+            snapshot_artifacts.append(
+                {
+                    "snapshot_label": snapshot["snapshot_label"],
+                    "dihedral_atoms": snapshot["dihedral_atoms"],
+                    "target_angle_deg": snapshot["target_angle_deg"],
+                    "prepared_xyz_path": snapshot_result.generated_artifacts.get("prepared_xyz_path"),
+                    "prepared_summary_path": snapshot_result.generated_artifacts.get("prepared_summary_path"),
+                    "s0_aop_path": snapshot_result.generated_artifacts.get("s0_aop_path"),
+                    "s1_aop_path": snapshot_result.generated_artifacts.get("s1_aop_path"),
+                    "s0_stdout_path": snapshot_result.generated_artifacts.get("s0_stdout_path"),
+                    "s1_stdout_path": snapshot_result.generated_artifacts.get("s1_stdout_path"),
+                    "s0_mo_path": snapshot_result.generated_artifacts.get("s0_mo_path"),
+                    "s1_mo_path": snapshot_result.generated_artifacts.get("s1_mo_path"),
                 }
             )
             if primary_result is None or snapshot_result.s0.final_energy_hartree < primary_result.s0.final_energy_hartree:
@@ -373,10 +543,163 @@ class AmespMicroscopicTool:
 
         assert primary_result is not None
         primary_result.route = "torsion_snapshot_follow_up"
+        primary_result.executed_capability = "run_torsion_snapshots"
+        primary_result.performed_new_calculations = True
         primary_result.route_records = route_records
         primary_result.route_summary = _build_torsion_snapshot_summary(route_records)
         primary_result.generated_artifacts["torsion_snapshot_count"] = len(route_records)
+        primary_result.generated_artifacts["snapshot_artifacts"] = snapshot_artifacts
         return primary_result
+
+    def _execute_parse_snapshot_outputs_route(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> AmespBaselineRunResult:
+        if not available_artifacts:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Parse-only microscopic follow-up requires reusable microscopic artifacts, but none were available.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "parse_snapshot_outputs",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": False,
+                },
+            )
+
+        artifact_scope = request.artifact_scope or "latest_bundle"
+        source_round = available_artifacts.get("source_round")
+        if request.artifact_source_round is not None and source_round not in {None, request.artifact_source_round}:
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Parse-only follow-up requested artifacts from round_{request.artifact_source_round:02d}, "
+                f"but only round_{int(source_round):02d} artifacts were available."
+                if isinstance(source_round, int)
+                else "Parse-only follow-up requested a specific artifact round, but the available artifacts did not expose a matching round marker.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "parse_snapshot_outputs",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        artifact_records: list[dict[str, Any]] = []
+        if artifact_scope == "conformer_bundle":
+            artifact_records = list(available_artifacts.get("conformer_artifacts") or [])
+        else:
+            artifact_records = list(available_artifacts.get("snapshot_artifacts") or [])
+            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
+                artifact_records = list(available_artifacts.get("conformer_artifacts") or [])
+        if not artifact_records:
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Parse-only follow-up requested artifact scope '{artifact_scope}', but no reusable snapshot artifacts were recorded.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "parse_snapshot_outputs",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        parsed_records: list[dict[str, Any]] = []
+        primary_structure: PreparedStructure | None = None
+        primary_s0: AmespGroundStateResult | None = None
+        primary_s1: AmespExcitedStateResult | None = None
+        for artifact in artifact_records:
+            prepared = self._load_prepared_structure_from_record(artifact, available_artifacts)
+            s0_result = self._parse_s0_from_existing_artifacts(artifact, prepared)
+            s1_result = self._parse_s1_from_existing_artifacts(
+                artifact,
+                reference_energy=s0_result.final_energy_hartree,
+                state_window=request.state_window,
+            )
+            manifold = _build_vertical_state_manifold_summary(s1_result)
+            parsed_records.append(
+                {
+                    "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
+                    "target_angle_deg": artifact.get("target_angle_deg"),
+                    "dihedral_atoms": artifact.get("dihedral_atoms"),
+                    "conformer_rank": artifact.get("conformer_rank"),
+                    "final_energy_hartree": s0_result.final_energy_hartree,
+                    "first_excitation_energy_ev": s1_result.first_excitation_energy_ev,
+                    "first_oscillator_strength": s1_result.first_oscillator_strength,
+                    "state_count": s1_result.state_count,
+                    "state_ordering": manifold,
+                    "dominant_transitions": "not_available",
+                    "ct_localization_proxy": "not_available",
+                }
+            )
+            if primary_s0 is None or (
+                s0_result.final_energy_hartree is not None
+                and primary_s0.final_energy_hartree is not None
+                and s0_result.final_energy_hartree < primary_s0.final_energy_hartree
+            ):
+                primary_structure = prepared
+                primary_s0 = s0_result
+                primary_s1 = s1_result
+
+        if primary_structure is None or primary_s0 is None or primary_s1 is None:
+            raise AmespExecutionError(
+                "parse_failed",
+                "Parse-only follow-up could not construct a reusable snapshot summary from the available artifacts.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "parse_snapshot_outputs",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        missing_deliverables = []
+        requested_lower = [item.lower() for item in request.deliverables]
+        if any("dominant transition" in item for item in requested_lower):
+            missing_deliverables.append("dominant transitions")
+        if any(
+            any(token in item for token in ("ct proxy", "charge-transfer", "charge transfer", "ct/localization"))
+            for item in requested_lower
+        ):
+            missing_deliverables.append("CT/localization proxy")
+        route_summary = {
+            "snapshot_count": len(parsed_records),
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "artifact_reuse_note": "Parsed existing microscopic snapshot artifacts without generating new Amesp inputs.",
+            "ct_proxy_availability": "not_available",
+            "state_window": list(request.state_window),
+        }
+        return AmespBaselineRunResult(
+            route="artifact_parse_only",
+            executed_capability="parse_snapshot_outputs",
+            performed_new_calculations=False,
+            reused_existing_artifacts=True,
+            missing_deliverables=missing_deliverables,
+            structure=primary_structure,
+            s0=primary_s0,
+            s1=primary_s1,
+            parsed_snapshot_records=parsed_records,
+            route_records=parsed_records,
+            route_summary=route_summary,
+            raw_step_results={
+                "parse_snapshot_outputs": {
+                    "artifact_scope": artifact_scope,
+                    "artifact_source_round": source_round,
+                    "state_window": list(request.state_window),
+                    "parsed_record_count": len(parsed_records),
+                }
+            },
+            generated_artifacts={
+                "prepared_xyz_path": str(primary_structure.xyz_path),
+                "prepared_sdf_path": str(primary_structure.sdf_path),
+                "prepared_summary_path": str(primary_structure.summary_path),
+                "source_round": source_round,
+                "parsed_snapshot_record_count": len(parsed_records),
+                "reused_snapshot_artifacts": artifact_records,
+            },
+        )
 
     def _run_single_low_cost_bundle(
         self,
@@ -391,6 +714,10 @@ class AmespMicroscopicTool:
         current_hypothesis: Optional[str],
         optimize_ground_state: bool,
         route: str,
+        state_window: Sequence[int] | None,
+        executed_capability: MicroscopicCapabilityName,
+        performed_new_calculations: bool,
+        reused_existing_artifacts: bool,
     ) -> AmespBaselineRunResult:
         generated_artifacts: dict[str, Any] = {
             "prepared_xyz_path": str(prepared.xyz_path),
@@ -439,6 +766,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
+                state_window=state_window,
             )
         except AmespExecutionError as exc:
             raise AmespExecutionError(
@@ -456,6 +784,9 @@ class AmespMicroscopicTool:
         generated_artifacts.update(s1_artifacts)
         return AmespBaselineRunResult(
             route=route,
+            executed_capability=executed_capability,
+            performed_new_calculations=performed_new_calculations,
+            reused_existing_artifacts=reused_existing_artifacts,
             structure=prepared,
             s0=s0_result,
             s1=s1_result,
@@ -633,9 +964,11 @@ class AmespMicroscopicTool:
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
+        state_window: Sequence[int] | None = None,
     ) -> tuple[AmespExcitedStateResult, dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
         generated_artifacts: dict[str, Any] = {}
+        requested_nstates = max((int(index) for index in state_window), default=self._s1_nstates)
         s1_outcome, s1_text = self._run_step(
             step_id="s1_vertical_excitation",
             label=f"{label}_s1",
@@ -643,7 +976,7 @@ class AmespMicroscopicTool:
             keywords=self._build_s1_keywords(),
             block_lines=[
                 ("ope", ["out 1"]),
-                ("posthf", [f"nstates {self._s1_nstates}", f"tout {self._td_tout}"]),
+                ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
             ],
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
@@ -665,6 +998,9 @@ class AmespMicroscopicTool:
             }
         )
         excited_states = _parse_excited_states(s1_text, reference_energy_hartree=reference_energy)
+        if state_window:
+            requested_state_indices = {int(index) for index in state_window}
+            excited_states = [state for state in excited_states if state.state_index in requested_state_indices]
         if not excited_states:
             raise AmespExecutionError(
                 "parse_failed",
@@ -758,6 +1094,104 @@ class AmespMicroscopicTool:
             },
         )
         return atoms, prepared
+
+    def _load_prepared_structure_from_record(
+        self,
+        artifact_record: dict[str, Any],
+        available_artifacts: dict[str, Any],
+    ) -> PreparedStructure:
+        summary_path_raw = artifact_record.get("prepared_summary_path") or available_artifacts.get("prepared_summary_path")
+        if not summary_path_raw:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Reusable snapshot artifacts did not expose a prepared structure summary path.",
+                status="failed",
+            )
+        summary_path = Path(str(summary_path_raw))
+        if not summary_path.exists():
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Reusable prepared structure summary was missing at {summary_path}.",
+                status="failed",
+            )
+        return PreparedStructure.model_validate(json.loads(summary_path.read_text(encoding="utf-8")))
+
+    def _parse_s0_from_existing_artifacts(
+        self,
+        artifact_record: dict[str, Any],
+        prepared: PreparedStructure,
+    ) -> AmespGroundStateResult:
+        aop_path_raw = artifact_record.get("s0_aop_path")
+        if not aop_path_raw:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Reusable snapshot artifacts did not expose an S0 AOP path.",
+                status="failed",
+            )
+        aop_path = Path(str(aop_path_raw))
+        if not aop_path.exists():
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Reusable S0 AOP file was missing at {aop_path}.",
+                status="failed",
+            )
+        s0_text = aop_path.read_text(encoding="utf-8", errors="replace")
+        symbols, coordinates = _parse_final_geometry(s0_text)
+        if not symbols or not coordinates:
+            raise AmespExecutionError(
+                "parse_failed",
+                f"Reusable S0 artifact {aop_path.name} did not expose a parseable final geometry.",
+                status="failed",
+            )
+        prepared_coordinates = _read_xyz_coordinates(prepared.xyz_path)
+        return AmespGroundStateResult(
+            final_energy_hartree=_parse_final_energy(s0_text),
+            dipole_debye=_parse_last_dipole(s0_text),
+            mulliken_charges=_parse_last_mulliken_charges(s0_text),
+            homo_lumo_gap_ev=_parse_homo_lumo_gap_ev(s0_text),
+            geometry_atom_count=len(symbols),
+            geometry_xyz_path=str(prepared.xyz_path),
+            rmsd_from_prepared_structure_angstrom=_compute_rmsd(prepared_coordinates, coordinates),
+        )
+
+    def _parse_s1_from_existing_artifacts(
+        self,
+        artifact_record: dict[str, Any],
+        *,
+        reference_energy: float,
+        state_window: Sequence[int] | None,
+    ) -> AmespExcitedStateResult:
+        aop_path_raw = artifact_record.get("s1_aop_path")
+        if not aop_path_raw:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Reusable snapshot artifacts did not expose an S1 AOP path.",
+                status="failed",
+            )
+        aop_path = Path(str(aop_path_raw))
+        if not aop_path.exists():
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Reusable S1 AOP file was missing at {aop_path}.",
+                status="failed",
+            )
+        s1_text = aop_path.read_text(encoding="utf-8", errors="replace")
+        excited_states = _parse_excited_states(s1_text, reference_energy_hartree=reference_energy)
+        if state_window:
+            requested_state_indices = {int(index) for index in state_window}
+            excited_states = [state for state in excited_states if state.state_index in requested_state_indices]
+        if not excited_states:
+            raise AmespExecutionError(
+                "parse_failed",
+                f"Reusable S1 artifact {aop_path.name} did not expose parseable excited states.",
+                status="failed",
+            )
+        return AmespExcitedStateResult(
+            excited_states=excited_states,
+            first_excitation_energy_ev=excited_states[0].excitation_energy_ev,
+            first_oscillator_strength=excited_states[0].oscillator_strength,
+            state_count=len(excited_states),
+        )
 
     def _try_load_prepared_structure(
         self,
@@ -1352,6 +1786,7 @@ def _generate_torsion_snapshot_bundle(
     smiles: str,
     prepared: PreparedStructure,
     max_total: int,
+    target_angles: Sequence[float] | None,
     output_dir: Path,
 ) -> list[dict[str, Any]]:
     try:
@@ -1371,7 +1806,7 @@ def _generate_torsion_snapshot_bundle(
     if not dihedrals:
         return []
 
-    target_angles = [-120.0, 0.0, 120.0]
+    target_angles = list(target_angles) if target_angles else [-120.0, 0.0, 120.0]
     snapshots: list[dict[str, Any]] = []
     snapshot_index = 1
     for dihedral in dihedrals:
@@ -1451,6 +1886,24 @@ def _write_rdkit_xyz(mol: Any, xyz_path: Path, label: str) -> None:
             f"{atom.GetSymbol():<2} {position.x: .8f} {position.y: .8f} {position.z: .8f}"
         )
     xyz_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _read_xyz_coordinates(xyz_path: Path) -> list[list[float]]:
+    if not xyz_path.exists():
+        return []
+    lines = xyz_path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if len(lines) < 3:
+        return []
+    coordinates: list[list[float]] = []
+    for line in lines[2:]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            coordinates.append([float(parts[1]), float(parts[2]), float(parts[3])])
+        except ValueError:
+            return []
+    return coordinates
 
 
 AmespBaselineMicroscopicTool = AmespMicroscopicTool

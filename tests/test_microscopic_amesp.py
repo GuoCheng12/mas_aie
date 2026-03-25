@@ -10,6 +10,7 @@ from aie_mas.cli.run_case import run_case_workflow
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import MicroscopicTaskSpec
 from aie_mas.graph.state import MicroscopicExecutionPlan
+from aie_mas.graph.state import MicroscopicToolRequest
 from aie_mas.tools.amesp import (
     AmespBaselineMicroscopicTool,
     AmespExecutionError,
@@ -131,6 +132,54 @@ def _fake_structure_preparer(request):
     return atoms, prepared
 
 
+def _fake_torsion_snapshot_bundle(*, smiles, prepared, max_total, target_angles, output_dir):
+    del smiles
+    output_dir.mkdir(parents=True, exist_ok=True)
+    angles = list(target_angles or [-120.0, 0.0, 120.0])
+    snapshots = []
+    for index, angle in enumerate(angles[:max_total], start=1):
+        snapshot_label = f"torsion_{index:02d}"
+        snapshot_dir = output_dir / snapshot_label
+        snapshot_dir.mkdir(parents=True, exist_ok=True)
+        xyz_path = snapshot_dir / "prepared_structure.xyz"
+        sdf_path = snapshot_dir / "prepared_structure.sdf"
+        summary_path = snapshot_dir / "structure_prep_summary.json"
+        xyz_path.write_text(
+            "4\nfake_torsion_snapshot\nC 0.0 0.0 0.0\nC 1.5 0.0 0.0\nC 2.9 0.5 0.0\nC 4.3 0.5 0.0\n",
+            encoding="utf-8",
+        )
+        sdf_path.write_text("fake torsion sdf\n", encoding="utf-8")
+        snapshot_prepared = prepared.model_copy(
+            update={
+                "xyz_path": xyz_path,
+                "sdf_path": sdf_path,
+                "summary_path": summary_path,
+            }
+        )
+        summary_path.write_text(
+            json.dumps(snapshot_prepared.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        snapshots.append(
+            {
+                "snapshot_label": snapshot_label,
+                "dihedral_atoms": [0, 1, 2, 3],
+                "target_angle_deg": float(angle),
+                "prepared": snapshot_prepared,
+                "atoms": _FakeAtoms(
+                    symbols=["C", "C", "C", "C"],
+                    positions=[
+                        [0.0, 0.0, 0.0],
+                        [1.5, 0.0, 0.0],
+                        [2.9, 0.5, 0.0],
+                        [4.3, 0.5, 0.0],
+                    ],
+                ),
+            }
+        )
+    return snapshots
+
+
 def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
     del env, capture_output, text
     workdir = Path(cwd)
@@ -202,6 +251,13 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         plan=MicroscopicExecutionPlan(
             local_goal="Run baseline S0/S1 Amesp workflow.",
             requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+                state_window=[1, 2],
+                requested_route_summary="Test baseline bundle request.",
+            ),
             structure_source="prepared_from_smiles",
             failure_reporting="Return a partial or failed local report if Amesp fails.",
         ),
@@ -222,6 +278,8 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert result.s1.first_oscillator_strength == 0.1234
     assert result.s1.state_count == 2
     assert result.route == "baseline_bundle"
+    assert result.executed_capability == "run_baseline_bundle"
+    assert result.performed_new_calculations is True
     assert result.route_summary["state_count"] == 2
     assert result.route_summary["first_bright_state_index"] == 1
     assert "prepared_xyz_path" in result.generated_artifacts
@@ -288,6 +346,13 @@ def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_pat
         plan=MicroscopicExecutionPlan(
             local_goal="Run baseline S0/S1 Amesp workflow.",
             requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+                state_window=[1],
+                requested_route_summary="Test baseline bundle request.",
+            ),
             structure_source="prepared_from_smiles",
             failure_reporting="Return a partial or failed local report if Amesp fails.",
         ),
@@ -335,6 +400,13 @@ def test_amesp_baseline_tool_emits_subprocess_heartbeat_events(tmp_path: Path, m
         plan=MicroscopicExecutionPlan(
             local_goal="Run baseline S0/S1 Amesp workflow.",
             requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+                state_window=[1],
+                requested_route_summary="Test baseline bundle request.",
+            ),
             structure_source="prepared_from_smiles",
             failure_reporting="Return a partial or failed local report if Amesp fails.",
         ),
@@ -372,6 +444,13 @@ def test_amesp_tool_creates_nested_route_workdir_before_writing_inputs(tmp_path:
         plan=MicroscopicExecutionPlan(
             local_goal="Run baseline S0/S1 Amesp workflow.",
             requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+                state_window=[1, 2],
+                requested_route_summary="Test baseline bundle request.",
+            ),
             structure_source="prepared_from_smiles",
             failure_reporting="Return a partial or failed local report if Amesp fails.",
         ),
@@ -384,6 +463,173 @@ def test_amesp_tool_creates_nested_route_workdir_before_writing_inputs(tmp_path:
     assert nested_workdir.exists()
     assert (nested_workdir / "nested_case_s0.aip").exists()
     assert Path(result.generated_artifacts["s0_aop_path"]).exists()
+
+
+def test_amesp_torsion_capability_honors_structured_snapshot_parameters(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    captured_inputs: dict[str, str] = {}
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_build_fake_subprocess_with_aip_capture(captured_inputs),
+        follow_up_max_torsion_snapshots_total=6,
+    )
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run an exact two-point torsion follow-up.",
+            requested_deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                artifact_scope="torsion_snapshots",
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2, 3],
+                deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
+                requested_route_summary="Use exactly two torsion snapshots at ±25 degrees.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="torsion_case",
+        workdir=tmp_path / "torsion_workdir",
+        available_artifacts={},
+    )
+
+    assert result.executed_capability == "run_torsion_snapshots"
+    assert result.performed_new_calculations is True
+    assert len(result.route_records) == 2
+    assert result.generated_artifacts["torsion_snapshot_count"] == 2
+    assert [record["target_angle_deg"] for record in result.route_records] == [25.0, -25.0]
+    assert len(result.generated_artifacts["snapshot_artifacts"]) == 2
+    assert any("nstates 3" in aip_text for label, aip_text in captured_inputs.items() if label.endswith("_s1"))
+
+
+def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calculations(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    captured_inputs: dict[str, str] = {}
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_build_fake_subprocess_with_aip_capture(captured_inputs),
+    )
+
+    torsion_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate bounded torsion snapshots for later parsing.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                artifact_scope="torsion_snapshots",
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate two torsion snapshots for later reuse.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="parse_source",
+        workdir=tmp_path / "parse_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+    input_count_before_parse = len(captured_inputs)
+
+    parsed_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Parse existing snapshot outputs only.",
+            requested_deliverables=[
+                "per-snapshot excitation records",
+                "state-ordering summaries",
+                "CT/localization proxy",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="parse_snapshot_outputs",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_source_round=2,
+                artifact_scope="torsion_snapshots",
+                state_window=[1, 2],
+                deliverables=[
+                    "per-snapshot excitation records",
+                    "state-ordering summaries",
+                    "CT/localization proxy",
+                ],
+                requested_route_summary="Reuse the existing torsion artifacts from round_02 without new calculations.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if parsing fails.",
+        ),
+        smiles="N",
+        label="parse_only",
+        workdir=tmp_path / "parse_only_workdir",
+        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert parsed_result.executed_capability == "parse_snapshot_outputs"
+    assert parsed_result.route == "artifact_parse_only"
+    assert parsed_result.performed_new_calculations is False
+    assert parsed_result.reused_existing_artifacts is True
+    assert len(parsed_result.parsed_snapshot_records) == 2
+    assert len(captured_inputs) == input_count_before_parse
+    assert "CT/localization proxy" in parsed_result.missing_deliverables
+
+
+def test_amesp_parse_snapshot_outputs_fails_when_artifacts_are_missing(tmp_path: Path) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Parse nonexistent artifacts.",
+                requested_deliverables=["per-snapshot excitation records"],
+                capability_route="artifact_parse_only",
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="parse_snapshot_outputs",
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    artifact_source_round=2,
+                    artifact_scope="torsion_snapshots",
+                    deliverables=["per-snapshot excitation records"],
+                    requested_route_summary="Attempt parse-only reuse.",
+                ),
+                structure_source="existing_prepared_structure",
+                failure_reporting="Return partial or failed if parsing fails.",
+            ),
+            smiles="N",
+            label="missing_parse",
+            workdir=tmp_path / "missing_parse_workdir",
+            available_artifacts={"source_round": 2},
+            round_index=4,
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "precondition_missing"
+    else:  # pragma: no cover
+        raise AssertionError("Expected parse-only execution to fail when no snapshot artifacts are available.")
 
 
 class _SuccessfulAmespTool:
@@ -403,8 +649,12 @@ class _SuccessfulAmespTool:
         current_hypothesis=None,
     ):
         del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
+        tool_request = plan.microscopic_tool_request
         return AmespBaselineRunResult(
             route=getattr(plan, "capability_route", "baseline_bundle"),
+            executed_capability=tool_request.capability_name,
+            performed_new_calculations=tool_request.perform_new_calculation,
+            reused_existing_artifacts=tool_request.reuse_existing_artifacts_only,
             structure=PreparedStructure(
                 input_smiles="C1=CCCCC1",
                 canonical_smiles="C1=CCCCC1",
@@ -498,7 +748,8 @@ def test_real_microscopic_agent_builds_understanding_and_execution_plan(
     assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
     assert report.structured_results["vertical_state_manifold"]["state_count"] == 2
     assert report.task_completion_status == "completed"
-    assert "Amesp route 'baseline_bundle'" in report.task_completion
+    assert "The Planner requested `run_baseline_bundle`." in report.task_completion
+    assert "All requested deliverables were produced" in report.task_completion
     assert "bounded amesp route" in report.execution_plan.lower()
     assert any(
         event["phase"] == "probe"
@@ -530,12 +781,17 @@ class _FailingAmespTool:
         case_id=None,
         current_hypothesis=None,
     ):
-        del plan, smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
+        del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
         raise AmespExecutionError(
             "subprocess_failed",
             "The S1 TDDFT step failed after the S0 optimization completed.",
             generated_artifacts={"s0_aop_path": "/tmp/s0.aop"},
-            structured_results={"s0": {"final_energy_hartree": -55.79}},
+            structured_results={
+                "s0": {"final_energy_hartree": -55.79},
+                "executed_capability": plan.microscopic_tool_request.capability_name,
+                "performed_new_calculations": True,
+                "reused_existing_artifacts": False,
+            },
             status="partial",
         )
 
@@ -561,6 +817,11 @@ class _UnsupportedRouteAmespTool:
             "capability_unsupported",
             f"Route {plan.capability_route} is not yet validated.",
             status="failed",
+            structured_results={
+                "executed_capability": "unsupported_excited_state_relaxation",
+                "performed_new_calculations": False,
+                "reused_existing_artifacts": False,
+            },
         )
 
 

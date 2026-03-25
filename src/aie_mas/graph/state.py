@@ -11,6 +11,7 @@ MicroscopicPlanStepType = Literal[
     "structure_prep",
     "conformer_bundle_generation",
     "torsion_snapshot_generation",
+    "artifact_parse",
     "s0_optimization",
     "s0_singlepoint",
     "s1_vertical_excitation",
@@ -20,8 +21,17 @@ MicroscopicCapabilityRoute = Literal[
     "baseline_bundle",
     "conformer_bundle_follow_up",
     "torsion_snapshot_follow_up",
+    "artifact_parse_only",
     "excited_state_relaxation_follow_up",
 ]
+MicroscopicCapabilityName = Literal[
+    "run_baseline_bundle",
+    "run_conformer_bundle",
+    "run_torsion_snapshots",
+    "parse_snapshot_outputs",
+    "unsupported_excited_state_relaxation",
+]
+AmespCapabilityName = MicroscopicCapabilityName
 MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
 MicroscopicCompletionReasonCode = Literal[
     "capability_unsupported",
@@ -186,11 +196,26 @@ class MicroscopicExecutionStep(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
 
 
+class MicroscopicToolRequest(BaseModel):
+    capability_name: MicroscopicCapabilityName
+    perform_new_calculation: bool = True
+    reuse_existing_artifacts_only: bool = False
+    artifact_source_round: Optional[int] = None
+    artifact_scope: Optional[str] = None
+    snapshot_count: Optional[int] = None
+    angle_offsets_deg: list[float] = Field(default_factory=list)
+    state_window: list[int] = Field(default_factory=list)
+    deliverables: list[str] = Field(default_factory=list)
+    budget_profile: MicroscopicBudgetProfile = "balanced"
+    requested_route_summary: str = "No microscopic tool-request summary was provided."
+
+
 class MicroscopicExecutionPlan(BaseModel):
     plan_version: str = "amesp_baseline_v1"
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
     capability_route: MicroscopicCapabilityRoute = "baseline_bundle"
+    microscopic_tool_request: MicroscopicToolRequest
     budget_profile: MicroscopicBudgetProfile = "balanced"
     requested_route_summary: str = "No microscopic route summary was provided."
     structure_source: MicroscopicStructureSource

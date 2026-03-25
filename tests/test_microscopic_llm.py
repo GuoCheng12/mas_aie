@@ -59,11 +59,16 @@ class _SuccessfulAmespTool:
         current_hypothesis=None,
     ):
         del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
+        tool_request = plan.microscopic_tool_request
         return type(
             "RunResult",
             (),
             {
                 "route": getattr(plan, "capability_route", "baseline_bundle"),
+                "executed_capability": tool_request.capability_name,
+                "performed_new_calculations": tool_request.perform_new_calculation,
+                "reused_existing_artifacts": tool_request.reuse_existing_artifacts_only,
+                "missing_deliverables": [],
                 "structure": type(
                     "PreparedStructure",
                     (),
@@ -154,16 +159,33 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
               "reasoning_summary": "Reuse or prepare a 3D structure, run S0 optimization, then run S1 vertical excitation, and keep unsupported tasks out of scope.",
               "execution_plan": {
                 "local_goal": "Collect bounded microscopic evidence with Amesp baseline execution.",
-                "requested_deliverables": [
-                  "S0 geometry optimization",
-                  "S1 vertical excitation characterization",
-                  "dipole summary"
-                ],
-                "capability_route": "baseline_bundle",
-                "requested_route_summary": "Use the default low-cost baseline bundle.",
-                "structure_strategy": "prepare_from_smiles",
-                "step_sequence": [
-                  "structure_prep",
+                        "requested_deliverables": [
+                          "S0 geometry optimization",
+                          "S1 vertical excitation characterization",
+                          "dipole summary"
+                        ],
+                        "capability_route": "baseline_bundle",
+                        "requested_route_summary": "Use the default low-cost baseline bundle.",
+                        "microscopic_tool_request": {
+                          "capability_name": "run_baseline_bundle",
+                          "perform_new_calculation": true,
+                          "reuse_existing_artifacts_only": false,
+                          "artifact_source_round": null,
+                          "artifact_scope": null,
+                          "snapshot_count": null,
+                          "angle_offsets_deg": [],
+                          "state_window": [1, 2],
+                          "deliverables": [
+                            "S0 geometry optimization",
+                            "S1 vertical excitation characterization",
+                            "dipole summary"
+                          ],
+                          "budget_profile": "balanced",
+                          "requested_route_summary": "Use the default low-cost baseline bundle."
+                        },
+                        "structure_strategy": "prepare_from_smiles",
+                        "step_sequence": [
+                          "structure_prep",
                   "s0_optimization",
                   "s1_vertical_excitation"
                 ],
@@ -244,6 +266,7 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     assert report.structured_results["execution_plan"]["steps"][2]["step_type"] == "s1_vertical_excitation"
     assert report.structured_results["unsupported_requests"] == ["torsion scan"]
     assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
     assert report.structured_results["vertical_state_manifold"]["state_count"] == 2
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
@@ -269,6 +292,22 @@ def test_openai_microscopic_reasoning_route_is_taken_from_llm_not_keyword_fallba
                 ],
                 "capability_route": "torsion_snapshot_follow_up",
                 "requested_route_summary": "Use the explicitly requested torsion_snapshot_follow_up route.",
+                "microscopic_tool_request": {
+                  "capability_name": "run_torsion_snapshots",
+                  "perform_new_calculation": true,
+                  "reuse_existing_artifacts_only": false,
+                  "artifact_source_round": null,
+                  "artifact_scope": "torsion_snapshots",
+                  "snapshot_count": 2,
+                  "angle_offsets_deg": [25.0, -25.0],
+                  "state_window": [1, 2, 3],
+                  "deliverables": [
+                    "torsion-sensitivity summary",
+                    "vertical excited-state manifold characterization"
+                  ],
+                  "budget_profile": "balanced",
+                  "requested_route_summary": "Use the explicitly requested torsion snapshot capability."
+                },
                 "structure_strategy": "reuse_if_available_else_prepare_from_smiles",
                 "step_sequence": [
                   "torsion_snapshot_generation",
@@ -325,4 +364,7 @@ def test_openai_microscopic_reasoning_route_is_taken_from_llm_not_keyword_fallba
     )
 
     assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["capability_name"] == "run_torsion_snapshots"
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["snapshot_count"] == 2
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["angle_offsets_deg"] == [25.0, -25.0]
     assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"

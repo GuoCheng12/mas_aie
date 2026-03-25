@@ -5,6 +5,11 @@
 Interpret the Planner instruction as a bounded low-cost microscopic Amesp task for the current working hypothesis "{current_hypothesis}": {task_received}
 Requested local focus: {requested_focus}
 Requested Amesp route summary: {requested_route_summary}
+Requested capability: {requested_capability}
+Executed capability: {executed_capability}
+Performed new calculations: {performed_new_calculations}
+Reused existing artifacts only: {reused_existing_artifacts}
+Missing deliverables: {missing_deliverables_text}
 Recent round context: {recent_context_note}
 Capability boundary: {capability_scope}
 Structure handling note: {structure_source_note}

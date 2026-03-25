@@ -7,7 +7,11 @@ from typing import Any, Callable
 import pytest
 
 from aie_mas.agents.macro import MacroReasoningPlanDraft, MacroReasoningResponse
-from aie_mas.agents.microscopic import MicroscopicReasoningPlanDraft, MicroscopicReasoningResponse
+from aie_mas.agents.microscopic import (
+    MicroscopicReasoningPlanDraft,
+    MicroscopicReasoningResponse,
+    MicroscopicToolRequestDraft,
+)
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import (
@@ -15,6 +19,7 @@ from aie_mas.graph.state import (
     MoleculeIdentityContext,
     PlannerDecision,
     SharedStructureContext,
+    MicroscopicToolRequest,
 )
 from aie_mas.tools.amesp import (
     AmespBaselineRunResult,
@@ -86,6 +91,7 @@ class TestMicroscopicReasoningBackend:
         structure_context = payload["available_structure_context"]
         task_mode = payload["task_mode"]
         capability_route = _microscopic_capability_route(task_instruction, task_mode)
+        capability_name = _microscopic_capability_name(capability_route)
 
         if structure_context.get("has_prepared_structure"):
             structure_strategy = "reuse_if_available_else_prepare_from_smiles"
@@ -118,6 +124,19 @@ class TestMicroscopicReasoningBackend:
                 requested_deliverables=requested_deliverables,
                 capability_route=capability_route,
                 requested_route_summary=f"Test reasoning selected route '{capability_route}' for: {task_instruction}",
+                microscopic_tool_request=MicroscopicToolRequestDraft(
+                    capability_name=capability_name,
+                    perform_new_calculation=capability_name not in {"parse_snapshot_outputs", "unsupported_excited_state_relaxation"},
+                    reuse_existing_artifacts_only=capability_name == "parse_snapshot_outputs",
+                    artifact_source_round=2 if "round_02" in task_instruction.lower() else None,
+                    artifact_scope="torsion_snapshots" if capability_name in {"run_torsion_snapshots", "parse_snapshot_outputs"} else "conformer_bundle" if capability_name == "run_conformer_bundle" else None,
+                    snapshot_count=2 if any(token in task_instruction.lower() for token in ("two torsion", "2 torsion", "±25", "+25", "-25")) else None,
+                    angle_offsets_deg=[25.0, -25.0] if any(token in task_instruction.lower() for token in ("±25", "+25", "-25")) else [],
+                    state_window=[1, 2, 3] if any(token in task_instruction.lower() for token in ("s1-s3", "s1–s3", "s1 to s3")) else [],
+                    deliverables=requested_deliverables,
+                    budget_profile=payload["budget_profile"],
+                    requested_route_summary=f"Test reasoning selected capability '{capability_name}' for: {task_instruction}",
+                ),
                 structure_strategy=structure_strategy,
                 step_sequence=["structure_prep", "s0_optimization", "s1_vertical_excitation"],
                 unsupported_requests=unsupported_requests,
@@ -144,6 +163,14 @@ def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
     lower_instruction = task_instruction.lower()
     if task_mode == "baseline_s0_s1":
         return "baseline_bundle"
+    if (
+        "parse_snapshot_outputs" in lower_instruction
+        or (
+            any(token in lower_instruction for token in ("reuse existing", "reuse round_", "existing artifacts", "parse-only", "do not run new calculations"))
+            and any(token in lower_instruction for token in ("artifact", "output", "snapshot"))
+        )
+    ):
+        return "artifact_parse_only"
     if "torsion_snapshot_follow_up" in lower_instruction:
         return "torsion_snapshot_follow_up"
     if "conformer_bundle_follow_up" in lower_instruction or "conformer" in lower_instruction:
@@ -159,6 +186,18 @@ def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
     if any(token in lower_instruction for token in ("torsion", "dihedral", "twist", "rotor")):
         return "torsion_snapshot_follow_up"
     return "conformer_bundle_follow_up"
+
+
+def _microscopic_capability_name(capability_route: str) -> str:
+    if capability_route == "baseline_bundle":
+        return "run_baseline_bundle"
+    if capability_route == "conformer_bundle_follow_up":
+        return "run_conformer_bundle"
+    if capability_route == "torsion_snapshot_follow_up":
+        return "run_torsion_snapshots"
+    if capability_route == "artifact_parse_only":
+        return "parse_snapshot_outputs"
+    return "unsupported_excited_state_relaxation"
 
 
 class TestPlannerBackend:
@@ -424,9 +463,10 @@ class TestAmespTool:
         case_id=None,
         current_hypothesis=None,
     ) -> AmespBaselineRunResult:
-        del progress_callback, round_index, case_id, current_hypothesis
+        del progress_callback, case_id, current_hypothesis
         self.called = True
         self.structure_sources.append(plan.structure_source)
+        tool_request = plan.microscopic_tool_request
         features = extract_smiles_features(smiles)
 
         workdir.mkdir(parents=True, exist_ok=True)
@@ -463,6 +503,9 @@ class TestAmespTool:
         s0_xyz_path.write_text("1\nX\nC 0.0 0.0 0.0\n", encoding="utf-8")
         return AmespBaselineRunResult(
             route=plan.capability_route,
+            executed_capability=tool_request.capability_name,
+            performed_new_calculations=tool_request.perform_new_calculation,
+            reused_existing_artifacts=tool_request.reuse_existing_artifacts_only,
             structure=prepared,
             s0=AmespGroundStateResult(
                 final_energy_hartree=final_energy,
@@ -502,6 +545,7 @@ class TestAmespTool:
                 "prepared_sdf_path": str(sdf_path),
                 "prepared_summary_path": str(summary_path),
                 "s0_aop_path": str(workdir / "s0.aop"),
+                "source_round": round_index,
             },
         )
 
