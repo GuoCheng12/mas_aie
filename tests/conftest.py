@@ -205,13 +205,13 @@ class TestPlannerBackend:
         del rendered_prompt
         hypothesis_pool = [
             HypothesisEntry(
-                name="restriction of intramolecular motion (RIM)-dominated AIE",
+                name="neutral aromatic",
                 confidence=0.7,
-                rationale="Test planner starts from a conservative restriction-based hypothesis.",
+                rationale="Test planner starts from a conservative neutral-aromatic hypothesis.",
                 candidate_strength="strong",
             ),
             HypothesisEntry(
-                name="ICT-assisted emission with aggregation-enabled rigidification",
+                name="ICT",
                 confidence=0.24,
                 rationale="Secondary test-only alternative.",
                 candidate_strength="weak",

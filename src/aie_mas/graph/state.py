@@ -249,6 +249,7 @@ class MicroscopicToolRequest(BaseModel):
     capability_name: MicroscopicCapabilityName
     structure_source: Optional[DiscoveryStructureSource] = None
     perform_new_calculation: bool = True
+    optimize_ground_state: bool = True
     reuse_existing_artifacts_only: bool = False
     artifact_source_round: Optional[int] = None
     artifact_scope: Optional[str] = None

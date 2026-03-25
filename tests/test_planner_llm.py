@@ -49,17 +49,17 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
             {
               "hypothesis_pool": [
                 {
-                  "name": "restriction of intramolecular motion (RIM)-dominated AIE",
+                  "name": "neutral aromatic",
                   "confidence": 0.61,
                   "rationale": "The model selected a baseline AIE hypothesis."
                 },
                 {
-                  "name": "ICT-assisted emission with aggregation-enabled rigidification",
+                  "name": "ICT",
                   "confidence": 0.23,
                   "rationale": "Secondary possibility."
                 }
               ],
-              "current_hypothesis": "restriction of intramolecular motion (RIM)-dominated AIE",
+              "current_hypothesis": "neutral aromatic",
               "confidence": 0.61,
               "diagnosis": "The first round should gather macro and microscopic evidence.",
               "action": "macro_and_microscopic"
@@ -90,7 +90,7 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     )
 
     assert result["decision"].action == "macro_and_microscopic"
-    assert result["decision"].current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
+    assert result["decision"].current_hypothesis == "neutral aromatic"
     assert "macro" in result["decision"].agent_task_instructions
     assert "microscopic" in result["decision"].agent_task_instructions
     assert result["decision"].hypothesis_uncertainty_note
@@ -115,19 +115,19 @@ def test_openai_initial_hypothesis_pool_is_model_driven(tmp_path: Path) -> None:
             {
               "hypothesis_pool": [
                 {
-                  "name": "restriction of intramolecular motion (RIM)-dominated AIE",
+                  "name": "neutral aromatic",
                   "confidence": 0.58,
                   "rationale": "Bulky aromatic features make this the leading candidate.",
                   "candidate_strength": "strong"
                 },
                 {
-                  "name": "packing-assisted excimer or aggregate-state emission",
+                  "name": "ICT",
                   "confidence": 0.21,
                   "rationale": "Secondary aggregate-state alternative.",
                   "candidate_strength": "weak"
                 }
               ],
-              "current_hypothesis": "restriction of intramolecular motion (RIM)-dominated AIE",
+              "current_hypothesis": "neutral aromatic",
               "confidence": 0.58,
               "diagnosis": "Use macro and microscopic first-round evidence collection.",
               "action": "macro_and_microscopic",
@@ -144,19 +144,19 @@ def test_openai_initial_hypothesis_pool_is_model_driven(tmp_path: Path) -> None:
             {
               "hypothesis_pool": [
                 {
-                  "name": "ICT-assisted emission with aggregation-enabled rigidification",
+                  "name": "ICT",
                   "confidence": 0.63,
                   "rationale": "The donor-acceptor pattern makes ICT the strongest candidate.",
                   "candidate_strength": "strong"
                 },
                 {
-                  "name": "restriction of intramolecular motion (RIM)-dominated AIE",
+                  "name": "neutral aromatic",
                   "confidence": 0.19,
                   "rationale": "Secondary fallback explanation.",
                   "candidate_strength": "weak"
                 }
               ],
-              "current_hypothesis": "ICT-assisted emission with aggregation-enabled rigidification",
+              "current_hypothesis": "ICT",
               "confidence": 0.63,
               "diagnosis": "Use macro and microscopic first-round evidence collection.",
               "action": "macro_and_microscopic",
@@ -199,12 +199,68 @@ def test_openai_initial_hypothesis_pool_is_model_driven(tmp_path: Path) -> None:
         )
     )
 
-    assert bulky_result["decision"].current_hypothesis == "restriction of intramolecular motion (RIM)-dominated AIE"
-    assert ict_result["decision"].current_hypothesis == "ICT-assisted emission with aggregation-enabled rigidification"
+    assert bulky_result["decision"].current_hypothesis == "neutral aromatic"
+    assert ict_result["decision"].current_hypothesis == "ICT"
     assert (
         bulky_result["decision"].agent_task_instructions["macro"]
         != ict_result["decision"].agent_task_instructions["macro"]
     )
+
+
+def test_openai_planner_normalizes_hypothesis_labels_to_fixed_pool(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {
+                  "name": "ict",
+                  "confidence": 0.62,
+                  "rationale": "Charge-transfer character is the leading label."
+                },
+                {
+                  "name": "aggregate emission",
+                  "confidence": 0.18,
+                  "rationale": "This invalid label should be dropped."
+                },
+                {
+                  "name": "unknown",
+                  "confidence": 0.05,
+                  "rationale": "Unknown should not remain when a non-unknown candidate exists."
+                }
+              ],
+              "current_hypothesis": "ict",
+              "confidence": 0.62,
+              "diagnosis": "Use macro and microscopic first-round evidence collection.",
+              "action": "macro_and_microscopic"
+            }
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        planner_backend="openai_sdk",
+        planner_base_url="http://34.13.73.248:3888/v1",
+        planner_model="gpt-4.1-mini",
+        planner_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    planner = PlannerAgent(
+        prompts=PromptRepository(PROMPTS_DIR),
+        config=config,
+        llm_client=OpenAICompatiblePlannerClient(config, client=fake_client),
+    )
+
+    result = planner.plan_initial(
+        AieMasState(
+            user_query="Assess the likely AIE mechanism for this molecule.",
+            smiles="C1=CC=CC=C1",
+        )
+    )
+
+    assert result["decision"].current_hypothesis == "ICT"
+    assert [entry.name for entry in result["hypothesis_pool"]] == ["ICT"]
 
 
 def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
@@ -213,7 +269,7 @@ def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
             """```json
             {
               "hypothesis_pool": [],
-              "current_hypothesis": "placeholder",
+              "current_hypothesis": "ICT",
               "confidence": 0.5,
               "diagnosis": "placeholder diagnosis",
               "action": "macro_and_microscopic"
@@ -230,7 +286,7 @@ def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:
         schema_name="planner_initial_response",
     )
 
-    assert parsed.current_hypothesis == "placeholder"
+    assert parsed.current_hypothesis == "ICT"
 
 
 def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path: Path) -> None:
@@ -240,7 +296,7 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
             {
               "diagnosis": "Recent rounds add only modest new evidence, so continue refinement.",
               "action": "microscopic",
-              "current_hypothesis": "restriction of intramolecular motion (RIM)-dominated AIE",
+              "current_hypothesis": "ICT",
               "confidence": 0.55,
               "needs_verifier": false,
               "finalize": false,
@@ -275,7 +331,7 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     state = AieMasState(
         user_query="Assess the likely AIE mechanism for this molecule.",
         smiles="C1=CC=CC=C1",
-        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        current_hypothesis="ICT",
         confidence=0.52,
         shared_structure_status="ready",
         shared_structure_context=SharedStructureContext(
@@ -320,7 +376,7 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
         working_memory=[
             WorkingMemoryEntry(
                 round_id=1,
-                current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+                current_hypothesis="ICT",
                 confidence=0.45,
                 action_taken="macro, microscopic",
                 evidence_summary="Initial internal evidence was collected.",
@@ -331,7 +387,7 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
             ),
             WorkingMemoryEntry(
                 round_id=2,
-                current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+                current_hypothesis="ICT",
                 confidence=0.5,
                 action_taken="microscopic",
                 evidence_summary="One follow-up micro refinement was run.",

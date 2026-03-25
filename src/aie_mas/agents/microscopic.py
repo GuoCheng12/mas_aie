@@ -72,6 +72,7 @@ class MicroscopicToolRequestDraft(BaseModel):
     capability_name: Optional[AmespCapabilityName] = None
     structure_source: Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]] = None
     perform_new_calculation: Optional[bool] = None
+    optimize_ground_state: Optional[bool] = None
     reuse_existing_artifacts_only: Optional[bool] = None
     artifact_source_round: Optional[int] = None
     artifact_scope: Optional[str] = None
@@ -754,7 +755,11 @@ class MicroscopicAgent:
                 "first bright state oscillator strength",
             ]
         elif tool_request.capability_name == "run_conformer_bundle":
-            step_sequence = ["conformer_bundle_generation", "s0_optimization", "s1_vertical_excitation"]
+            step_sequence = [
+                "conformer_bundle_generation",
+                "s0_optimization" if tool_request.optimize_ground_state else "s0_singlepoint",
+                "s1_vertical_excitation",
+            ]
             expected_outputs = [
                 "bounded conformer bundle vertical-state records",
                 "excitation spread",
@@ -762,7 +767,11 @@ class MicroscopicAgent:
                 "conformer-dependent uncertainty note",
             ]
         elif tool_request.capability_name == "run_torsion_snapshots":
-            step_sequence = ["torsion_snapshot_generation", "s0_optimization", "s1_vertical_excitation"]
+            step_sequence = [
+                "torsion_snapshot_generation",
+                "s0_optimization" if tool_request.optimize_ground_state else "s0_singlepoint",
+                "s1_vertical_excitation",
+            ]
             expected_outputs = [
                 "snapshot geometry labels",
                 "snapshot vertical-state proxies",
@@ -927,7 +936,7 @@ class MicroscopicAgent:
     ) -> tuple[list[MicroscopicToolCall], list[str]]:
         draft_plan = reasoning.execution_plan.microscopic_tool_plan
         if draft_plan is not None and draft_plan.calls:
-            calls = [self._normalize_tool_call(call, requested_deliverables) for call in draft_plan.calls]
+            calls = [self._normalize_tool_call(call, requested_deliverables, task_received) for call in draft_plan.calls]
         else:
             calls = self._fallback_tool_calls(
                 task_received=task_received,
@@ -962,6 +971,7 @@ class MicroscopicAgent:
         self,
         draft_call: MicroscopicToolCallDraft,
         requested_deliverables: list[str],
+        task_received: str,
     ) -> MicroscopicToolCall:
         request_draft = draft_call.request or MicroscopicToolRequestDraft()
         capability_name = request_draft.capability_name or "unsupported_excited_state_relaxation"
@@ -972,6 +982,7 @@ class MicroscopicAgent:
                 draft=request_draft,
                 capability_name=capability_name,
                 requested_deliverables=requested_deliverables,
+                task_received=task_received,
             ),
         )
 
@@ -998,6 +1009,7 @@ class MicroscopicAgent:
             draft=draft or MicroscopicToolRequestDraft(),
             capability_name=capability_name,
             requested_deliverables=requested_deliverables,
+            task_received=task_received,
         )
         if capability_name == "run_torsion_snapshots" and not execution_request.dihedral_id:
             calls.append(
@@ -1083,6 +1095,7 @@ class MicroscopicAgent:
         draft: MicroscopicToolRequestDraft,
         capability_name: AmespCapabilityName,
         requested_deliverables: list[str],
+        task_received: str,
     ) -> MicroscopicToolRequest:
         capability = AMESP_CAPABILITY_REGISTRY[capability_name]
         snapshot_count = draft.snapshot_count
@@ -1095,6 +1108,11 @@ class MicroscopicAgent:
             state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
         if capability_name in {"run_torsion_snapshots", "run_conformer_bundle", "parse_snapshot_outputs"} and not state_window:
             state_window = list(range(1, max(1, self._config.amesp_s1_nstates) + 1))
+        optimize_ground_state = (
+            draft.optimize_ground_state
+            if draft.optimize_ground_state is not None
+            else self._default_optimize_ground_state(capability_name, task_received)
+        )
         return MicroscopicToolRequest(
             capability_name=capability_name,
             structure_source=draft.structure_source,
@@ -1103,6 +1121,7 @@ class MicroscopicAgent:
                 if draft.perform_new_calculation is not None
                 else capability.requires_new_calculation
             ),
+            optimize_ground_state=optimize_ground_state,
             reuse_existing_artifacts_only=(
                 draft.reuse_existing_artifacts_only
                 if draft.reuse_existing_artifacts_only is not None
@@ -1130,6 +1149,31 @@ class MicroscopicAgent:
             budget_profile=draft.budget_profile or self._config.microscopic_budget_profile,
             requested_route_summary=draft.requested_route_summary or f"Use capability '{capability_name}' for the current microscopic task.",
         )
+
+    def _default_optimize_ground_state(
+        self,
+        capability_name: AmespCapabilityName,
+        task_received: str,
+    ) -> bool:
+        if capability_name == "parse_snapshot_outputs":
+            return False
+        if capability_name == "run_baseline_bundle":
+            return True
+        if capability_name in {"run_torsion_snapshots", "run_conformer_bundle"}:
+            lower_instruction = task_received.lower()
+            no_reoptimization_patterns = (
+                "no re-optimization",
+                "no reoptimization",
+                "no re-opt",
+                "do not re-optimize",
+                "do not reoptimize",
+                "without re-optimization",
+                "without reoptimization",
+                "without full re-optimization",
+            )
+            if any(pattern in lower_instruction for pattern in no_reoptimization_patterns):
+                return False
+        return True
 
     def _default_call_kind(self, capability_name: AmespCapabilityName) -> Literal["discovery", "execution"]:
         if capability_name in {"list_rotatable_dihedrals", "list_available_conformers", "list_artifact_bundles"}:

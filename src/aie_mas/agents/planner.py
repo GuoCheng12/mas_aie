@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+import re
+
 from pydantic import BaseModel, Field
 
 from aie_mas.compat.langchain import prompt_value_to_messages
@@ -50,6 +52,100 @@ class PlannerRoundResponse(BaseModel):
     gap_trend: str = "Gap trend has not been assessed."
     stagnation_detected: bool = False
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
+
+
+ALLOWED_HYPOTHESIS_LABELS = ("ICT", "TICT", "ESIPT", "neutral aromatic", "unknown")
+_HYPOTHESIS_LABEL_MAP = {
+    "ict": "ICT",
+    "tict": "TICT",
+    "esipt": "ESIPT",
+    "neutral aromatic": "neutral aromatic",
+    "neutral-aromatic": "neutral aromatic",
+    "neutral_aromatic": "neutral aromatic",
+    "unknown": "unknown",
+    "uncertain": "unknown",
+    "undetermined": "unknown",
+}
+
+
+def _normalize_hypothesis_label(raw_label: str | None) -> str | None:
+    if raw_label is None:
+        return None
+    collapsed = re.sub(r"[\s_-]+", " ", raw_label.strip().lower())
+    return _HYPOTHESIS_LABEL_MAP.get(collapsed)
+
+
+def _dedupe_hypothesis_entries(entries: list[HypothesisEntry]) -> list[HypothesisEntry]:
+    deduped: dict[str, HypothesisEntry] = {}
+    for entry in entries:
+        existing = deduped.get(entry.name)
+        if existing is None:
+            deduped[entry.name] = entry
+            continue
+        existing_confidence = existing.confidence if existing.confidence is not None else -1.0
+        candidate_confidence = entry.confidence if entry.confidence is not None else -1.0
+        if candidate_confidence > existing_confidence:
+            deduped[entry.name] = entry
+    return list(deduped.values())
+
+
+def _normalize_hypothesis_pool(
+    raw_pool: list[HypothesisEntry],
+    raw_current_hypothesis: str,
+) -> tuple[list[HypothesisEntry], str]:
+    normalized_entries: list[HypothesisEntry] = []
+    for entry in raw_pool:
+        label = _normalize_hypothesis_label(entry.name)
+        if label is None:
+            continue
+        normalized_entries.append(
+            HypothesisEntry(
+                name=label,
+                confidence=entry.confidence,
+                rationale=entry.rationale,
+                candidate_strength=entry.candidate_strength,
+            )
+        )
+
+    normalized_entries = _dedupe_hypothesis_entries(normalized_entries)
+    current_hypothesis = _normalize_hypothesis_label(raw_current_hypothesis)
+
+    if current_hypothesis == "unknown" and any(entry.name != "unknown" for entry in normalized_entries):
+        current_hypothesis = None
+
+    if current_hypothesis is None and normalized_entries:
+        ranked_entries = sorted(
+            normalized_entries,
+            key=lambda entry: (
+                entry.name == "unknown",
+                -1.0 if entry.confidence is None else -entry.confidence,
+            ),
+        )
+        current_hypothesis = ranked_entries[0].name
+    if current_hypothesis is None:
+        current_hypothesis = "unknown"
+
+    if current_hypothesis != "unknown":
+        normalized_entries = [entry for entry in normalized_entries if entry.name != "unknown"]
+
+    if not any(entry.name == current_hypothesis for entry in normalized_entries):
+        normalized_entries.insert(
+            0,
+            HypothesisEntry(
+                name=current_hypothesis,
+                confidence=None,
+                rationale=None,
+                candidate_strength="strong" if current_hypothesis != "unknown" else "weak",
+            ),
+        )
+
+    if not normalized_entries:
+        normalized_entries = [
+            HypothesisEntry(name="unknown", confidence=None, rationale=None, candidate_strength="weak")
+        ]
+        current_hypothesis = "unknown"
+
+    return normalized_entries, current_hypothesis
 
 
 def _normalize_agent_task_instructions(raw_mapping: dict[str, str]) -> dict[str, str]:
@@ -211,11 +307,15 @@ class OpenAIPlannerBackend:
             response_model=PlannerInitialResponse,
             schema_name="planner_initial_response",
         )
+        hypothesis_pool, current_hypothesis = _normalize_hypothesis_pool(
+            response.hypothesis_pool,
+            response.current_hypothesis,
+        )
         agent_task_instructions = _normalize_agent_task_instructions(response.agent_task_instructions)
         if not agent_task_instructions:
             agent_task_instructions = _normalize_agent_task_instructions(
                 _default_initial_agent_task_instructions(
-                    response.current_hypothesis,
+                    current_hypothesis,
                     hypothesis_uncertainty_note=response.hypothesis_uncertainty_note,
                     capability_assessment=response.capability_assessment,
                 )
@@ -223,7 +323,7 @@ class OpenAIPlannerBackend:
         decision = PlannerDecision(
             diagnosis=response.diagnosis,
             action="macro_and_microscopic",
-            current_hypothesis=response.current_hypothesis,
+            current_hypothesis=current_hypothesis,
             confidence=self._clamp_confidence(response.confidence),
             needs_verifier=False,
             finalize=False,
@@ -236,12 +336,16 @@ class OpenAIPlannerBackend:
             stagnation_assessment="No stagnation is present in the initial round.",
         )
         return {
-            "hypothesis_pool": response.hypothesis_pool,
+            "hypothesis_pool": hypothesis_pool,
             "decision": decision,
-            "raw_response": response.model_dump(mode="json"),
+            "raw_response": {
+                **response.model_dump(mode="json"),
+                "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
+                "current_hypothesis": current_hypothesis,
+            },
             "normalized_response": _planner_normalized_payload(
                 decision=decision,
-                hypothesis_pool=response.hypothesis_pool,
+                hypothesis_pool=hypothesis_pool,
             ),
         }
 
@@ -269,9 +373,15 @@ class OpenAIPlannerBackend:
         post_verifier: bool,
     ) -> dict[str, Any]:
         confidence = self._clamp_confidence(response.confidence)
+        existing_pool = [
+            HypothesisEntry.model_validate(entry)
+            for entry in list(payload.get("hypothesis_pool") or [])
+            if isinstance(entry, dict)
+        ]
+        _, current_hypothesis = _normalize_hypothesis_pool(existing_pool, response.current_hypothesis)
         task_instruction = response.task_instruction.strip() or _default_follow_up_task_instruction(
             response.action,
-            response.current_hypothesis,
+            current_hypothesis,
             payload,
         )
         agent_task_instructions = _normalize_agent_task_instructions(response.agent_task_instructions)
@@ -285,7 +395,7 @@ class OpenAIPlannerBackend:
         decision = PlannerDecision(
             diagnosis=response.diagnosis,
             action=self._normalize_action(response.action, post_verifier=post_verifier),
-            current_hypothesis=response.current_hypothesis,
+            current_hypothesis=current_hypothesis,
             confidence=confidence,
             needs_verifier=response.needs_verifier,
             finalize=response.finalize,
@@ -364,7 +474,10 @@ class OpenAIPlannerBackend:
             "contraction_reason": decision.contraction_reason,
             "information_gain_assessment": decision.information_gain_assessment,
             "gap_trend": decision.gap_trend,
-            "raw_response": response.model_dump(mode="json"),
+            "raw_response": {
+                **response.model_dump(mode="json"),
+                "current_hypothesis": current_hypothesis,
+            },
             "normalized_response": _planner_normalized_payload(
                 decision=decision,
                 evidence_summary=evidence_summary,

@@ -52,12 +52,21 @@ Return a structured decision containing:
 - capability_assessment
 
 hypothesis_pool requirements:
-- include 2-3 candidate mechanisms when possible
+- use only these labels:
+  - `ICT`
+  - `TICT`
+  - `ESIPT`
+  - `neutral aromatic`
+  - `unknown`
+- do not invent any other mechanism label names
+- include 2-4 candidate mechanisms when possible
 - each candidate should include:
   - name
   - confidence
   - rationale
   - candidate_strength
+- `current_hypothesis` must be one of the labels already present in `hypothesis_pool`
+- use `unknown` only when the available evidence is too contradictory or too weak to prefer any non-unknown label
 - candidate_strength should reflect whether the hypothesis is a:
   - strong
   - medium

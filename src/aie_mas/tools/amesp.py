@@ -179,7 +179,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Run a single-conformer low-cost S0 optimization plus vertical excited-state manifold.",
         requires_new_calculation=True,
         required_inputs=["prepared structure or SMILES"],
-        optional_inputs=["state_window"],
+        optional_inputs=["state_window", "optimize_ground_state"],
         supported_deliverables=[
             "S0 optimized geometry",
             "S0 final energy",
@@ -195,7 +195,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Run a bounded conformer bundle follow-up with the same low-cost S0 plus vertical excited-state workflow.",
         requires_new_calculation=True,
         required_inputs=["SMILES or reusable prepared structure"],
-        optional_inputs=["snapshot_count", "state_window"],
+        optional_inputs=["snapshot_count", "state_window", "optimize_ground_state"],
         supported_deliverables=[
             "bounded conformer vertical-state records",
             "excitation spread",
@@ -208,7 +208,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Run bounded torsion snapshot calculations from a prepared structure.",
         requires_new_calculation=True,
         required_inputs=["prepared structure or reusable structure artifacts"],
-        optional_inputs=["snapshot_count", "angle_offsets_deg", "state_window"],
+        optional_inputs=["snapshot_count", "angle_offsets_deg", "state_window", "optimize_ground_state"],
         supported_deliverables=[
             "snapshot vertical-state records",
             "torsion sensitivity summary",
@@ -517,6 +517,13 @@ class AmespMicroscopicTool:
             resolved_target_ids["dihedral_id"] = resolved_request.dihedral_id
             honored_constraints.append(
                 f"Execution request honored explicit dihedral target `{resolved_request.dihedral_id}`."
+            )
+        if not resolved_request.optimize_ground_state and request.capability_name in {
+            "run_torsion_snapshots",
+            "run_conformer_bundle",
+        }:
+            honored_constraints.append(
+                "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
             )
 
         if resolved_request.artifact_bundle_id:
@@ -880,7 +887,7 @@ class AmespMicroscopicTool:
             round_index=round_index,
             case_id=case_id,
             current_hypothesis=current_hypothesis,
-            optimize_ground_state=True,
+            optimize_ground_state=request.optimize_ground_state,
             route="baseline_bundle",
             state_window=request.state_window,
             executed_capability="run_baseline_bundle",
@@ -941,7 +948,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
-                optimize_ground_state=True,
+                optimize_ground_state=request.optimize_ground_state,
                 route="conformer_bundle_follow_up",
                 state_window=request.state_window,
                 executed_capability="run_conformer_bundle",
@@ -1042,7 +1049,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
-                optimize_ground_state=True,
+                optimize_ground_state=request.optimize_ground_state,
                 route="torsion_snapshot_follow_up",
                 state_window=request.state_window,
                 executed_capability="run_torsion_snapshots",

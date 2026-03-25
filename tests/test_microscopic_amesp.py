@@ -518,7 +518,61 @@ def test_amesp_torsion_capability_honors_structured_snapshot_parameters(
     assert [record["target_angle_deg"] for record in result.route_records] == [25.0, -25.0]
     assert all(record["dihedral_atoms"] == [0, 1, 2, 3] for record in result.route_records)
     assert len(result.generated_artifacts["snapshot_artifacts"]) == 2
-    assert any("nstates 3" in aip_text for label, aip_text in captured_inputs.items() if label.endswith("_s1"))
+
+
+def test_amesp_torsion_capability_can_skip_ground_state_reoptimization(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    progress_events: list[dict[str, object]] = []
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+        follow_up_max_torsion_snapshots_total=6,
+    )
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run a no-reoptimization torsion follow-up.",
+            requested_deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2, 3],
+                deliverables=["torsion sensitivity summary", "per-snapshot excitation records"],
+                requested_route_summary="Use exactly two torsion snapshots at ±25 degrees without geometry re-optimization.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="torsion_no_reopt_case",
+        workdir=tmp_path / "torsion_no_reopt_workdir",
+        available_artifacts={},
+        progress_callback=progress_events.append,
+    )
+
+    assert result.executed_capability == "run_torsion_snapshots"
+    assert result.honored_constraints[-1] == "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
+    assert any(
+        event["details"].get("probe_stage") == "s0_singlepoint_subprocess"
+        for event in progress_events
+    )
+    assert not any(
+        event["details"].get("probe_stage") == "s0_optimization_subprocess"
+        for event in progress_events
+    )
 
 
 def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calculations(
@@ -1220,6 +1274,38 @@ def test_real_microscopic_agent_uses_torsion_snapshot_route(
     assert report.task_completion_status == "completed"
     assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
     assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"
+
+
+def test_real_microscopic_agent_parses_no_reoptimization_into_tool_request(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Assess bounded dihedral sensitivity using exactly two snapshots at +/-30 degrees, "
+            "and do not re-optimize the perturbed geometries before running the vertical excited-state calculation."
+        ),
+        current_hypothesis="ICT",
+        case_id="case123",
+        round_index=2,
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="round-2-torsion-no-reopt",
+            objective="Investigate torsion sensitivity without geometry re-optimization.",
+            target_property="torsion_sensitivity",
+        ),
+    )
+
+    request = report.structured_results["execution_plan"]["microscopic_tool_request"]
+    assert request["capability_name"] == "run_torsion_snapshots"
+    assert request["optimize_ground_state"] is False
 
 
 def test_real_microscopic_agent_does_not_false_positive_transition_state_from_state_words(

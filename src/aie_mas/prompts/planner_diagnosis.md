@@ -7,6 +7,13 @@ You are in an intermediate refinement round.
 
 In this stage, stay focused on the current leading hypothesis.
 Do not switch hypothesis here unless the workflow has already entered the post-verifier stage.
+The hypothesis label space is fixed:
+- `ICT`
+- `TICT`
+- `ESIPT`
+- `neutral aromatic`
+- `unknown`
+Do not invent any new hypothesis label names in this stage.
 
 You will receive:
 - current_hypothesis

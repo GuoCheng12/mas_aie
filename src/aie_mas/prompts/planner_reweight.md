@@ -6,6 +6,13 @@ Other agents only return local results.
 Important policy:
 - Do not rely on any presumed hardcoded scaffold-to-mechanism rule.
 - Reweight or keep hypotheses only from the evidence chain available in the current run.
+- The hypothesis label space is fixed:
+  - `ICT`
+  - `TICT`
+  - `ESIPT`
+  - `neutral aromatic`
+  - `unknown`
+- Do not invent any new hypothesis label names in this stage.
 
 You are now in the post-verifier stage.
 

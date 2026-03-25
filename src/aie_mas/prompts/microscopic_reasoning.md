@@ -58,6 +58,8 @@ Parameter rules:
 - If the instruction explicitly says to reuse existing outputs and avoid new calculations, choose `parse_snapshot_outputs` and set:
   - `perform_new_calculation = false`
   - `reuse_existing_artifacts_only = true`
+- If the instruction explicitly says `no re-optimization`, `do not re-optimize`, or equivalent wording for a new-calculation follow-up, set:
+  - `optimize_ground_state = false`
 - If the instruction explicitly gives a snapshot count, angle offsets, state window, or artifact round, preserve those exact values.
 - Do not silently replace exact requested numeric parameters with budget defaults. Use defaults only when the instruction does not specify values.
 - If the instruction explicitly says to use or avoid a named capability, follow that instruction literally.
@@ -79,6 +81,7 @@ Each discovery or execution call must be explicit.
 For execution calls, the request must include the fields relevant to that capability, such as:
 - `capability_name`
 - `perform_new_calculation`
+- `optimize_ground_state`
 - `reuse_existing_artifacts_only`
 - `artifact_source_round`
 - `artifact_scope`
