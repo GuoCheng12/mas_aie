@@ -85,6 +85,7 @@ class TestMicroscopicReasoningBackend:
         unsupported_requests = list(payload["unsupported_requests"])
         structure_context = payload["available_structure_context"]
         task_mode = payload["task_mode"]
+        capability_route = _microscopic_capability_route(task_instruction, task_mode)
 
         if structure_context.get("has_prepared_structure"):
             structure_strategy = "reuse_if_available_else_prepare_from_smiles"
@@ -115,6 +116,8 @@ class TestMicroscopicReasoningBackend:
             execution_plan=MicroscopicReasoningPlanDraft(
                 local_goal="Collect bounded low-cost microscopic evidence through the maximal executable Amesp route and return only local results.",
                 requested_deliverables=requested_deliverables,
+                capability_route=capability_route,
+                requested_route_summary=f"Test reasoning selected route '{capability_route}' for: {task_instruction}",
                 structure_strategy=structure_strategy,
                 step_sequence=["structure_prep", "s0_optimization", "s1_vertical_excitation"],
                 unsupported_requests=unsupported_requests,
@@ -135,6 +138,27 @@ class TestMicroscopicReasoningBackend:
                 "do not escalate into a global mechanism decision."
             ),
         )
+
+
+def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
+    lower_instruction = task_instruction.lower()
+    if task_mode == "baseline_s0_s1":
+        return "baseline_bundle"
+    if "torsion_snapshot_follow_up" in lower_instruction:
+        return "torsion_snapshot_follow_up"
+    if "conformer_bundle_follow_up" in lower_instruction or "conformer" in lower_instruction:
+        return "conformer_bundle_follow_up"
+    if (
+        "excited_state_relaxation_follow_up" in lower_instruction
+        or "excited-state relaxation" in lower_instruction
+        or "excited-state geometry relaxation" in lower_instruction
+        or "excited-state geometry" in lower_instruction
+        or "s1 relaxation" in lower_instruction
+    ):
+        return "excited_state_relaxation_follow_up"
+    if any(token in lower_instruction for token in ("torsion", "dihedral", "twist", "rotor")):
+        return "torsion_snapshot_follow_up"
+    return "conformer_bundle_follow_up"
 
 
 class TestPlannerBackend:

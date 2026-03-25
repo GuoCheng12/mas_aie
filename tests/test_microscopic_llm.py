@@ -159,6 +159,8 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
                   "S1 vertical excitation characterization",
                   "dipole summary"
                 ],
+                "capability_route": "baseline_bundle",
+                "requested_route_summary": "Use the default low-cost baseline bundle.",
                 "structure_strategy": "prepare_from_smiles",
                 "step_sequence": [
                   "structure_prep",
@@ -250,3 +252,77 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     assert "available_structure_context" in message_payload
     assert "shared_structure_context" in message_payload
     assert "runtime_context" in message_payload
+
+
+def test_openai_microscopic_reasoning_route_is_taken_from_llm_not_keyword_fallback(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "task_understanding": "Perform a bounded torsion snapshot follow-up using the explicitly requested route.",
+              "reasoning_summary": "The instruction explicitly requests torsion_snapshot_follow_up and explicitly forbids excited_state_relaxation_follow_up, so the torsion route should be used.",
+              "execution_plan": {
+                "local_goal": "Collect torsion-sensitivity evidence with bounded snapshots.",
+                "requested_deliverables": [
+                  "torsion-sensitivity summary",
+                  "vertical excited-state manifold characterization"
+                ],
+                "capability_route": "torsion_snapshot_follow_up",
+                "requested_route_summary": "Use the explicitly requested torsion_snapshot_follow_up route.",
+                "structure_strategy": "reuse_if_available_else_prepare_from_smiles",
+                "step_sequence": [
+                  "torsion_snapshot_generation",
+                  "s0_optimization",
+                  "s1_vertical_excitation"
+                ],
+                "unsupported_requests": []
+              },
+              "capability_limit_note": "Use the supported torsion snapshot route only.",
+              "expected_outputs": [
+                "snapshot geometry labels",
+                "snapshot vertical-state proxies",
+                "torsion sensitivity summary"
+              ],
+              "failure_policy": "Return a local failed or partial report if Amesp fails."
+            }
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        tool_backend="real",
+        planner_backend="openai_sdk",
+        microscopic_backend="openai_sdk",
+        microscopic_base_url="http://34.13.73.248:3888/v1",
+        microscopic_model="gpt-4.1-mini",
+        microscopic_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+        config=config,
+        prompts=PromptRepository(PROMPTS_DIR),
+        llm_client=OpenAICompatibleMicroscopicClient(config, client=fake_client),
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "IMPORTANT: execute the supported Amesp route 'torsion_snapshot_follow_up'. "
+            "Do NOT use 'excited_state_relaxation_follow_up'. "
+            "Generate torsion snapshots and compute bounded vertical excitations."
+        ),
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="round-2-targeted",
+            objective="Use the explicitly requested torsion snapshot route.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
+    assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"

@@ -37,6 +37,8 @@ def _default_prompt_repository() -> PromptRepository:
 class MicroscopicReasoningPlanDraft(BaseModel):
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
+    capability_route: Optional[MicroscopicCapabilityRoute] = None
+    requested_route_summary: Optional[str] = None
     structure_strategy: MicroscopicStructureStrategy = "reuse_if_available_else_prepare_from_smiles"
     step_sequence: list[
         Literal[
@@ -551,7 +553,9 @@ class MicroscopicAgent:
             if reasoning.execution_plan.requested_deliverables
             else self._requested_deliverables(task_received)
         )
-        capability_route = self._resolve_capability_route(task_received, task_spec)
+        capability_route = reasoning.execution_plan.capability_route or self._resolve_capability_route(
+            task_received, task_spec
+        )
         unsupported_requests = list(reasoning.execution_plan.unsupported_requests)
         structure_is_reusable = bool(shared_structure_context is not None) or self._has_reusable_structure(
             available_artifacts
@@ -609,7 +613,8 @@ class MicroscopicAgent:
             requested_deliverables=requested_deliverables,
             capability_route=capability_route,
             budget_profile=self._config.microscopic_budget_profile or "balanced",
-            requested_route_summary=self._requested_route_summary(capability_route, task_received),
+            requested_route_summary=reasoning.execution_plan.requested_route_summary
+            or self._requested_route_summary(capability_route, task_received),
             structure_source=structure_source,  # type: ignore[arg-type]
             supported_scope=[
                 "baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",

@@ -39,10 +39,25 @@ Current implementation boundary:
 
 Your output must focus on:
 - what the local task actually is
-- what Amesp route can actually be executed now
+- which single Amesp `capability_route` can actually be executed now
 - what bounded microscopic evidence can be collected now
 - how to use Amesp within the current capability and budget limit
 - what outputs are expected
 - how failures should be reported locally
+
+Route-selection rules:
+- You must choose exactly one `capability_route` in `execution_plan`.
+- Allowed values are:
+  - `baseline_bundle`
+  - `conformer_bundle_follow_up`
+  - `torsion_snapshot_follow_up`
+  - `excited_state_relaxation_follow_up`
+- Choose `excited_state_relaxation_follow_up` only if the task is explicitly about excited-state relaxation and no supported bounded substitute can satisfy the request.
+- If the instruction explicitly says to use or avoid a named route, follow that instruction literally.
+- Do not let Python infer the route from keywords when you can determine the intended route directly from the instruction.
+
+In `execution_plan`, also provide:
+- `capability_route`
+- `requested_route_summary`
 
 Return a JSON object matching the schema appended by the caller.
