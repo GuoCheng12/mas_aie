@@ -358,6 +358,34 @@ def test_amesp_baseline_tool_emits_subprocess_heartbeat_events(tmp_path: Path, m
     )
 
 
+def test_amesp_tool_creates_nested_route_workdir_before_writing_inputs(tmp_path: Path) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    nested_workdir = tmp_path / "workdir" / "torsion_01"
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run baseline S0/S1 Amesp workflow.",
+            requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return a partial or failed local report if Amesp fails.",
+        ),
+        smiles="N",
+        label="nested_case",
+        workdir=nested_workdir,
+        available_artifacts={},
+    )
+
+    assert nested_workdir.exists()
+    assert (nested_workdir / "nested_case_s0.aip").exists()
+    assert Path(result.generated_artifacts["s0_aop_path"]).exists()
+
+
 class _SuccessfulAmespTool:
     name = "amesp_baseline_microscopic"
 

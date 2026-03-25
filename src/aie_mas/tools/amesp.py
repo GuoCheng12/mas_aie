@@ -799,6 +799,7 @@ class AmespMicroscopicTool:
         case_id: Optional[str] = None,
         current_hypothesis: Optional[str] = None,
     ) -> tuple[AmespStepOutcome, str]:
+        workdir.mkdir(parents=True, exist_ok=True)
         aip_path = workdir / f"{label}.aip"
         aop_path = workdir / f"{label}.aop"
         stdout_path = workdir / f"{label}.stdout.log"
