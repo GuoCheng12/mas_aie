@@ -7,8 +7,30 @@ from pydantic import BaseModel, Field
 PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize"]
 PendingAgent = Literal["macro", "microscopic", "verifier"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
-MicroscopicPlanStepType = Literal["structure_prep", "s0_optimization", "s1_vertical_excitation"]
+MicroscopicPlanStepType = Literal[
+    "structure_prep",
+    "conformer_bundle_generation",
+    "torsion_snapshot_generation",
+    "s0_optimization",
+    "s0_singlepoint",
+    "s1_vertical_excitation",
+]
 MicroscopicStructureSource = Literal["prepared_from_smiles", "existing_prepared_structure"]
+MicroscopicCapabilityRoute = Literal[
+    "baseline_bundle",
+    "conformer_bundle_follow_up",
+    "torsion_snapshot_follow_up",
+    "excited_state_relaxation_follow_up",
+]
+MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
+MicroscopicCompletionReasonCode = Literal[
+    "capability_unsupported",
+    "runtime_failed",
+    "precondition_missing",
+    "resource_budget_exceeded",
+    "parse_failed",
+    "partial_observable_only",
+]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
 MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
 VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
@@ -38,6 +60,7 @@ class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
     task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
+    completion_reason_code: Optional[MicroscopicCompletionReasonCode] = None
     task_completion: str = "Task completion was not provided."
     task_understanding: str = "Task understanding was not provided."
     reasoning_summary: str = "Reasoning summary was not provided."
@@ -82,6 +105,7 @@ class WorkingMemoryAgentEntry(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
     task_completion_status: Literal["completed", "contracted", "partial", "failed"] = "completed"
+    completion_reason_code: Optional[MicroscopicCompletionReasonCode] = None
     task_completion: str = "Task completion was not provided."
     task_understanding: str
     reasoning_summary: str = "Reasoning summary was not provided."
@@ -166,6 +190,9 @@ class MicroscopicExecutionPlan(BaseModel):
     plan_version: str = "amesp_baseline_v1"
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
+    capability_route: MicroscopicCapabilityRoute = "baseline_bundle"
+    budget_profile: MicroscopicBudgetProfile = "balanced"
+    requested_route_summary: str = "No microscopic route summary was provided."
     structure_source: MicroscopicStructureSource
     supported_scope: list[str] = Field(default_factory=list)
     unsupported_requests: list[str] = Field(default_factory=list)

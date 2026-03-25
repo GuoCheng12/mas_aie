@@ -94,18 +94,13 @@ class TestMicroscopicReasoningBackend:
             structure_note = "No prepared 3D structure is available, so the run must start from SMILES-to-3D preparation."
 
         capability_limit_note = (
-            "Current microscopic capability is bounded to a low-cost Amesp baseline only: structure preparation or reuse, "
-            "low-cost S0 optimization, and bounded S1 vertical excitation. No global mechanism judgment is allowed."
+            "Current microscopic capability is bounded to low-cost Amesp routes only: baseline_bundle, "
+            "conformer_bundle_follow_up, and torsion_snapshot_follow_up. No global mechanism judgment is allowed."
         )
         if unsupported_requests:
             capability_limit_note = (
                 f"{capability_limit_note} Unsupported requests are being conservatively contracted: "
                 f"{'; '.join(unsupported_requests)}."
-            )
-        if task_mode == "targeted_follow_up":
-            capability_limit_note = (
-                f"{capability_limit_note} The requested targeted follow-up is reduced to the same baseline S0/S1 workflow "
-                "in the current stage."
             )
 
         return MicroscopicReasoningResponse(
@@ -118,7 +113,7 @@ class TestMicroscopicReasoningBackend:
                 f"Requested local deliverables: {', '.join(requested_deliverables)}. {capability_limit_note}"
             ),
             execution_plan=MicroscopicReasoningPlanDraft(
-                local_goal="Collect bounded low-cost microscopic evidence through the Amesp baseline workflow and return only local results.",
+                local_goal="Collect bounded low-cost microscopic evidence through the maximal executable Amesp route and return only local results.",
                 requested_deliverables=requested_deliverables,
                 structure_strategy=structure_strategy,
                 step_sequence=["structure_prep", "s0_optimization", "s1_vertical_excitation"],
@@ -131,8 +126,9 @@ class TestMicroscopicReasoningBackend:
                 "S0 dipole",
                 "S0 Mulliken charges",
                 "S0 HOMO-LUMO gap",
-                "S1 first excitation energy",
-                "S1 first oscillator strength",
+                "vertical-state manifold",
+                "first bright-state energy",
+                "first bright-state oscillator strength",
             ],
             failure_policy=(
                 "If any Amesp step fails, return a local failed or partial report with the available artifacts and "
@@ -442,6 +438,7 @@ class TestAmespTool:
         s0_xyz_path = workdir / "s0.xyz"
         s0_xyz_path.write_text("1\nX\nC 0.0 0.0 0.0\n", encoding="utf-8")
         return AmespBaselineRunResult(
+            route=plan.capability_route,
             structure=prepared,
             s0=AmespGroundStateResult(
                 final_energy_hartree=final_energy,
@@ -460,12 +457,21 @@ class TestAmespTool:
                         oscillator_strength=oscillator,
                         spin_square=0.0,
                         excitation_energy_ev=excitation,
+                    ),
+                    AmespExcitedState(
+                        state_index=2,
+                        total_energy_hartree=final_energy + 0.12,
+                        oscillator_strength=0.02,
+                        spin_square=0.0,
+                        excitation_energy_ev=round(excitation + 0.18, 4),
                     )
                 ],
                 first_excitation_energy_ev=excitation,
                 first_oscillator_strength=oscillator,
-                state_count=1,
+                state_count=2,
             ),
+            route_records=[],
+            route_summary={},
             raw_step_results={"s0_optimization": {"exit_code": 0}, "s1_vertical_excitation": {"exit_code": 0}},
             generated_artifacts={
                 "prepared_xyz_path": str(xyz_path),

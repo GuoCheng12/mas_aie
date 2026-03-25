@@ -27,8 +27,11 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setenv("AIE_MAS_AMESP_NPARA", "22")
     monkeypatch.setenv("AIE_MAS_AMESP_MAXCORE_MB", "24000")
     monkeypatch.setenv("AIE_MAS_AMESP_USE_RICOSX", "1")
-    monkeypatch.setenv("AIE_MAS_AMESP_S1_NSTATES", "1")
+    monkeypatch.setenv("AIE_MAS_AMESP_S1_NSTATES", "5")
     monkeypatch.setenv("AIE_MAS_AMESP_TD_TOUT", "1")
+    monkeypatch.setenv("AIE_MAS_MICROSCOPIC_BUDGET_PROFILE", "balanced")
+    monkeypatch.setenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_CONFORMERS", "3")
+    monkeypatch.setenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_TORSION_SNAPSHOTS_TOTAL", "6")
     monkeypatch.setenv("AIE_MAS_AMESP_PROBE_INTERVAL", "5")
     monkeypatch.setenv("AIE_MAS_DATA_DIR", "runtime_data")
     monkeypatch.setenv("AIE_MAS_MEMORY_DIR", "runtime_data/memory_store")
@@ -59,8 +62,11 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.amesp_npara == 22
     assert config.amesp_maxcore_mb == 24000
     assert config.amesp_use_ricosx is True
-    assert config.amesp_s1_nstates == 1
+    assert config.microscopic_budget_profile == "balanced"
+    assert config.amesp_s1_nstates == 5
     assert config.amesp_td_tout == 1
+    assert config.amesp_follow_up_max_conformers == 3
+    assert config.amesp_follow_up_max_torsion_snapshots_total == 6
     assert config.amesp_probe_interval_seconds == 5.0
     assert config.data_dir == (tmp_path / "runtime_data").resolve()
     assert config.memory_dir == (tmp_path / "runtime_data" / "memory_store").resolve()
@@ -147,8 +153,14 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.amesp_maxcore_mb == 12000
     assert local_config.amesp_use_ricosx is True
     assert linux_config.amesp_use_ricosx is True
-    assert local_config.amesp_s1_nstates == 1
-    assert linux_config.amesp_s1_nstates == 1
+    assert local_config.microscopic_budget_profile == "balanced"
+    assert linux_config.microscopic_budget_profile == "balanced"
+    assert local_config.amesp_s1_nstates == 5
+    assert linux_config.amesp_s1_nstates == 5
+    assert local_config.amesp_follow_up_max_conformers == 3
+    assert linux_config.amesp_follow_up_max_conformers == 3
+    assert local_config.amesp_follow_up_max_torsion_snapshots_total == 6
+    assert linux_config.amesp_follow_up_max_torsion_snapshots_total == 6
     assert local_config.amesp_probe_interval_seconds == 15.0
     assert linux_config.amesp_probe_interval_seconds == 15.0
 

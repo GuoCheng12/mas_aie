@@ -16,25 +16,25 @@ def test_targeted_microscopic_task_interface_is_available(install_specialized_te
 
     report = agent.run(
         smiles="C(c1ccccc1)(c1ccccc1)=C(c1ccccc1)c1ccccc1",
-        task_received=task_spec.objective,
+        task_received="Assess bounded conformer sensitivity for the unresolved microscopic follow-up.",
         task_spec=task_spec,
         current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
     )
 
-    assert report.task_received == task_spec.objective
+    assert report.task_received == "Assess bounded conformer sensitivity for the unresolved microscopic follow-up."
     assert report.task_understanding
     assert report.reasoning_summary
     assert report.execution_plan
     assert report.result_summary
     assert report.remaining_local_uncertainty
-    assert report.task_completion_status == "contracted"
-    assert "targeted microscopic follow-up could not be executed" in report.task_completion
+    assert report.task_completion_status == "completed"
+    assert report.task_completion == "Task completed successfully using Amesp route 'conformer_bundle_follow_up' within current microscopic capability."
     assert report.structured_results["task_mode"] == "targeted_follow_up"
     assert report.structured_results["task_label"] == "round-2-targeted"
-    assert report.structured_results["task_completion_status"] == "contracted"
-    assert "targeted microscopic follow-up beyond the current Amesp baseline workflow" in " ".join(
-        report.structured_results["unsupported_requests"]
-    )
+    assert report.structured_results["task_completion_status"] == "completed"
+    assert report.structured_results["execution_plan"]["capability_route"] == "conformer_bundle_follow_up"
+    assert report.structured_results["attempted_route"] == "conformer_bundle_follow_up"
+    assert report.structured_results["completion_reason_code"] is None
     assert fake_amesp.called is True
     assert report.planner_readable_report.startswith("Task completion:")
     assert "Task understanding:" in report.planner_readable_report

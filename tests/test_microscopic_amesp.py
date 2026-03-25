@@ -221,6 +221,9 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert result.s1.first_excitation_energy_ev == 3.8474
     assert result.s1.first_oscillator_strength == 0.1234
     assert result.s1.state_count == 2
+    assert result.route == "baseline_bundle"
+    assert result.route_summary["state_count"] == 2
+    assert result.route_summary["first_bright_state_index"] == 1
     assert "prepared_xyz_path" in result.generated_artifacts
     assert Path(result.generated_artifacts["s0_aop_path"]).exists()
     assert Path(result.generated_artifacts["s1_aop_path"]).exists()
@@ -371,8 +374,9 @@ class _SuccessfulAmespTool:
         case_id=None,
         current_hypothesis=None,
     ):
-        del plan, smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
+        del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
         return AmespBaselineRunResult(
+            route=getattr(plan, "capability_route", "baseline_bundle"),
             structure=PreparedStructure(
                 input_smiles="C1=CCCCC1",
                 canonical_smiles="C1=CCCCC1",
@@ -404,12 +408,21 @@ class _SuccessfulAmespTool:
                         oscillator_strength=0.245,
                         spin_square=0.0,
                         excitation_energy_ev=3.347,
+                    ),
+                    AmespExcitedState(
+                        state_index=2,
+                        total_energy_hartree=-230.95,
+                        oscillator_strength=0.02,
+                        spin_square=0.0,
+                        excitation_energy_ev=3.521,
                     )
                 ],
                 first_excitation_energy_ev=3.347,
                 first_oscillator_strength=0.245,
-                state_count=1,
+                state_count=2,
             ),
+            route_records=[],
+            route_summary={"state_count": 2},
             raw_step_results={"s0_optimization": {"exit_code": 0}, "s1_vertical_excitation": {"exit_code": 0}},
             generated_artifacts={"prepared_xyz_path": "/tmp/prepared_structure.xyz", "s0_aop_path": "/tmp/s0.aop"},
         )
@@ -454,8 +467,11 @@ def test_real_microscopic_agent_builds_understanding_and_execution_plan(
     assert report.structured_results["execution_plan"]["plan_version"] == "amesp_baseline_v1"
     assert report.structured_results["execution_plan"]["steps"][1]["step_type"] == "s0_optimization"
     assert report.structured_results["s1"]["first_oscillator_strength"] == 0.245
-    assert "Amesp baseline workflow" in report.task_understanding
-    assert "s1 vertical excitation" in report.execution_plan.lower()
+    assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+    assert report.structured_results["vertical_state_manifold"]["state_count"] == 2
+    assert report.task_completion_status == "completed"
+    assert "Amesp route 'baseline_bundle'" in report.task_completion
+    assert "bounded amesp route" in report.execution_plan.lower()
     assert any(
         event["phase"] == "probe"
         and event["details"].get("probe_stage") == "reasoning"
@@ -496,6 +512,30 @@ class _FailingAmespTool:
         )
 
 
+class _UnsupportedRouteAmespTool:
+    name = "amesp_baseline_microscopic"
+
+    def execute(
+        self,
+        *,
+        plan,
+        smiles,
+        label,
+        workdir,
+        available_artifacts,
+        progress_callback=None,
+        round_index=1,
+        case_id=None,
+        current_hypothesis=None,
+    ):
+        del smiles, label, workdir, available_artifacts, progress_callback, round_index, case_id, current_hypothesis
+        raise AmespExecutionError(
+            "capability_unsupported",
+            f"Route {plan.capability_route} is not yet validated.",
+            status="failed",
+        )
+
+
 def test_real_microscopic_agent_returns_partial_report_on_runner_failure(
     tmp_path: Path,
     install_specialized_test_doubles,
@@ -525,9 +565,104 @@ def test_real_microscopic_agent_returns_partial_report_on_runner_failure(
     assert report.generated_artifacts["s0_aop_path"] == "/tmp/s0.aop"
     assert report.structured_results["error"]["code"] == "subprocess_failed"
     assert report.structured_results["task_completion_status"] == "partial"
-    assert "runtime execution was incomplete" in report.task_completion
+    assert report.structured_results["completion_reason_code"] == "runtime_failed"
+    assert "was incomplete" in report.task_completion
+    assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
     assert "torsion scan" in " ".join(report.structured_results["execution_plan"]["unsupported_requests"]).lower()
     assert "partial" in report.result_summary.lower()
+
+
+def test_real_microscopic_agent_uses_conformer_follow_up_route(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Assess bounded conformer sensitivity for the unresolved microscopic follow-up.",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        case_id="case123",
+        round_index=2,
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="round-2-conformer",
+            objective="Investigate conformer sensitivity with a bounded microscopic follow-up.",
+            target_property="conformer_sensitivity",
+        ),
+    )
+
+    assert report.status == "success"
+    assert report.task_completion_status == "completed"
+    assert report.completion_reason_code is None
+    assert report.structured_results["execution_plan"]["capability_route"] == "conformer_bundle_follow_up"
+    assert report.structured_results["attempted_route"] == "conformer_bundle_follow_up"
+
+
+def test_real_microscopic_agent_uses_torsion_snapshot_route(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Assess bounded dihedral and torsion sensitivity for the unresolved microscopic follow-up.",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        case_id="case123",
+        round_index=2,
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="round-2-torsion",
+            objective="Investigate torsion sensitivity with a bounded microscopic follow-up.",
+            target_property="torsion_sensitivity",
+        ),
+    )
+
+    assert report.status == "success"
+    assert report.task_completion_status == "completed"
+    assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
+    assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"
+
+
+def test_real_microscopic_agent_reports_capability_unsupported_for_excited_state_relaxation(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    agent = MicroscopicAgent(
+        amesp_tool=_UnsupportedRouteAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Attempt a low-cost excited-state geometry relaxation follow-up for S1.",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        case_id="case123",
+        round_index=2,
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="round-2-s1-relax",
+            objective="Investigate excited-state relaxation with a bounded microscopic follow-up.",
+            target_property="excited_state_relaxation",
+        ),
+    )
+
+    assert report.status == "failed"
+    assert report.task_completion_status == "failed"
+    assert report.completion_reason_code == "capability_unsupported"
+    assert report.structured_results["completion_reason_code"] == "capability_unsupported"
+    assert report.structured_results["execution_plan"]["capability_route"] == "excited_state_relaxation_follow_up"
+    assert "not yet validated" in report.result_summary.lower()
 
 
 def test_real_tool_backend_failure_does_not_break_workflow(

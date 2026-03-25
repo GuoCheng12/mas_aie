@@ -29,6 +29,7 @@ class WorkingMemoryManager:
                 agent_name=report.agent_name,
                 task_received=report.task_received,
                 task_completion_status=report.task_completion_status,
+                completion_reason_code=report.completion_reason_code,
                 task_completion=report.task_completion,
                 task_understanding=report.task_understanding,
                 reasoning_summary=report.reasoning_summary,

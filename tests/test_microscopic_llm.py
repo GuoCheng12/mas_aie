@@ -63,6 +63,7 @@ class _SuccessfulAmespTool:
             "RunResult",
             (),
             {
+                "route": getattr(plan, "capability_route", "baseline_bundle"),
                 "structure": type(
                     "PreparedStructure",
                     (),
@@ -88,10 +89,31 @@ class _SuccessfulAmespTool:
                     "S1Result",
                     (),
                     {
-                        "excited_states": [type("State", (), {"total_energy_hartree": -231.0})()],
+                        "excited_states": [
+                            type(
+                                "State",
+                                (),
+                                {
+                                    "state_index": 1,
+                                    "total_energy_hartree": -231.0,
+                                    "oscillator_strength": 0.245,
+                                    "excitation_energy_ev": 3.347,
+                                },
+                            )(),
+                            type(
+                                "State",
+                                (),
+                                {
+                                    "state_index": 2,
+                                    "total_energy_hartree": -230.95,
+                                    "oscillator_strength": 0.02,
+                                    "excitation_energy_ev": 3.52,
+                                },
+                            )(),
+                        ],
                         "first_oscillator_strength": 0.245,
                         "first_excitation_energy_ev": 3.347,
-                        "state_count": 1,
+                        "state_count": 2,
                         "model_dump": lambda self, mode="json": {
                             "excited_states": [
                                 {
@@ -100,14 +122,23 @@ class _SuccessfulAmespTool:
                                     "oscillator_strength": 0.245,
                                     "spin_square": 0.0,
                                     "excitation_energy_ev": 3.347,
+                                },
+                                {
+                                    "state_index": 2,
+                                    "total_energy_hartree": -230.95,
+                                    "oscillator_strength": 0.02,
+                                    "spin_square": 0.0,
+                                    "excitation_energy_ev": 3.52,
                                 }
                             ],
                             "first_excitation_energy_ev": 3.347,
                             "first_oscillator_strength": 0.245,
-                            "state_count": 1,
+                            "state_count": 2,
                         },
                     },
                 )(),
+                "route_records": [],
+                "route_summary": {"state_count": 2},
                 "raw_step_results": {"s0_optimization": {"exit_code": 0}, "s1_vertical_excitation": {"exit_code": 0}},
                 "generated_artifacts": {"prepared_xyz_path": "/tmp/prepared_structure.xyz", "s0_aop_path": "/tmp/s0.aop"},
             },
@@ -210,6 +241,8 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     assert report.structured_results["reasoning"]["capability_limit_note"] == "Current capability is restricted to baseline S0 and S1 tasks only."
     assert report.structured_results["execution_plan"]["steps"][2]["step_type"] == "s1_vertical_excitation"
     assert report.structured_results["unsupported_requests"] == ["torsion scan"]
+    assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+    assert report.structured_results["vertical_state_manifold"]["state_count"] == 2
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]

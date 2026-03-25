@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -53,6 +54,15 @@ class PreparedStructure(BaseModel):
     xyz_path: Path
     sdf_path: Path
     summary_path: Path
+
+
+@dataclass
+class PreparedConformerBundleMember:
+    atoms: "Atoms"
+    prepared: PreparedStructure
+    force_field_energy: float
+    conformer_id: int
+    rank: int
 
 
 def validate_closed_shell_support(formal_charge: int, radical_electrons: int) -> None:
@@ -134,6 +144,85 @@ def prepare_structure_from_smiles(
         positions=conformer.GetPositions(),
     )
     return atoms, prepared
+
+
+def prepare_conformer_bundle_from_smiles(
+    request: StructurePrepRequest,
+    *,
+    max_members: int,
+) -> list[PreparedConformerBundleMember]:
+    rdkit = _import_rdkit()
+    Chem = rdkit["Chem"]
+    AllChem = rdkit["AllChem"]
+    Atoms = _import_ase_atoms()
+
+    request.workdir.mkdir(parents=True, exist_ok=True)
+
+    base_mol = Chem.MolFromSmiles(request.smiles)
+    if base_mol is None:
+        raise StructurePrepError(
+            "invalid_smiles",
+            f"RDKit failed to parse the SMILES string: {request.smiles!r}.",
+        )
+
+    canonical_smiles = Chem.MolToSmiles(base_mol, canonical=True)
+    mol = Chem.AddHs(base_mol)
+    formal_charge = sum(atom.GetFormalCharge() for atom in mol.GetAtoms())
+    radical_electrons = sum(atom.GetNumRadicalElectrons() for atom in mol.GetAtoms())
+    validate_closed_shell_support(formal_charge, radical_electrons)
+
+    conformer_ids = _embed_conformers(AllChem, mol, request)
+    force_field = _select_force_field(AllChem, mol)
+    ranked = _optimize_and_rank_conformers(
+        AllChem,
+        mol,
+        conformer_ids,
+        force_field,
+        request.max_force_field_steps,
+    )
+
+    members: list[PreparedConformerBundleMember] = []
+    for rank, (conf_id, energy) in enumerate(ranked[: max(1, int(max_members))], start=1):
+        member_dir = request.workdir / f"conformer_{rank:02d}"
+        member_dir.mkdir(parents=True, exist_ok=True)
+        xyz_path = member_dir / "prepared_structure.xyz"
+        sdf_path = member_dir / "prepared_structure.sdf"
+        summary_path = member_dir / "structure_prep_summary.json"
+        _write_xyz(mol, conf_id, xyz_path, f"{request.label}_conf_{rank:02d}")
+        _write_sdf(Chem, mol, conf_id, sdf_path)
+        prepared = PreparedStructure(
+            input_smiles=request.smiles,
+            canonical_smiles=canonical_smiles,
+            charge=formal_charge,
+            multiplicity=1,
+            heavy_atom_count=mol.GetNumHeavyAtoms(),
+            atom_count=mol.GetNumAtoms(),
+            conformer_count=len(conformer_ids),
+            selected_conformer_id=conf_id,
+            force_field=force_field,
+            xyz_path=xyz_path,
+            sdf_path=sdf_path,
+            summary_path=summary_path,
+        )
+        summary_path.write_text(
+            json.dumps(prepared.model_dump(mode="json"), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        conformer = mol.GetConformer(conf_id)
+        atoms = Atoms(
+            symbols=[atom.GetSymbol() for atom in mol.GetAtoms()],
+            positions=conformer.GetPositions(),
+        )
+        members.append(
+            PreparedConformerBundleMember(
+                atoms=atoms,
+                prepared=prepared,
+                force_field_energy=energy,
+                conformer_id=conf_id,
+                rank=rank,
+            )
+        )
+    return members
 
 
 def _import_rdkit() -> dict[str, object]:
@@ -228,6 +317,44 @@ def _optimize_and_select_conformer(
             f"{force_field} optimization did not produce any valid conformer energy.",
         )
     return best_conf_id
+
+
+def _optimize_and_rank_conformers(
+    AllChem,
+    mol,
+    conformer_ids: list[int],
+    force_field: Literal["MMFF94", "UFF"],
+    max_steps: int,
+) -> list[tuple[int, float]]:
+    ranked: list[tuple[int, float]] = []
+    mmff_props = None
+    if force_field == "MMFF94":
+        mmff_props = AllChem.MMFFGetMoleculeProperties(mol, mmffVariant="MMFF94")
+        if mmff_props is None:
+            raise StructurePrepError(
+                "forcefield_failed",
+                "MMFF94 parameters were expected but could not be constructed for this molecule.",
+            )
+
+    for conf_id in conformer_ids:
+        if force_field == "MMFF94":
+            forcefield = AllChem.MMFFGetMoleculeForceField(mol, mmff_props, confId=conf_id)
+        else:
+            forcefield = AllChem.UFFGetMoleculeForceField(mol, confId=conf_id)
+        if forcefield is None:
+            raise StructurePrepError(
+                "forcefield_failed",
+                f"Failed to build {force_field} force field for conformer {conf_id}.",
+            )
+        forcefield.Minimize(maxIts=max_steps)
+        ranked.append((conf_id, float(forcefield.CalcEnergy())))
+    if not ranked:
+        raise StructurePrepError(
+            "forcefield_failed",
+            f"{force_field} optimization did not produce any valid conformer energy.",
+        )
+    ranked.sort(key=lambda item: item[1])
+    return ranked
 
 
 def _write_xyz(mol, conf_id: int, xyz_path: Path, label: str) -> None:

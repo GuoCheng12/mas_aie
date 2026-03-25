@@ -12,6 +12,7 @@ PlannerBackend = Literal["openai_sdk"]
 MicroscopicBackend = Literal["openai_sdk"]
 MacroBackend = Literal["openai_sdk"]
 VerifierBackend = Literal["openai_sdk"]
+MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
 
 
 def _default_project_root() -> Path:
@@ -35,6 +36,7 @@ class AieMasConfig(BaseModel):
     microscopic_api_key: Optional[str] = None
     microscopic_temperature: Optional[float] = None
     microscopic_timeout_seconds: Optional[float] = None
+    microscopic_budget_profile: Optional[MicroscopicBudgetProfile] = None
     macro_backend: Optional[MacroBackend] = None
     macro_base_url: Optional[str] = None
     macro_model: Optional[str] = None
@@ -50,8 +52,10 @@ class AieMasConfig(BaseModel):
     amesp_npara: Optional[int] = None
     amesp_maxcore_mb: Optional[int] = None
     amesp_use_ricosx: bool = True
-    amesp_s1_nstates: int = 1
+    amesp_s1_nstates: Optional[int] = None
     amesp_td_tout: int = 1
+    amesp_follow_up_max_conformers: Optional[int] = None
+    amesp_follow_up_max_torsion_snapshots_total: Optional[int] = None
     amesp_probe_interval_seconds: float = 15.0
     prompts_dir: Optional[Path] = None
     data_dir: Optional[Path] = None
@@ -83,6 +87,7 @@ class AieMasConfig(BaseModel):
             "microscopic_base_url": "AIE_MAS_MICROSCOPIC_BASE_URL",
             "microscopic_model": "AIE_MAS_MICROSCOPIC_MODEL",
             "microscopic_api_key": "AIE_MAS_MICROSCOPIC_API_KEY",
+            "microscopic_budget_profile": "AIE_MAS_MICROSCOPIC_BUDGET_PROFILE",
             "macro_backend": "AIE_MAS_MACRO_BACKEND",
             "macro_base_url": "AIE_MAS_MACRO_BASE_URL",
             "macro_model": "AIE_MAS_MACRO_MODEL",
@@ -143,6 +148,18 @@ class AieMasConfig(BaseModel):
             env_values["microscopic_timeout_seconds"] = float(
                 os.getenv("AIE_MAS_MICROSCOPIC_TIMEOUT", "120.0")
             )
+        if os.getenv("AIE_MAS_AMESP_S1_NSTATES"):
+            env_values["amesp_s1_nstates"] = int(os.getenv("AIE_MAS_AMESP_S1_NSTATES", "5"))
+        if os.getenv("AIE_MAS_AMESP_TD_TOUT"):
+            env_values["amesp_td_tout"] = int(os.getenv("AIE_MAS_AMESP_TD_TOUT", "1"))
+        if os.getenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_CONFORMERS"):
+            env_values["amesp_follow_up_max_conformers"] = int(
+                os.getenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_CONFORMERS", "3")
+            )
+        if os.getenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_TORSION_SNAPSHOTS_TOTAL"):
+            env_values["amesp_follow_up_max_torsion_snapshots_total"] = int(
+                os.getenv("AIE_MAS_AMESP_FOLLOW_UP_MAX_TORSION_SNAPSHOTS_TOTAL", "6")
+            )
         if os.getenv("AIE_MAS_MACRO_TEMPERATURE"):
             env_values["macro_temperature"] = float(os.getenv("AIE_MAS_MACRO_TEMPERATURE", "0.0"))
         if os.getenv("AIE_MAS_MACRO_TIMEOUT"):
@@ -157,10 +174,6 @@ class AieMasConfig(BaseModel):
             env_values["amesp_use_ricosx"] = cls._parse_bool(
                 os.getenv("AIE_MAS_AMESP_USE_RICOSX", "1")
             )
-        if os.getenv("AIE_MAS_AMESP_S1_NSTATES"):
-            env_values["amesp_s1_nstates"] = int(os.getenv("AIE_MAS_AMESP_S1_NSTATES", "1"))
-        if os.getenv("AIE_MAS_AMESP_TD_TOUT"):
-            env_values["amesp_td_tout"] = int(os.getenv("AIE_MAS_AMESP_TD_TOUT", "1"))
         if os.getenv("AIE_MAS_AMESP_PROBE_INTERVAL"):
             env_values["amesp_probe_interval_seconds"] = float(
                 os.getenv("AIE_MAS_AMESP_PROBE_INTERVAL", "15.0")
@@ -189,6 +202,8 @@ class AieMasConfig(BaseModel):
             self.microscopic_temperature = self.planner_temperature
         if self.microscopic_timeout_seconds is None:
             self.microscopic_timeout_seconds = self.planner_timeout_seconds
+        if self.microscopic_budget_profile is None:
+            self.microscopic_budget_profile = "balanced"
         if self.macro_backend is None:
             self.macro_backend = "openai_sdk"
         if self.macro_base_url is None:
@@ -211,6 +226,24 @@ class AieMasConfig(BaseModel):
             self.verifier_temperature = 0.1
         if self.verifier_timeout_seconds is None:
             self.verifier_timeout_seconds = 600.0
+        if self.amesp_s1_nstates is None:
+            self.amesp_s1_nstates = {
+                "conservative": 3,
+                "balanced": 5,
+                "aggressive": 8,
+            }[self.microscopic_budget_profile]
+        if self.amesp_follow_up_max_conformers is None:
+            self.amesp_follow_up_max_conformers = {
+                "conservative": 2,
+                "balanced": 3,
+                "aggressive": 5,
+            }[self.microscopic_budget_profile]
+        if self.amesp_follow_up_max_torsion_snapshots_total is None:
+            self.amesp_follow_up_max_torsion_snapshots_total = {
+                "conservative": 4,
+                "balanced": 6,
+                "aggressive": 8,
+            }[self.microscopic_budget_profile]
         if self.amesp_npara is None:
             if self.execution_profile == "linux-prod":
                 self.amesp_npara = max(1, min(20, os.cpu_count() or 1))
@@ -277,6 +310,7 @@ class AieMasConfig(BaseModel):
             "microscopic_api_key_configured": bool(self.microscopic_api_key),
             "microscopic_temperature": self.microscopic_temperature,
             "microscopic_timeout_seconds": self.microscopic_timeout_seconds,
+            "microscopic_budget_profile": self.microscopic_budget_profile,
             "macro_backend": self.macro_backend,
             "macro_base_url": self.macro_base_url,
             "macro_model": self.macro_model,
@@ -294,6 +328,8 @@ class AieMasConfig(BaseModel):
             "amesp_use_ricosx": self.amesp_use_ricosx,
             "amesp_s1_nstates": self.amesp_s1_nstates,
             "amesp_td_tout": self.amesp_td_tout,
+            "amesp_follow_up_max_conformers": self.amesp_follow_up_max_conformers,
+            "amesp_follow_up_max_torsion_snapshots_total": self.amesp_follow_up_max_torsion_snapshots_total,
             "amesp_probe_interval_seconds": self.amesp_probe_interval_seconds,
             "project_root": str(self.project_root),
             "prompts_dir": str(self.prompts_dir),

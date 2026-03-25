@@ -4,6 +4,7 @@
 ## task_understanding
 Interpret the Planner instruction as a bounded low-cost microscopic Amesp task for the current working hypothesis "{current_hypothesis}": {task_received}
 Requested local focus: {requested_focus}
+Requested Amesp route summary: {requested_route_summary}
 Recent round context: {recent_context_note}
 Capability boundary: {capability_scope}
 Structure handling note: {structure_source_note}
@@ -16,7 +17,7 @@ Capability limit note: {capability_limit_note}
 Failure policy: {failure_policy}
 
 ## execution_plan
-Execute the real low-cost Amesp baseline workflow as follows: {plan_steps}
+Execute the real bounded Amesp route "{capability_route}" as follows: {plan_steps}
 Expected outputs from this bounded run: {expected_outputs_text}
 If Amesp fails, return the available partial artifacts and local uncertainty only.
 
