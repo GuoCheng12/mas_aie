@@ -231,10 +231,7 @@ class AieMasWorkflow:
             task_spec=task_spec,
             current_hypothesis=state.current_hypothesis or "unknown",
             recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
-            available_artifacts={
-                **(dict(state.microscopic_reports[-1].generated_artifacts) if state.microscopic_reports else {}),
-                **self._shared_structure_artifacts(state),
-            },
+            available_artifacts=self._microscopic_available_artifacts(state),
             shared_structure_context=state.shared_structure_context,
             shared_structure_status=state.shared_structure_status,
             allow_internal_structure_fallback=state.shared_structure_status != "ready",
@@ -589,6 +586,28 @@ class AieMasWorkflow:
             "prepared_sdf_path": state.shared_structure_context.prepared_sdf_path,
             "prepared_summary_path": state.shared_structure_context.summary_path,
         }
+
+    def _microscopic_available_artifacts(self, state: AieMasState) -> dict[str, Any]:
+        available_artifacts = {
+            **(dict(state.microscopic_reports[-1].generated_artifacts) if state.microscopic_reports else {}),
+            **self._shared_structure_artifacts(state),
+        }
+        artifact_bundle_registry_sources: list[dict[str, Any]] = []
+        for index, report in enumerate(state.microscopic_reports, start=1):
+            generated_artifacts = dict(report.generated_artifacts)
+            if not generated_artifacts:
+                continue
+            source_round = int(generated_artifacts.get("source_round") or index)
+            generated_artifacts["source_round"] = source_round
+            artifact_bundle_registry_sources.append(
+                {
+                    "source_round": source_round,
+                    "executed_capability": report.structured_results.get("executed_capability"),
+                    "generated_artifacts": generated_artifacts,
+                }
+            )
+        available_artifacts["artifact_bundle_registry_sources"] = artifact_bundle_registry_sources
+        return available_artifacts
 
 
 def build_graph(

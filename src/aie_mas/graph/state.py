@@ -284,6 +284,7 @@ class MicroscopicToolPlan(BaseModel):
     requested_route_summary: str = "No microscopic tool-plan summary was provided."
     requested_deliverables: list[str] = Field(default_factory=list)
     selection_policy: SelectionPolicy = Field(default_factory=SelectionPolicy)
+    normalization_notes: list[str] = Field(default_factory=list)
     failure_reporting: str = "Return a local failed or partial report if the selected microscopic capability cannot be completed."
 
 

@@ -368,3 +368,110 @@ def test_openai_microscopic_reasoning_route_is_taken_from_llm_not_keyword_fallba
     assert report.structured_results["execution_plan"]["microscopic_tool_request"]["snapshot_count"] == 2
     assert report.structured_results["execution_plan"]["microscopic_tool_request"]["angle_offsets_deg"] == [25.0, -25.0]
     assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"
+
+
+def test_openai_microscopic_reasoning_drops_trailing_discovery_calls_after_execution(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "task_understanding": "Run the baseline bundle and ignore the accidental trailing discovery call.",
+              "reasoning_summary": "The baseline execution is sufficient for this task.",
+              "execution_plan": {
+                "local_goal": "Collect baseline microscopic evidence.",
+                "requested_deliverables": [
+                  "S0 geometry optimization",
+                  "S1 vertical excitation characterization"
+                ],
+                "capability_route": "baseline_bundle",
+                "requested_route_summary": "Use the default low-cost baseline bundle.",
+                "microscopic_tool_plan": {
+                  "calls": [
+                    {
+                      "call_id": "execute_baseline",
+                      "call_kind": "execution",
+                      "request": {
+                        "capability_name": "run_baseline_bundle",
+                        "perform_new_calculation": true,
+                        "reuse_existing_artifacts_only": false,
+                        "state_window": [1, 2],
+                        "deliverables": [
+                          "S0 geometry optimization",
+                          "S1 vertical excitation characterization"
+                        ],
+                        "budget_profile": "balanced",
+                        "requested_route_summary": "Run the baseline bundle."
+                      }
+                    },
+                    {
+                      "call_id": "discover_dihedrals_after_execution",
+                      "call_kind": "discovery",
+                      "request": {
+                        "capability_name": "list_rotatable_dihedrals",
+                        "structure_source": "round_s0_optimized_geometry",
+                        "requested_route_summary": "This trailing discovery call should be dropped."
+                      }
+                    }
+                  ],
+                  "requested_route_summary": "Baseline tool plan with a bad trailing discovery call.",
+                  "requested_deliverables": [
+                    "S0 geometry optimization",
+                    "S1 vertical excitation characterization"
+                  ],
+                  "failure_reporting": "Return a failed or partial report if Amesp fails."
+                },
+                "structure_strategy": "prepare_from_smiles",
+                "step_sequence": [
+                  "structure_prep",
+                  "s0_optimization",
+                  "s1_vertical_excitation"
+                ],
+                "unsupported_requests": []
+              },
+              "capability_limit_note": "Current capability is restricted to baseline S0 and S1 tasks only.",
+              "expected_outputs": [
+                "S0 optimized geometry",
+                "S1 first oscillator strength"
+              ],
+              "failure_policy": "Return a local failed or partial report if Amesp fails."
+            }
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        tool_backend="real",
+        planner_backend="openai_sdk",
+        microscopic_backend="openai_sdk",
+        microscopic_base_url="http://34.13.73.248:3888/v1",
+        microscopic_model="gpt-4.1-mini",
+        microscopic_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+        config=config,
+        prompts=PromptRepository(PROMPTS_DIR),
+        llm_client=OpenAICompatibleMicroscopicClient(config, client=fake_client),
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Use Amesp to optimize S0 and characterize S1.",
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Use Amesp to optimize S0 and characterize S1.",
+        ),
+        case_id="case123",
+        round_index=1,
+    )
+
+    calls = report.structured_results["execution_plan"]["microscopic_tool_plan"]["calls"]
+    normalization_notes = report.structured_results["execution_plan"]["microscopic_tool_plan"]["normalization_notes"]
+    assert len(calls) == 1
+    assert calls[0]["call_kind"] == "execution"
+    assert any("Dropped trailing discovery call" in note for note in normalization_notes)

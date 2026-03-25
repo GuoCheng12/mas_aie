@@ -605,6 +605,201 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
     assert "CT/localization proxy" in parsed_result.missing_deliverables
 
 
+def test_amesp_parse_snapshot_outputs_rejects_noncanonical_artifact_bundle_id(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    torsion_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate bounded torsion snapshots for later parsing.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate two torsion snapshots for later reuse.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="parse_source_noncanonical",
+        workdir=tmp_path / "parse_source_noncanonical_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Reject noncanonical artifact bundle IDs.",
+                requested_deliverables=["per-snapshot excitation records"],
+                capability_route="artifact_parse_only",
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="parse_snapshot_outputs",
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    artifact_bundle_id="7bc31a3d4c4d_round_01_micro",
+                    artifact_scope="torsion_snapshots",
+                    state_window=[1, 2],
+                    deliverables=["per-snapshot excitation records"],
+                    requested_route_summary="Reject ad hoc artifact bundle labels.",
+                ),
+                structure_source="existing_prepared_structure",
+                failure_reporting="Return partial or failed if parsing fails.",
+            ),
+            smiles="N",
+            label="parse_noncanonical",
+            workdir=tmp_path / "parse_noncanonical_workdir",
+            available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+            round_index=4,
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "precondition_missing"
+        assert "canonical bundle id" in exc.message.lower()
+    else:  # pragma: no cover
+        raise AssertionError("Expected parse-only execution to reject a noncanonical artifact bundle ID.")
+
+
+def test_amesp_parse_snapshot_outputs_can_select_bundle_from_registry_sources(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    round_2_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate round 2 torsion snapshots.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate round 2 torsion snapshots.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="registry_round_02",
+        workdir=tmp_path / "registry_round_02_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+    round_4_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate round 4 torsion snapshots.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[35.0, 70.0],
+                state_window=[1, 2],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate round 4 torsion snapshots.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="registry_round_04",
+        workdir=tmp_path / "registry_round_04_workdir",
+        available_artifacts={},
+        round_index=4,
+    )
+
+    parsed_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Select round 2 torsion artifacts through discovery before parse-only reuse.",
+            requested_deliverables=["per-snapshot excitation records"],
+            capability_route="artifact_parse_only",
+            microscopic_tool_plan=MicroscopicToolPlan(
+                calls=[
+                    MicroscopicToolCall(
+                        call_id="discover_artifact_bundles",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_artifact_bundles",
+                            artifact_kind="torsion_snapshots",
+                            perform_new_calculation=False,
+                            reuse_existing_artifacts_only=True,
+                            requested_route_summary="List reusable torsion bundles.",
+                        ),
+                    ),
+                    MicroscopicToolCall(
+                        call_id="execute_parse",
+                        call_kind="execution",
+                        request=MicroscopicToolRequest(
+                            capability_name="parse_snapshot_outputs",
+                            perform_new_calculation=False,
+                            reuse_existing_artifacts_only=True,
+                            state_window=[1, 2],
+                            deliverables=["per-snapshot excitation records"],
+                            requested_route_summary="Parse the selected torsion bundle without new calculations.",
+                        ),
+                    ),
+                ],
+                selection_policy=SelectionPolicy(
+                    artifact_kind="torsion_snapshots",
+                    source_round_preference=2,
+                ),
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if parsing fails.",
+        ),
+        smiles="N",
+        label="registry_parse",
+        workdir=tmp_path / "registry_parse_workdir",
+        available_artifacts={
+            **round_4_result.generated_artifacts,
+            "source_round": 4,
+            "artifact_bundle_registry_sources": [
+                {"source_round": 2, "generated_artifacts": {**round_2_result.generated_artifacts, "source_round": 2}},
+                {"source_round": 4, "generated_artifacts": {**round_4_result.generated_artifacts, "source_round": 4}},
+            ],
+        },
+        round_index=5,
+    )
+
+    assert parsed_result.executed_capability == "parse_snapshot_outputs"
+    assert parsed_result.resolved_target_ids["artifact_bundle_id"] == "round_02_torsion_snapshots"
+    assert parsed_result.route_summary["artifact_source_round"] == 2
+    assert parsed_result.performed_new_calculations is False
+
+
 def test_amesp_tool_uses_discovery_before_torsion_execution_when_dihedral_id_is_missing(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -1025,6 +1220,36 @@ def test_real_microscopic_agent_uses_torsion_snapshot_route(
     assert report.task_completion_status == "completed"
     assert report.structured_results["execution_plan"]["capability_route"] == "torsion_snapshot_follow_up"
     assert report.structured_results["attempted_route"] == "torsion_snapshot_follow_up"
+
+
+def test_real_microscopic_agent_does_not_false_positive_transition_state_from_state_words(
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Use Amesp to summarize the first bright state, keep the requested state_window fixed, "
+            "and report the low-lying states without any new follow-up scan."
+        ),
+        current_hypothesis="restriction of intramolecular motion (RIM)-dominated AIE",
+        case_id="case123",
+        round_index=2,
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="round-2-state-words",
+            objective="Summarize the low-lying bright-state pattern.",
+        ),
+    )
+
+    assert report.task_completion_status == "completed"
+    assert "transition-state optimization" not in report.structured_results["unsupported_requests"]
 
 
 def test_real_microscopic_agent_reports_capability_unsupported_for_excited_state_relaxation(

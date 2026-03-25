@@ -520,9 +520,27 @@ class AmespMicroscopicTool:
             )
 
         if resolved_request.artifact_bundle_id:
-            resolved_target_ids["artifact_bundle_id"] = resolved_request.artifact_bundle_id
+            descriptor = self._artifact_bundle_descriptor_by_id(
+                artifact_bundle_id=resolved_request.artifact_bundle_id,
+                available_artifacts=available_artifacts,
+            )
+            if descriptor is None:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    f"The requested artifact bundle `{resolved_request.artifact_bundle_id}` is not a discoverable canonical bundle ID for the current case run.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": request.capability_name,
+                        "performed_new_calculations": request.perform_new_calculation,
+                        "reused_existing_artifacts": request.reuse_existing_artifacts_only,
+                    },
+                )
+            resolved_request.artifact_bundle_id = descriptor.artifact_bundle_id
+            resolved_request.artifact_kind = descriptor.artifact_kind
+            resolved_request.artifact_source_round = descriptor.source_round
+            resolved_target_ids["artifact_bundle_id"] = descriptor.artifact_bundle_id
             honored_constraints.append(
-                f"Execution request honored explicit artifact bundle `{resolved_request.artifact_bundle_id}`."
+                f"Execution request honored explicit canonical artifact bundle `{descriptor.artifact_bundle_id}`."
             )
 
         if request.capability_name == "run_torsion_snapshots" and not resolved_request.dihedral_id:
@@ -702,17 +720,45 @@ class AmespMicroscopicTool:
         available_artifacts: dict[str, Any] | None,
     ) -> list[ArtifactBundleDescriptor]:
         available_artifacts = available_artifacts or {}
+        descriptors = self._available_artifact_bundle_descriptors(available_artifacts)
+        if request.artifact_kind is None:
+            return descriptors
+        return [descriptor for descriptor in descriptors if descriptor.artifact_kind == request.artifact_kind]
+
+    def _available_artifact_bundle_descriptors(
+        self,
+        available_artifacts: dict[str, Any] | None,
+    ) -> list[ArtifactBundleDescriptor]:
+        available_artifacts = available_artifacts or {}
+        descriptors_by_id: dict[str, ArtifactBundleDescriptor] = {}
+        registry_sources = list(available_artifacts.get("artifact_bundle_registry_sources") or [])
+        if registry_sources:
+            for source in registry_sources:
+                source_artifacts = dict(source.get("generated_artifacts") or {})
+                source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
+                source_artifacts["source_round"] = source_round
+                for descriptor in self._artifact_bundle_descriptors_from_source(source_artifacts):
+                    descriptors_by_id[descriptor.artifact_bundle_id] = descriptor
+        else:
+            for descriptor in self._artifact_bundle_descriptors_from_source(available_artifacts):
+                descriptors_by_id[descriptor.artifact_bundle_id] = descriptor
+        return sorted(descriptors_by_id.values(), key=lambda item: (-int(item.source_round), item.artifact_bundle_id))
+
+    def _artifact_bundle_descriptors_from_source(
+        self,
+        source_artifacts: dict[str, Any],
+    ) -> list[ArtifactBundleDescriptor]:
         descriptors: list[ArtifactBundleDescriptor] = []
-        source_round = int(available_artifacts.get("source_round") or 0)
-        if available_artifacts.get("snapshot_artifacts"):
+        source_round = int(source_artifacts.get("source_round") or 0)
+        if source_artifacts.get("snapshot_artifacts"):
             descriptors.append(
                 ArtifactBundleDescriptor(
                     artifact_bundle_id=f"round_{source_round:02d}_torsion_snapshots",
                     source_round=source_round,
                     source_capability="run_torsion_snapshots",
                     artifact_kind="torsion_snapshots",
-                    snapshot_count=len(list(available_artifacts.get("snapshot_artifacts") or [])),
-                    available_files=_collect_available_file_keys(available_artifacts, "snapshot_artifacts"),
+                    snapshot_count=len(list(source_artifacts.get("snapshot_artifacts") or [])),
+                    available_files=_collect_available_file_keys(source_artifacts, "snapshot_artifacts"),
                     available_deliverables=[
                         "per-snapshot excitation energies",
                         "per-snapshot oscillator strengths",
@@ -720,15 +766,15 @@ class AmespMicroscopicTool:
                     ],
                 )
             )
-        if available_artifacts.get("conformer_artifacts"):
+        if source_artifacts.get("conformer_artifacts"):
             descriptors.append(
                 ArtifactBundleDescriptor(
                     artifact_bundle_id=f"round_{source_round:02d}_conformer_bundle",
                     source_round=source_round,
                     source_capability="run_conformer_bundle",
                     artifact_kind="conformer_bundle",
-                    snapshot_count=len(list(available_artifacts.get("conformer_artifacts") or [])),
-                    available_files=_collect_available_file_keys(available_artifacts, "conformer_artifacts"),
+                    snapshot_count=len(list(source_artifacts.get("conformer_artifacts") or [])),
+                    available_files=_collect_available_file_keys(source_artifacts, "conformer_artifacts"),
                     available_deliverables=[
                         "bounded conformer vertical-state records",
                         "excitation spread",
@@ -736,7 +782,7 @@ class AmespMicroscopicTool:
                     ],
                 )
             )
-        if available_artifacts.get("s0_aop_path") or available_artifacts.get("s1_aop_path"):
+        if source_artifacts.get("s0_aop_path") or source_artifacts.get("s1_aop_path"):
             descriptors.append(
                 ArtifactBundleDescriptor(
                     artifact_bundle_id=f"round_{source_round:02d}_baseline_bundle",
@@ -744,16 +790,50 @@ class AmespMicroscopicTool:
                     source_capability="run_baseline_bundle",
                     artifact_kind="baseline_bundle",
                     snapshot_count=1,
-                    available_files=_collect_scalar_artifact_files(available_artifacts),
+                    available_files=_collect_scalar_artifact_files(source_artifacts),
                     available_deliverables=[
                         "S0 optimized geometry",
                         "vertical excited-state manifold",
                     ],
                 )
             )
-        if request.artifact_kind is None:
-            return descriptors
-        return [descriptor for descriptor in descriptors if descriptor.artifact_kind == request.artifact_kind]
+        return descriptors
+
+    def _artifact_bundle_descriptor_by_id(
+        self,
+        *,
+        artifact_bundle_id: str,
+        available_artifacts: dict[str, Any] | None,
+    ) -> Optional[ArtifactBundleDescriptor]:
+        for descriptor in self._available_artifact_bundle_descriptors(available_artifacts):
+            if descriptor.artifact_bundle_id == artifact_bundle_id:
+                return descriptor
+        return None
+
+    def _artifact_bundle_source_by_id(
+        self,
+        *,
+        artifact_bundle_id: str,
+        available_artifacts: dict[str, Any] | None,
+    ) -> Optional[tuple[ArtifactBundleDescriptor, dict[str, Any]]]:
+        available_artifacts = available_artifacts or {}
+        registry_sources = list(available_artifacts.get("artifact_bundle_registry_sources") or [])
+        if registry_sources:
+            for source in registry_sources:
+                source_artifacts = dict(source.get("generated_artifacts") or {})
+                source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
+                source_artifacts["source_round"] = source_round
+                for descriptor in self._artifact_bundle_descriptors_from_source(source_artifacts):
+                    if descriptor.artifact_bundle_id == artifact_bundle_id:
+                        return descriptor, source_artifacts
+            return None
+        descriptor = self._artifact_bundle_descriptor_by_id(
+            artifact_bundle_id=artifact_bundle_id,
+            available_artifacts=available_artifacts,
+        )
+        if descriptor is None:
+            return None
+        return descriptor, available_artifacts
 
     def _load_prepared_structure_from_paths(
         self,
@@ -1026,12 +1106,28 @@ class AmespMicroscopicTool:
                 },
             )
 
+        selected_artifacts = available_artifacts
         artifact_scope = request.artifact_scope or "latest_bundle"
         source_round = available_artifacts.get("source_round")
         if request.artifact_bundle_id is not None:
-            expected_bundle_id = f"round_{int(source_round or 0):02d}_{artifact_scope}"
-            if request.artifact_bundle_id.startswith("round_") and request.artifact_bundle_id != expected_bundle_id:
-                artifact_scope = _artifact_scope_from_bundle_id(request.artifact_bundle_id)
+            resolved_bundle = self._artifact_bundle_source_by_id(
+                artifact_bundle_id=request.artifact_bundle_id,
+                available_artifacts=available_artifacts,
+            )
+            if resolved_bundle is None:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    f"Parse-only follow-up requested canonical artifact bundle `{request.artifact_bundle_id}`, but it was not discoverable in the current case run.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": "parse_snapshot_outputs",
+                        "performed_new_calculations": False,
+                        "reused_existing_artifacts": True,
+                    },
+                )
+            descriptor, selected_artifacts = resolved_bundle
+            artifact_scope = descriptor.artifact_kind
+            source_round = descriptor.source_round
         if request.artifact_source_round is not None and source_round not in {None, request.artifact_source_round}:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -1049,11 +1145,11 @@ class AmespMicroscopicTool:
 
         artifact_records: list[dict[str, Any]] = []
         if artifact_scope == "conformer_bundle":
-            artifact_records = list(available_artifacts.get("conformer_artifacts") or [])
+            artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
         else:
-            artifact_records = list(available_artifacts.get("snapshot_artifacts") or [])
+            artifact_records = list(selected_artifacts.get("snapshot_artifacts") or [])
             if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
-                artifact_records = list(available_artifacts.get("conformer_artifacts") or [])
+                artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
         if not artifact_records:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -1071,7 +1167,7 @@ class AmespMicroscopicTool:
         primary_s0: AmespGroundStateResult | None = None
         primary_s1: AmespExcitedStateResult | None = None
         for artifact in artifact_records:
-            prepared = self._load_prepared_structure_from_record(artifact, available_artifacts)
+            prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
             s0_result = self._parse_s0_from_existing_artifacts(artifact, prepared)
             s1_result = self._parse_s1_from_existing_artifacts(
                 artifact,
@@ -1157,6 +1253,7 @@ class AmespMicroscopicTool:
                 "prepared_sdf_path": str(primary_structure.sdf_path),
                 "prepared_summary_path": str(primary_structure.summary_path),
                 "source_round": source_round,
+                "artifact_bundle_id": request.artifact_bundle_id,
                 "parsed_snapshot_record_count": len(parsed_records),
                 "reused_snapshot_artifacts": artifact_records,
             },

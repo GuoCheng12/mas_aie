@@ -823,7 +823,7 @@ class MicroscopicAgent:
     ) -> MicroscopicToolPlan:
         draft_plan = reasoning.execution_plan.microscopic_tool_plan
         selection_policy = self._build_selection_policy(task_received=task_received, draft=draft_plan.selection_policy if draft_plan is not None else None)
-        calls = self._normalize_tool_calls(
+        calls, normalization_notes = self._normalize_tool_calls(
             task_received=task_received,
             task_spec=task_spec,
             requested_deliverables=requested_deliverables,
@@ -843,6 +843,7 @@ class MicroscopicAgent:
                 else requested_deliverables
             ),
             selection_policy=selection_policy,
+            normalization_notes=normalization_notes,
             failure_reporting=(
                 draft_plan.failure_reporting
                 if draft_plan is not None and draft_plan.failure_reporting
@@ -923,7 +924,7 @@ class MicroscopicAgent:
         task_spec: MicroscopicTaskSpec,
         requested_deliverables: list[str],
         reasoning: MicroscopicReasoningResponse,
-    ) -> list[MicroscopicToolCall]:
+    ) -> tuple[list[MicroscopicToolCall], list[str]]:
         draft_plan = reasoning.execution_plan.microscopic_tool_plan
         if draft_plan is not None and draft_plan.calls:
             calls = [self._normalize_tool_call(call, requested_deliverables) for call in draft_plan.calls]
@@ -935,7 +936,27 @@ class MicroscopicAgent:
                 reasoning=reasoning,
             )
         calls = self._ensure_discovery_before_execution(calls)
-        return calls
+        return self._canonicalize_tool_call_sequence(calls)
+
+    def _canonicalize_tool_call_sequence(
+        self,
+        calls: list[MicroscopicToolCall],
+    ) -> tuple[list[MicroscopicToolCall], list[str]]:
+        normalized: list[MicroscopicToolCall] = []
+        normalization_notes: list[str] = []
+        execution_seen = False
+        execution_call_id: Optional[str] = None
+        for call in calls:
+            if execution_seen:
+                normalization_notes.append(
+                    f"Dropped trailing {call.call_kind} call `{call.call_id}` after execution `{execution_call_id}`."
+                )
+                continue
+            normalized.append(call)
+            if call.call_kind == "execution":
+                execution_seen = True
+                execution_call_id = call.call_id
+        return normalized, normalization_notes
 
     def _normalize_tool_call(
         self,
@@ -1403,6 +1424,7 @@ class MicroscopicAgent:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
     ) -> list[str]:
+        del task_spec
         lower_instruction = task_received.lower()
         unsupported: list[str] = []
         if "scan" in lower_instruction and any(
@@ -1410,16 +1432,36 @@ class MicroscopicAgent:
         ):
             unsupported.append("torsion scan")
         keyword_mapping = {
-            "heavy full-DFT geometry optimization": ("full dft", "exhaustive geometry optimization"),
-            "transition-state optimization": ("transition state", "ts"),
-            "IRC": ("irc",),
-            "solvent model": ("solvent", "cpcm", "cosmo"),
-            "SOC/NAC analysis": ("soc", "nac"),
-            "AIMD": ("aimd", "dynamics"),
-            "bond-order analysis": ("bond order", "mayer"),
+            "heavy full-DFT geometry optimization": (
+                re.compile(r"\bfull[\s-]?dft\b"),
+                re.compile(r"\bexhaustive geometry optimization\b"),
+            ),
+            "transition-state optimization": (
+                re.compile(r"\btransition[\s-]?state\b"),
+                re.compile(r"\bts optimization\b"),
+                re.compile(r"\btransition[\s-]?state optimization\b"),
+            ),
+            "IRC": (re.compile(r"\birc\b"),),
+            "solvent model": (
+                re.compile(r"\bsolvent model\b"),
+                re.compile(r"\bcpcm\b"),
+                re.compile(r"\bcosmo\b"),
+            ),
+            "SOC/NAC analysis": (
+                re.compile(r"\bsoc\b"),
+                re.compile(r"\bnac\b"),
+            ),
+            "AIMD": (
+                re.compile(r"\baimd\b"),
+                re.compile(r"\bab initio molecular dynamics\b"),
+            ),
+            "bond-order analysis": (
+                re.compile(r"\bbond order\b"),
+                re.compile(r"\bmayer\b"),
+            ),
         }
-        for label, tokens in keyword_mapping.items():
-            if any(token in lower_instruction for token in tokens):
+        for label, patterns in keyword_mapping.items():
+            if any(pattern.search(lower_instruction) for pattern in patterns):
                 unsupported.append(label)
         return unsupported
 
@@ -1590,12 +1632,18 @@ class MicroscopicAgent:
                 if missing_deliverables
                 else ""
             )
+            unsupported_note = (
+                " Unsupported background requests were also noted: " + "; ".join(unsupported_requests) + "."
+                if unsupported_requests
+                else ""
+            )
             return (
                 "contracted",
                 "partial_observable_only",
                 (
                     f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task completed in a contracted form via Amesp route '{capability_route}'.{missing_note}"
+                    f"{unsupported_note}"
                 ),
             )
         if unsupported_requests:
@@ -1622,15 +1670,22 @@ class MicroscopicAgent:
                 "contracted",
                 "partial_observable_only",
                 f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
-                f"The agent returned bounded Amesp route '{capability_route}' evidence, but it could not execute unsupported "
-                f"parts of the Planner instruction: {unsupported}.",
-            )
+                    f"The agent returned bounded Amesp route '{capability_route}' evidence, but it could not execute unsupported "
+                    f"parts of the Planner instruction: {unsupported}.",
+                )
         return (
             "completed",
             None,
             (
                 f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
                 "All requested deliverables were produced within current microscopic capability."
+                + (
+                    " Unsupported background requests were noted but did not block the executed capability: "
+                    + "; ".join(unsupported_requests)
+                    + "."
+                    if unsupported_requests
+                    else ""
+                )
             ),
         )
 
