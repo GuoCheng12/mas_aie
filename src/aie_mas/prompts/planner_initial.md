@@ -47,6 +47,11 @@ Return:
 - `capability_assessment`
 - `hypothesis_reweight_explanation`
 - `decision_gate_status`
+- `pairwise_task_agent`
+- `pairwise_task_completed_for_pair`
+- `pairwise_task_outcome`
+- `pairwise_task_rationale`
+- `finalization_mode`
 
 Hypothesis-pool rules:
 - Include all 5 labels exactly once.
@@ -60,6 +65,13 @@ Hypothesis-pool rules:
 
 `decision_gate_status` rules:
 - In the initial round it should remain `not_ready`.
+
+`pairwise_task_*` and `finalization_mode` rules:
+- `pairwise_task_agent` should be empty in the initial round.
+- `pairwise_task_completed_for_pair` should be empty in the initial round.
+- `pairwise_task_outcome` should be `not_run`.
+- `pairwise_task_rationale` should be empty in the initial round.
+- `finalization_mode` should be `none`.
 
 The diagnosis should explain:
 - what the task is

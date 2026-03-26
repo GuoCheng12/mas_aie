@@ -8,10 +8,15 @@ PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifi
 PendingAgent = Literal["macro", "microscopic", "verifier"]
 DecisionGateStatus = Literal[
     "not_ready",
-    "needs_pairwise_verifier",
-    "ready_to_finalize",
+    "needs_pairwise_discriminative_task",
+    "needs_high_confidence_verifier",
+    "ready_to_finalize_decisive",
+    "ready_to_finalize_best_available",
     "blocked_by_missing_decisive_evidence",
 ]
+PairwiseTaskAgent = Literal["macro", "microscopic"]
+PairwiseTaskOutcome = Literal["not_run", "decisive", "inconclusive", "failed"]
+FinalizationMode = Literal["none", "decisive", "best_available"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal[
     "structure_prep",
@@ -194,6 +199,11 @@ class PlannerDecision(BaseModel):
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_task_agent: Optional[PairwiseTaskAgent] = None
+    pairwise_task_completed_for_pair: Optional[str] = None
+    pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
+    pairwise_task_rationale: Optional[str] = None
+    finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
 
@@ -224,6 +234,11 @@ class WorkingMemoryEntry(BaseModel):
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_task_agent: Optional[PairwiseTaskAgent] = None
+    pairwise_task_completed_for_pair: Optional[str] = None
+    pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
+    pairwise_task_rationale: Optional[str] = None
+    finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     local_uncertainty_summary: Optional[str] = None
@@ -447,6 +462,11 @@ class AieMasState(BaseModel):
     runner_up_confidence: Optional[float] = None
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_task_agent: Optional[PairwiseTaskAgent] = None
+    pairwise_task_completed_for_pair: Optional[str] = None
+    pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
+    pairwise_task_rationale: Optional[str] = None
+    finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)

@@ -136,6 +136,11 @@ class AieMasWorkflow:
         state.runner_up_confidence = decision.runner_up_confidence
         state.decision_pair = list(decision.decision_pair)
         state.decision_gate_status = decision.decision_gate_status
+        state.pairwise_task_agent = decision.pairwise_task_agent
+        state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair
+        state.pairwise_task_outcome = decision.pairwise_task_outcome
+        state.pairwise_task_rationale = decision.pairwise_task_rationale
+        state.finalization_mode = decision.finalization_mode
         state.pairwise_verifier_completed_for_pair = decision.pairwise_verifier_completed_for_pair
         state.pairwise_verifier_evidence_specificity = decision.pairwise_verifier_evidence_specificity
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
@@ -307,6 +312,11 @@ class AieMasWorkflow:
             "runner_up_confidence": state.runner_up_confidence,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
+            "pairwise_task_agent": state.pairwise_task_agent,
+            "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
+            "pairwise_task_outcome": state.pairwise_task_outcome,
+            "pairwise_task_rationale": state.pairwise_task_rationale,
+            "finalization_mode": state.finalization_mode,
             "pairwise_verifier_completed_for_pair": state.pairwise_verifier_completed_for_pair,
             "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
             "diagnosis": decision.diagnosis if decision else None,
@@ -336,6 +346,8 @@ class AieMasWorkflow:
     def route_after_working_memory(self, state: AieMasState) -> str:
         if state.finalize or (state.last_planner_decision and state.last_planner_decision.finalize):
             return "update_long_term_memory"
+        if state.decision_gate_status == "blocked_by_missing_decisive_evidence":
+            return "final_output"
         if state.round_idx >= self.config.max_rounds:
             return "final_output"
         if state.last_planner_decision is None:
@@ -369,6 +381,11 @@ class AieMasWorkflow:
         state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
         state.decision_pair = list(decision.decision_pair)  # type: ignore[union-attr]
         state.decision_gate_status = decision.decision_gate_status  # type: ignore[union-attr]
+        state.pairwise_task_agent = decision.pairwise_task_agent  # type: ignore[union-attr]
+        state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair  # type: ignore[union-attr]
+        state.pairwise_task_outcome = decision.pairwise_task_outcome  # type: ignore[union-attr]
+        state.pairwise_task_rationale = decision.pairwise_task_rationale  # type: ignore[union-attr]
+        state.finalization_mode = decision.finalization_mode  # type: ignore[union-attr]
         state.pairwise_verifier_completed_for_pair = (
             decision.pairwise_verifier_completed_for_pair  # type: ignore[union-attr]
         )

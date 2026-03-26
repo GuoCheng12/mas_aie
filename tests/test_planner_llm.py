@@ -42,6 +42,73 @@ class _FakeClient:
         self.chat = type("FakeChat", (), {"completions": _FakeChatCompletions(responses)})()
 
 
+def _build_planner(tmp_path: Path, responses: list[str]) -> tuple[PlannerAgent, _FakeClient]:
+    fake_client = _FakeClient(responses)
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        planner_backend="openai_sdk",
+        planner_base_url="http://34.13.73.248:3888/v1",
+        planner_model="gpt-4.1-mini",
+        planner_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    planner = PlannerAgent(
+        prompts=PromptRepository(PROMPTS_DIR),
+        config=config,
+        llm_client=OpenAICompatiblePlannerClient(config, client=fake_client),
+    )
+    return planner, fake_client
+
+
+def _base_hypothesis_pool() -> list[dict[str, object]]:
+    return [
+        {"name": "ICT", "confidence": 0.74},
+        {"name": "TICT", "confidence": 0.18},
+        {"name": "ESIPT", "confidence": 0.04},
+        {"name": "neutral aromatic", "confidence": 0.03},
+        {"name": "unknown", "confidence": 0.01},
+    ]
+
+
+def _base_state(**overrides: object) -> AieMasState:
+    payload: dict[str, object] = {
+        "user_query": "Assess the likely AIE mechanism for this molecule.",
+        "smiles": "C1=CC=CC=C1",
+        "current_hypothesis": "ICT",
+        "confidence": 0.74,
+        "runner_up_hypothesis": "TICT",
+        "runner_up_confidence": 0.18,
+        "decision_pair": ["ICT", "TICT"],
+        "hypothesis_pool": _base_hypothesis_pool(),
+        "decision_gate_status": "not_ready",
+        "pairwise_task_outcome": "not_run",
+        "finalization_mode": "none",
+    }
+    payload.update(overrides)
+    return AieMasState.model_validate(payload)
+
+
+def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review") -> dict[str, object]:
+    return {
+        "agent_name": "verifier",
+        "task_received": "verifier task",
+        "task_understanding": "verifier understanding",
+        "reasoning_summary": "verifier reasoning summary",
+        "execution_plan": "verifier execution plan",
+        "result_summary": "verifier result summary",
+        "remaining_local_uncertainty": "verifier uncertainty",
+        "tool_calls": [],
+        "raw_results": {},
+        "structured_results": {
+            "pairwise_verifier_completed_for_pair": pair_key,
+            "pairwise_verifier_evidence_specificity": specificity,
+        },
+        "status": "success",
+        "planner_readable_report": "verifier planner readable report",
+    }
+
+
 def test_openai_planner_backend_invokes_chat_completions_with_configured_model(tmp_path: Path) -> None:
     fake_client = _FakeClient(
         [
@@ -461,3 +528,163 @@ def test_workflow_stores_planner_raw_and_normalized_responses(tmp_path: Path) ->
         "decision": decision.model_dump(mode="json"),
     }
     assert updated.planner_response_history[-1]["node"] == "planner_initial"
+
+
+def test_planner_diagnosis_requires_internal_pairwise_task_before_verifier(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.74},
+                {"name": "TICT", "confidence": 0.18},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "neutral aromatic", "confidence": 0.03},
+                {"name": "unknown", "confidence": 0.01}
+              ],
+              "diagnosis": "ICT remains top1 over TICT and the case is nearing closure.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.74,
+              "evidence_summary": "Latest internal evidence favors ICT.",
+              "main_gap": "Need one internal discriminator between ICT and TICT.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(_base_state())
+
+    assert result["decision"].action == "microscopic"
+    assert result["decision"].decision_gate_status == "needs_pairwise_discriminative_task"
+    assert result["decision"].pairwise_task_agent == "microscopic"
+    assert result["decision"].finalize is False
+    assert "distinguish 'ICT' from 'TICT'" in (result["decision"].task_instruction or "")
+
+
+def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.76},
+                {"name": "TICT", "confidence": 0.14},
+                {"name": "ESIPT", "confidence": 0.05},
+                {"name": "neutral aromatic", "confidence": 0.03},
+                {"name": "unknown", "confidence": 0.02}
+              ],
+              "diagnosis": "The internal pairwise task was completed and ICT still leads over TICT.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.76,
+              "evidence_summary": "A bounded internal discriminator has already been collected.",
+              "main_gap": "Need high-confidence external context before closure.",
+              "conflict_status": "none",
+              "pairwise_task_completed_for_pair": "ICT__vs__TICT",
+              "pairwise_task_outcome": "decisive",
+              "pairwise_task_rationale": "Microscopic evidence directly probed the key discriminator."
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="ICT__vs__TICT",
+            pairwise_task_outcome="decisive",
+            pairwise_task_rationale="Microscopic evidence directly probed the key discriminator.",
+        )
+    )
+
+    assert result["decision"].action == "verifier"
+    assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
+    assert result["decision"].needs_verifier is True
+    assert "high-confidence external verification" in (result["decision"].task_instruction or "")
+
+
+def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pairwise_task(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.61},
+                {"name": "TICT", "confidence": 0.29},
+                {"name": "ESIPT", "confidence": 0.05},
+                {"name": "neutral aromatic", "confidence": 0.03},
+                {"name": "unknown", "confidence": 0.02}
+              ],
+              "diagnosis": "The internal discriminator stayed inconclusive, but ICT remains first after verifier supplementation.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.61,
+              "finalize": true,
+              "evidence_summary": "Internal pairwise evidence was inconclusive and verifier added external context.",
+              "main_gap": "No decisive internal discriminator separated ICT from TICT.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="ICT__vs__TICT",
+            pairwise_task_outcome="inconclusive",
+            pairwise_task_rationale="The bounded microscopic discriminator stayed ambiguous.",
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT")],
+        )
+    )
+
+    assert result["decision"].finalize is True
+    assert result["decision"].finalization_mode == "best_available"
+    assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+    assert "Best-available closure" in (result["decision"].final_hypothesis_rationale or "")
+
+
+def test_planner_reweight_blocks_finalize_when_pairwise_task_failed(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.68},
+                {"name": "TICT", "confidence": 0.20},
+                {"name": "ESIPT", "confidence": 0.05},
+                {"name": "neutral aromatic", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.03}
+              ],
+              "diagnosis": "The internal pairwise task failed, so the case cannot close safely.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.68,
+              "finalize": true,
+              "evidence_summary": "The requested internal discriminator failed before completion.",
+              "main_gap": "The key ICT-vs-TICT discriminator was never completed.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="ICT__vs__TICT",
+            pairwise_task_outcome="failed",
+            pairwise_task_rationale="The bounded microscopic discriminator failed locally.",
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT")],
+        )
+    )
+
+    assert result["decision"].finalize is False
+    assert result["decision"].finalization_mode == "none"
+    assert result["decision"].decision_gate_status == "blocked_by_missing_decisive_evidence"
