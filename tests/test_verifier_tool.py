@@ -78,8 +78,9 @@ def test_verifier_tool_normalizes_retrieved_cards() -> None:
     assert card["experimental_context"] == "aggregate state"
     assert result["query_groups_attempted"] == [
         "exact_identity",
-        "similar_family",
-        "mechanistic_discriminator",
+        "champion_family",
+        "challenger_family",
+        "pairwise_discriminator",
     ]
     assert result["query_groups_with_hits"] == ["exact_identity"]
     assert result["queries_executed"]

@@ -12,9 +12,20 @@ from aie_mas.graph.state import AgentReport, MoleculeIdentityContext, VerifierEv
 from aie_mas.llm.openai_compatible import OpenAICompatibleVerifierClient
 from aie_mas.utils.prompts import PromptRepository
 
+_EVIDENCE_SPECIFICITY_ORDER = {
+    "no_direct_hit": 0,
+    "generic_review": 1,
+    "close_family": 2,
+    "exact_compound": 3,
+}
+
 
 def _default_prompt_repository() -> PromptRepository:
     return PromptRepository(Path(__file__).resolve().parents[1] / "prompts")
+
+
+def _pairwise_key(champion_hypothesis: str, challenger_hypothesis: str) -> str:
+    return f"{champion_hypothesis}__vs__{challenger_hypothesis}"
 
 
 class VerifierRetrievedCardDraft(BaseModel):
@@ -31,6 +42,10 @@ class VerifierRetrievedCardDraft(BaseModel):
     match_level: str = "generic_mechanistic_context"
     mechanism_claim: Optional[str] = None
     experimental_context: Optional[str] = None
+    comparison_bucket: str = ""
+    relevant_hypotheses: list[str] = Field(default_factory=list)
+    criterion_type: Optional[str] = None
+    evidence_specificity: str = "generic_review"
 
 
 class VerifierRetrievalResponse(BaseModel):
@@ -56,14 +71,26 @@ class OpenAIVerifierEvidenceTool:
         *,
         smiles: str,
         current_hypothesis: str,
+        champion_hypothesis: str | None = None,
+        challenger_hypothesis: str | None = None,
+        pairwise_decision_question: str | None = None,
         task_received: str,
         main_gap: str,
         molecule_identity_context: MoleculeIdentityContext | None,
         latest_macro_report: AgentReport | None,
         latest_microscopic_report: AgentReport | None,
     ) -> dict[str, Any]:
+        champion_hypothesis = champion_hypothesis or current_hypothesis
+        challenger_hypothesis = challenger_hypothesis or "unknown"
+        pairwise_decision_question = pairwise_decision_question or (
+            f"Distinguish '{champion_hypothesis}' versus '{challenger_hypothesis}' for the current molecule. "
+            f"The unresolved discriminator is: {main_gap}"
+        )
         query_bundle = self._build_query_bundle(
             current_hypothesis=current_hypothesis,
+            champion_hypothesis=champion_hypothesis,
+            challenger_hypothesis=challenger_hypothesis,
+            pairwise_decision_question=pairwise_decision_question,
             main_gap=main_gap,
             molecule_identity_context=molecule_identity_context,
             latest_macro_report=latest_macro_report,
@@ -72,6 +99,9 @@ class OpenAIVerifierEvidenceTool:
         payload = {
             "smiles": smiles,
             "current_hypothesis": current_hypothesis,
+            "champion_hypothesis": champion_hypothesis,
+            "challenger_hypothesis": challenger_hypothesis,
+            "pairwise_decision_question": pairwise_decision_question,
             "task_received": task_received,
             "main_gap": main_gap,
             "molecule_identity_context": (
@@ -105,29 +135,49 @@ class OpenAIVerifierEvidenceTool:
                 "source_count": 0,
                 "evidence_cards": [],
                 "queried_hypothesis": current_hypothesis,
+                "champion_hypothesis": champion_hypothesis,
+                "challenger_hypothesis": challenger_hypothesis,
                 "retrieval_note": "Verifier retrieval failed before any evidence cards could be returned.",
                 "queries_executed": query_bundle["queries_executed"],
                 "query_groups_attempted": query_bundle["query_groups_attempted"],
                 "query_groups_with_hits": [],
+                "pairwise_verifier_completed_for_pair": _pairwise_key(
+                    champion_hypothesis,
+                    challenger_hypothesis,
+                ),
+                "pairwise_verifier_evidence_specificity": "no_direct_hit",
             }
 
         evidence_cards = self._normalize_cards(response.evidence_cards)
-        has_non_limitation = any(card.query_group != "limitation" for card in evidence_cards)
+        has_non_limitation = any(card.comparison_bucket != "limitation" for card in evidence_cards)
         if not evidence_cards:
-            evidence_cards = [self._generic_limitation_card(current_hypothesis)]
+            evidence_cards = [
+                self._generic_limitation_card(
+                    champion_hypothesis=champion_hypothesis,
+                    challenger_hypothesis=challenger_hypothesis,
+                )
+            ]
         query_groups_with_hits = self._query_groups_with_hits(evidence_cards)
         retrieval_status = "success" if has_non_limitation else "partial"
+        pairwise_specificity = self._pairwise_evidence_specificity(evidence_cards)
 
         return {
             "status": retrieval_status,
             "source_count": len(evidence_cards),
             "evidence_cards": [card.model_dump(mode="json") for card in evidence_cards],
             "queried_hypothesis": current_hypothesis,
+            "champion_hypothesis": champion_hypothesis,
+            "challenger_hypothesis": challenger_hypothesis,
             "retrieval_note": response.retrieval_note,
             "raw_response": response.model_dump(mode="json"),
             "queries_executed": query_bundle["queries_executed"],
             "query_groups_attempted": query_bundle["query_groups_attempted"],
             "query_groups_with_hits": query_groups_with_hits,
+            "pairwise_verifier_completed_for_pair": _pairwise_key(
+                champion_hypothesis,
+                challenger_hypothesis,
+            ),
+            "pairwise_verifier_evidence_specificity": pairwise_specificity,
         }
 
     def _normalize_cards(
@@ -155,6 +205,15 @@ class OpenAIVerifierEvidenceTool:
                     match_level=self._normalize_match_level(card.match_level),
                     mechanism_claim=self._clean_optional(card.mechanism_claim),
                     experimental_context=self._clean_optional(card.experimental_context),
+                    comparison_bucket=self._normalize_comparison_bucket(
+                        card.comparison_bucket or card.query_group
+                    ),
+                    relevant_hypotheses=self._normalize_relevant_hypotheses(card.relevant_hypotheses),
+                    criterion_type=self._clean_optional(card.criterion_type),
+                    evidence_specificity=self._normalize_evidence_specificity(
+                        card.evidence_specificity,
+                        card.match_level,
+                    ),
                 )
             )
         return normalized[:4]
@@ -182,38 +241,88 @@ class OpenAIVerifierEvidenceTool:
 
     def _normalize_query_group(self, query_group: str) -> str:
         normalized = query_group.strip().lower()
+        if normalized == "similar_family":
+            return "champion_family"
+        if normalized == "mechanistic_discriminator":
+            return "pairwise_discriminator"
         if normalized in {
             "exact_identity",
-            "similar_family",
-            "mechanistic_discriminator",
+            "champion_family",
+            "challenger_family",
+            "pairwise_discriminator",
             "limitation",
         }:
             return normalized
-        return "similar_family"
+        return "champion_family"
 
     def _normalize_match_level(self, match_level: str) -> str:
         normalized = match_level.strip().lower()
         if normalized in {
             "exact_molecule",
             "same_family",
+            "specific_test_criterion",
+            "similar_structural_class",
             "generic_mechanistic_context",
             "retrieval_limitation",
         }:
             return normalized
         return "generic_mechanistic_context"
 
+    def _normalize_comparison_bucket(self, comparison_bucket: str) -> str:
+        normalized = comparison_bucket.strip().lower()
+        if normalized in {
+            "exact_identity",
+            "champion_family",
+            "challenger_family",
+            "pairwise_discriminator",
+            "limitation",
+        }:
+            return normalized
+        normalized_query_group = self._normalize_query_group(comparison_bucket)
+        if normalized_query_group == "similar_family":
+            return "champion_family"
+        if normalized_query_group == "mechanistic_discriminator":
+            return "pairwise_discriminator"
+        return normalized_query_group
+
+    def _normalize_relevant_hypotheses(self, relevant_hypotheses: list[str]) -> list[str]:
+        normalized: list[str] = []
+        for hypothesis in relevant_hypotheses:
+            text = str(hypothesis).strip()
+            if text and text not in normalized:
+                normalized.append(text)
+        return normalized
+
+    def _normalize_evidence_specificity(self, specificity: str, match_level: str) -> str:
+        normalized = specificity.strip().lower()
+        if normalized in {"exact_compound", "close_family", "generic_review", "no_direct_hit"}:
+            return normalized
+        match_level_normalized = self._normalize_match_level(match_level)
+        if match_level_normalized == "exact_molecule":
+            return "exact_compound"
+        if match_level_normalized in {"same_family", "similar_structural_class"}:
+            return "close_family"
+        if match_level_normalized == "retrieval_limitation":
+            return "no_direct_hit"
+        return "generic_review"
+
     def _clean_optional(self, value: Optional[str]) -> Optional[str]:
         text = (value or "").strip()
         return text or None
 
-    def _generic_limitation_card(self, current_hypothesis: str) -> VerifierEvidenceCard:
+    def _generic_limitation_card(
+        self,
+        *,
+        champion_hypothesis: str,
+        challenger_hypothesis: str,
+    ) -> VerifierEvidenceCard:
         return VerifierEvidenceCard(
             card_id="verifier-limitation-card",
             source="verifier_runtime",
             title="Verifier retrieval limitation",
             observation=(
-                f"No source-backed external material specific enough to distinguish the current hypothesis "
-                f"'{current_hypothesis}' was retrieved in this verifier run."
+                f"No source-backed external material specific enough to distinguish '{champion_hypothesis}' "
+                f"from '{challenger_hypothesis}' was retrieved in this verifier run."
             ),
             topic_tags=["limitation"],
             evidence_kind="mechanistic_note",
@@ -222,40 +331,62 @@ class OpenAIVerifierEvidenceTool:
             ),
             query_group="limitation",
             match_level="retrieval_limitation",
+            comparison_bucket="limitation",
+            relevant_hypotheses=[champion_hypothesis, challenger_hypothesis],
+            criterion_type="state_assignment",
+            evidence_specificity="no_direct_hit",
         )
 
     def _query_groups_with_hits(self, cards: list[VerifierEvidenceCard]) -> list[str]:
         groups: list[str] = []
         for card in cards:
-            if card.query_group not in groups:
-                groups.append(card.query_group)
+            if card.comparison_bucket not in groups:
+                groups.append(card.comparison_bucket)
         return groups
+
+    def _pairwise_evidence_specificity(self, cards: list[VerifierEvidenceCard]) -> str:
+        best_specificity = "no_direct_hit"
+        for card in cards:
+            if _EVIDENCE_SPECIFICITY_ORDER[card.evidence_specificity] > _EVIDENCE_SPECIFICITY_ORDER[best_specificity]:
+                best_specificity = card.evidence_specificity
+        return best_specificity
 
     def _build_query_bundle(
         self,
         *,
         current_hypothesis: str,
+        champion_hypothesis: str,
+        challenger_hypothesis: str,
+        pairwise_decision_question: str,
         main_gap: str,
         molecule_identity_context: MoleculeIdentityContext | None,
         latest_macro_report: AgentReport | None,
         latest_microscopic_report: AgentReport | None,
     ) -> dict[str, object]:
         exact_identity_queries = self._exact_identity_queries(molecule_identity_context)
-        similar_family_queries = self._similar_family_queries(
-            current_hypothesis=current_hypothesis,
+        champion_family_queries = self._family_queries(
+            focus_hypothesis=champion_hypothesis,
             latest_macro_report=latest_macro_report,
             latest_microscopic_report=latest_microscopic_report,
         )
-        mechanistic_discriminator_queries = self._mechanistic_discriminator_queries(
-            current_hypothesis=current_hypothesis,
+        challenger_family_queries = self._family_queries(
+            focus_hypothesis=challenger_hypothesis,
+            latest_macro_report=latest_macro_report,
+            latest_microscopic_report=latest_microscopic_report,
+        )
+        pairwise_discriminator_queries = self._pairwise_discriminator_queries(
+            champion_hypothesis=champion_hypothesis,
+            challenger_hypothesis=challenger_hypothesis,
+            pairwise_decision_question=pairwise_decision_question,
             main_gap=main_gap,
             latest_macro_report=latest_macro_report,
             latest_microscopic_report=latest_microscopic_report,
         )
         query_groups_attempted = [
             "exact_identity",
-            "similar_family",
-            "mechanistic_discriminator",
+            "champion_family",
+            "challenger_family",
+            "pairwise_discriminator",
         ]
         queries_executed = [
             *[
@@ -263,18 +394,23 @@ class OpenAIVerifierEvidenceTool:
                 for query in exact_identity_queries
             ],
             *[
-                {"query_group": "similar_family", "query": query}
-                for query in similar_family_queries
+                {"query_group": "champion_family", "query": query}
+                for query in champion_family_queries
             ],
             *[
-                {"query_group": "mechanistic_discriminator", "query": query}
-                for query in mechanistic_discriminator_queries
+                {"query_group": "challenger_family", "query": query}
+                for query in challenger_family_queries
+            ],
+            *[
+                {"query_group": "pairwise_discriminator", "query": query}
+                for query in pairwise_discriminator_queries
             ],
         ]
         return {
             "exact_identity_queries": exact_identity_queries,
-            "similar_family_queries": similar_family_queries,
-            "mechanistic_discriminator_queries": mechanistic_discriminator_queries,
+            "champion_family_queries": champion_family_queries,
+            "challenger_family_queries": challenger_family_queries,
+            "pairwise_discriminator_queries": pairwise_discriminator_queries,
             "query_groups_attempted": query_groups_attempted,
             "queries_executed": queries_executed,
         }
@@ -301,10 +437,10 @@ class OpenAIVerifierEvidenceTool:
             )
         return queries[:4]
 
-    def _similar_family_queries(
+    def _family_queries(
         self,
         *,
-        current_hypothesis: str,
+        focus_hypothesis: str,
         latest_macro_report: AgentReport | None,
         latest_microscopic_report: AgentReport | None,
     ) -> list[str]:
@@ -326,14 +462,16 @@ class OpenAIVerifierEvidenceTool:
         descriptor_text = ", ".join(dict.fromkeys(descriptors))
         return [
             f'{descriptor_text} reported AIE mechanism review',
-            f'{descriptor_text} "{current_hypothesis}" literature example',
+            f'{descriptor_text} "{focus_hypothesis}" literature example',
             f'{descriptor_text} aggregation induced emission related case',
         ]
 
-    def _mechanistic_discriminator_queries(
+    def _pairwise_discriminator_queries(
         self,
         *,
-        current_hypothesis: str,
+        champion_hypothesis: str,
+        challenger_hypothesis: str,
+        pairwise_decision_question: str,
         main_gap: str,
         latest_macro_report: AgentReport | None,
         latest_microscopic_report: AgentReport | None,
@@ -343,7 +481,9 @@ class OpenAIVerifierEvidenceTool:
             filter(
                 None,
                 [
-                    current_hypothesis,
+                    champion_hypothesis,
+                    challenger_hypothesis,
+                    pairwise_decision_question,
                     main_gap,
                     latest_macro_report.result_summary if latest_macro_report else "",
                     latest_microscopic_report.result_summary if latest_microscopic_report else "",
@@ -362,8 +502,8 @@ class OpenAIVerifierEvidenceTool:
         if not competition_terms:
             competition_terms = ["ict", "aggregation", "excited-state relaxation"]
         queries = [
-            f'"{current_hypothesis}" versus {competition_terms[0]} AIE mechanism discriminator',
-            f'{current_hypothesis} {competition_terms[-1]} decisive evidence review',
-            f'{current_hypothesis} aggregation induced emission mechanistic distinction',
+            f'"{champion_hypothesis}" versus "{challenger_hypothesis}" decisive photophysical discriminator',
+            f'{champion_hypothesis} {challenger_hypothesis} {competition_terms[-1]} decisive evidence review',
+            pairwise_decision_question,
         ]
         return queries[:3]

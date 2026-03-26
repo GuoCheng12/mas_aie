@@ -260,7 +260,14 @@ def test_openai_planner_normalizes_hypothesis_labels_to_fixed_pool(tmp_path: Pat
     )
 
     assert result["decision"].current_hypothesis == "ICT"
-    assert [entry.name for entry in result["hypothesis_pool"]] == ["ICT"]
+    assert [entry.name for entry in result["hypothesis_pool"]] == [
+        "ICT",
+        "unknown",
+        "TICT",
+        "ESIPT",
+        "neutral aromatic",
+    ]
+    assert round(sum(float(entry.confidence or 0.0) for entry in result["hypothesis_pool"]), 6) == 1.0
 
 
 def test_openai_client_extracts_json_from_code_fence(tmp_path: Path) -> None:

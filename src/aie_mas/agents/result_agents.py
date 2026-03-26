@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
 
 from aie_mas.config import AieMasConfig
@@ -31,11 +32,20 @@ class VerifierAgent:
         current_hypothesis: str,
         task_received: str,
         *,
+        champion_hypothesis: str | None = None,
+        challenger_hypothesis: str | None = None,
+        pairwise_decision_question: str | None = None,
         main_gap: str,
         molecule_identity_context: MoleculeIdentityContext | None = None,
         latest_macro_report: AgentReport | None = None,
         latest_microscopic_report: AgentReport | None = None,
     ) -> AgentReport:
+        champion_hypothesis = champion_hypothesis or current_hypothesis
+        challenger_hypothesis = challenger_hypothesis or "unknown"
+        pairwise_decision_question = pairwise_decision_question or (
+            f"Distinguish '{champion_hypothesis}' versus '{challenger_hypothesis}' for the current molecule. "
+            f"The unresolved discriminator is: {main_gap}"
+        )
         draft = self._prompts.render_sections(
             "verifier_specialized",
             {
@@ -51,14 +61,21 @@ class VerifierAgent:
                 ),
             },
         )
+        invoke_kwargs = {
+            "smiles": smiles,
+            "current_hypothesis": current_hypothesis,
+            "champion_hypothesis": champion_hypothesis,
+            "challenger_hypothesis": challenger_hypothesis,
+            "pairwise_decision_question": pairwise_decision_question,
+            "task_received": task_received,
+            "main_gap": main_gap,
+            "molecule_identity_context": molecule_identity_context,
+            "latest_macro_report": latest_macro_report,
+            "latest_microscopic_report": latest_microscopic_report,
+        }
+        accepted_parameters = set(inspect.signature(self._tool.invoke).parameters)
         raw_result = self._tool.invoke(
-            smiles=smiles,
-            current_hypothesis=current_hypothesis,
-            task_received=task_received,
-            main_gap=main_gap,
-            molecule_identity_context=molecule_identity_context,
-            latest_macro_report=latest_macro_report,
-            latest_microscopic_report=latest_microscopic_report,
+            **{key: value for key, value in invoke_kwargs.items() if key in accepted_parameters}
         )
         cards = raw_result["evidence_cards"]
         topic_summary = _topic_summary(cards)
@@ -94,7 +111,8 @@ class VerifierAgent:
             tool_calls=[
                 (
                     f"{self._tool.name}(smiles='{smiles}', current_hypothesis='{current_hypothesis}', "
-                    f"main_gap='{main_gap}')"
+                    f"champion_hypothesis='{champion_hypothesis}', "
+                    f"challenger_hypothesis='{challenger_hypothesis}', main_gap='{main_gap}')"
                 )
             ],
             raw_results={"verifier_lookup": raw_result},

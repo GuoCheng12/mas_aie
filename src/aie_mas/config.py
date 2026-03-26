@@ -68,6 +68,7 @@ class AieMasConfig(BaseModel):
     amesp_binary_path: Optional[Path] = None
     external_search_binary_path: Optional[Path] = None
     verifier_threshold: float = 0.72
+    finalize_margin_threshold: float = 0.15
     max_rounds: int = 4
 
     @classmethod
@@ -130,6 +131,10 @@ class AieMasConfig(BaseModel):
 
         if os.getenv("AIE_MAS_VERIFIER_THRESHOLD"):
             env_values["verifier_threshold"] = float(os.getenv("AIE_MAS_VERIFIER_THRESHOLD", "0.72"))
+        if os.getenv("AIE_MAS_FINALIZE_MARGIN_THRESHOLD"):
+            env_values["finalize_margin_threshold"] = float(
+                os.getenv("AIE_MAS_FINALIZE_MARGIN_THRESHOLD", "0.15")
+            )
         if os.getenv("AIE_MAS_MAX_ROUNDS"):
             env_values["max_rounds"] = int(os.getenv("AIE_MAS_MAX_ROUNDS", "4"))
         if os.getenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY"):
@@ -349,6 +354,7 @@ class AieMasConfig(BaseModel):
             "planner_temperature": self.planner_temperature,
             "planner_timeout_seconds": self.planner_timeout_seconds,
             "verifier_threshold": self.verifier_threshold,
+            "finalize_margin_threshold": self.finalize_margin_threshold,
             "max_rounds": self.max_rounds,
         }
 

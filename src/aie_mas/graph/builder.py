@@ -132,6 +132,13 @@ class AieMasWorkflow:
         state.hypothesis_pool = result["hypothesis_pool"]
         state.current_hypothesis = decision.current_hypothesis
         state.confidence = decision.confidence
+        state.runner_up_hypothesis = decision.runner_up_hypothesis
+        state.runner_up_confidence = decision.runner_up_confidence
+        state.decision_pair = list(decision.decision_pair)
+        state.decision_gate_status = decision.decision_gate_status
+        state.pairwise_verifier_completed_for_pair = decision.pairwise_verifier_completed_for_pair
+        state.pairwise_verifier_evidence_specificity = decision.pairwise_verifier_evidence_specificity
+        state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents
         state.pending_agent_instructions = dict(decision.agent_task_instructions)
         state.last_planner_decision = decision
@@ -258,6 +265,13 @@ class AieMasWorkflow:
         report = self.verifier_agent.run(
             smiles=state.smiles,
             current_hypothesis=state.current_hypothesis or "unknown",
+            champion_hypothesis=state.current_hypothesis or "unknown",
+            challenger_hypothesis=state.runner_up_hypothesis or "unknown",
+            pairwise_decision_question=(
+                f"Distinguish '{state.current_hypothesis or 'unknown'}' versus "
+                f"'{state.runner_up_hypothesis or 'unknown'}' for the current molecule. "
+                f"The unresolved discriminator is: {state.latest_main_gap or 'unspecified gap.'}"
+            ),
             task_received=task_instruction,
             main_gap=state.latest_main_gap or "Unspecified verifier gap.",
             molecule_identity_context=state.molecule_identity_context,
@@ -289,6 +303,12 @@ class AieMasWorkflow:
             "smiles": state.smiles,
             "current_hypothesis": state.current_hypothesis,
             "confidence": state.confidence,
+            "runner_up_hypothesis": state.runner_up_hypothesis,
+            "runner_up_confidence": state.runner_up_confidence,
+            "decision_pair": list(state.decision_pair),
+            "decision_gate_status": state.decision_gate_status,
+            "pairwise_verifier_completed_for_pair": state.pairwise_verifier_completed_for_pair,
+            "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
             "diagnosis": decision.diagnosis if decision else None,
             "action": decision.action if decision else None,
             "finalize": state.finalize,
@@ -341,8 +361,21 @@ class AieMasWorkflow:
     ) -> AieMasState:
         decision = result["decision"]
         state.last_planner_decision = decision  # type: ignore[assignment]
+        if "hypothesis_pool" in result:
+            state.hypothesis_pool = result["hypothesis_pool"]  # type: ignore[assignment]
         state.current_hypothesis = decision.current_hypothesis  # type: ignore[union-attr]
         state.confidence = decision.confidence  # type: ignore[union-attr]
+        state.runner_up_hypothesis = decision.runner_up_hypothesis  # type: ignore[union-attr]
+        state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
+        state.decision_pair = list(decision.decision_pair)  # type: ignore[union-attr]
+        state.decision_gate_status = decision.decision_gate_status  # type: ignore[union-attr]
+        state.pairwise_verifier_completed_for_pair = (
+            decision.pairwise_verifier_completed_for_pair  # type: ignore[union-attr]
+        )
+        state.pairwise_verifier_evidence_specificity = (
+            decision.pairwise_verifier_evidence_specificity  # type: ignore[union-attr]
+        )
+        state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents  # type: ignore[union-attr]
         state.pending_agent_instructions = dict(decision.agent_task_instructions)  # type: ignore[union-attr]
         state.finalize = decision.finalize  # type: ignore[union-attr]

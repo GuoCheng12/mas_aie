@@ -6,6 +6,12 @@ from pydantic import BaseModel, Field
 
 PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize"]
 PendingAgent = Literal["macro", "microscopic", "verifier"]
+DecisionGateStatus = Literal[
+    "not_ready",
+    "needs_pairwise_verifier",
+    "ready_to_finalize",
+    "blocked_by_missing_decisive_evidence",
+]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal[
     "structure_prep",
@@ -56,6 +62,19 @@ VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_n
 SharedStructureStatus = Literal["missing", "ready", "failed"]
 MoleculeIdentityStatus = Literal["missing", "ready", "partial", "failed"]
 WorkflowProgressPhase = Literal["start", "probe", "end"]
+VerifierComparisonBucket = Literal[
+    "exact_identity",
+    "champion_family",
+    "challenger_family",
+    "pairwise_discriminator",
+    "limitation",
+]
+VerifierEvidenceSpecificity = Literal[
+    "exact_compound",
+    "close_family",
+    "generic_review",
+    "no_direct_hit",
+]
 
 
 class WorkflowProgressEvent(TypedDict):
@@ -108,16 +127,25 @@ class VerifierEvidenceCard(BaseModel):
         "exact_identity",
         "similar_family",
         "mechanistic_discriminator",
+        "champion_family",
+        "challenger_family",
+        "pairwise_discriminator",
         "limitation",
     ] = "similar_family"
     match_level: Literal[
         "exact_molecule",
         "same_family",
+        "specific_test_criterion",
+        "similar_structural_class",
         "generic_mechanistic_context",
         "retrieval_limitation",
     ] = "generic_mechanistic_context"
     mechanism_claim: Optional[str] = None
     experimental_context: Optional[str] = None
+    comparison_bucket: VerifierComparisonBucket = "pairwise_discriminator"
+    relevant_hypotheses: list[str] = Field(default_factory=list)
+    criterion_type: Optional[str] = None
+    evidence_specificity: VerifierEvidenceSpecificity = "generic_review"
 
 
 class WorkingMemoryAgentEntry(BaseModel):
@@ -161,12 +189,22 @@ class PlannerDecision(BaseModel):
     information_gain_assessment: Optional[str] = None
     gap_trend: Optional[str] = None
     stagnation_detected: bool = False
+    runner_up_hypothesis: Optional[str] = None
+    runner_up_confidence: Optional[float] = None
+    hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
+    decision_pair: list[str] = Field(default_factory=list)
+    decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_verifier_completed_for_pair: Optional[str] = None
+    pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
 
 
 class WorkingMemoryEntry(BaseModel):
     round_id: int
     current_hypothesis: str
     confidence: float
+    hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
+    runner_up_hypothesis: Optional[str] = None
+    runner_up_confidence: Optional[float] = None
     action_taken: str
     evidence_summary: str
     diagnosis_summary: str
@@ -183,6 +221,11 @@ class WorkingMemoryEntry(BaseModel):
     information_gain_assessment: Optional[str] = None
     gap_trend: Optional[str] = None
     stagnation_detected: bool = False
+    hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
+    decision_pair: list[str] = Field(default_factory=list)
+    decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_verifier_completed_for_pair: Optional[str] = None
+    pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     local_uncertainty_summary: Optional[str] = None
     repeated_local_uncertainty_signals: list[str] = Field(default_factory=list)
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
@@ -400,6 +443,13 @@ class AieMasState(BaseModel):
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
     current_hypothesis: Optional[str] = None
     confidence: Optional[float] = None
+    runner_up_hypothesis: Optional[str] = None
+    runner_up_confidence: Optional[float] = None
+    decision_pair: list[str] = Field(default_factory=list)
+    decision_gate_status: DecisionGateStatus = "not_ready"
+    pairwise_verifier_completed_for_pair: Optional[str] = None
+    pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
+    hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)
 
     planner_diagnosis_history: list[str] = Field(default_factory=list)
     planner_action_history: list[str] = Field(default_factory=list)
