@@ -60,6 +60,7 @@ MicroscopicCompletionReasonCode = Literal[
     "resource_budget_exceeded",
     "parse_failed",
     "protocol_parse_failed",
+    "action_not_supported_by_registry",
     "partial_observable_only",
 ]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]

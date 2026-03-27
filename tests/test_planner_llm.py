@@ -109,6 +109,29 @@ def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review"
     }
 
 
+def _microscopic_registry_blocked_report() -> dict[str, object]:
+    return {
+        "agent_name": "microscopic",
+        "task_received": "microscopic task",
+        "task_understanding": "microscopic understanding",
+        "reasoning_summary": "microscopic reasoning summary",
+        "execution_plan": "microscopic execution plan",
+        "result_summary": "microscopic result summary",
+        "remaining_local_uncertainty": "microscopic uncertainty",
+        "tool_calls": [],
+        "raw_results": {},
+        "structured_results": {
+            "registry_infeasible_for_verifier_handshake": True,
+            "registry_infeasible_reason": "required_registry_observables_unavailable",
+            "completion_reason_code": "partial_observable_only",
+            "missing_deliverables": ["CT/localization proxy"],
+            "route_summary": {"ct_proxy_availability": "not_available"},
+        },
+        "status": "success",
+        "planner_readable_report": "microscopic planner readable report",
+    }
+
+
 def test_openai_planner_backend_invokes_chat_completions_with_configured_model(tmp_path: Path) -> None:
     fake_client = _FakeClient(
         [
@@ -605,6 +628,55 @@ def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_
     assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
     assert result["decision"].needs_verifier is True
     assert "high-confidence external verification" in (result["decision"].task_instruction or "")
+
+
+def test_planner_diagnosis_preserves_verifier_when_microscopic_is_registry_blocked(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.76},
+                {"name": "neutral aromatic", "confidence": 0.16},
+                {"name": "TICT", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.02},
+                {"name": "unknown", "confidence": 0.02}
+              ],
+              "diagnosis": "Internal evidence is saturated and the remaining gap now needs verifier supplementation.",
+              "action": "verifier",
+              "current_hypothesis": "ICT",
+              "confidence": 0.76,
+              "needs_verifier": true,
+              "evidence_summary": "The latest microscopic task completed but the required CT/localization observable was unavailable internally.",
+              "main_gap": "Need high-confidence external context before closure.",
+              "conflict_status": "none",
+              "pairwise_task_completed_for_pair": "ICT_vs_neutral aromatic:not_completed",
+              "pairwise_task_outcome": "not_run"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            runner_up_hypothesis="neutral aromatic",
+            runner_up_confidence=0.16,
+            decision_pair=["ICT", "neutral aromatic"],
+            hypothesis_pool=[
+                {"name": "ICT", "confidence": 0.76},
+                {"name": "neutral aromatic", "confidence": 0.16},
+                {"name": "TICT", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.02},
+                {"name": "unknown", "confidence": 0.02},
+            ],
+            microscopic_reports=[_microscopic_registry_blocked_report()],
+        )
+    )
+
+    assert result["decision"].action == "verifier"
+    assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
+    assert result["decision"].needs_verifier is True
 
 
 def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pairwise_task(tmp_path: Path) -> None:

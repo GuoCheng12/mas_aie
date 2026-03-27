@@ -282,6 +282,10 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
     assert "response_format" not in fake_client.chat.completions.calls[0]
+    prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "action_registry" in prompt_payload
+    assert "baseline_action_card_example" in prompt_payload
+    assert "torsion_action_card_example" in prompt_payload
 
 
 def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) -> None:
@@ -306,15 +310,14 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
             If local execution fails, return a bounded failed report without making any mechanism judgment.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Collect first-round low-cost S0 and vertical excited-state evidence.
-            primary_capability=run_baseline_bundle
-            target_object_kind=none
+            execution_action=run_baseline_bundle
             requested_route_summary=Run the default low-cost baseline bundle.
             requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
             unsupported_requests=
-            constraint.perform_new_calculation=true
-            constraint.optimize_ground_state=true
+            param.perform_new_calculation=true
+            param.optimize_ground_state=true
             </microscopic_semantic_contract>
             """
         ],
@@ -338,6 +341,8 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
     assert report.structured_results["reasoning_parse_mode"] == "semantic_contract"
     assert report.structured_results["reasoning_contract_mode"] == "semantic_contract"
     assert report.structured_results["reasoning_contract_errors"] == []
+    assert report.structured_results["registry_action_name"] == "run_baseline_bundle"
+    assert report.structured_results["registry_validation_errors"] == []
     assert plan["capability_route"] == "baseline_bundle"
     assert plan["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
     assert len(plan["microscopic_tool_plan"]["calls"]) == 1
@@ -368,14 +373,13 @@ def test_openai_microscopic_recovers_unclosed_expected_outputs_section(tmp_path:
             If local execution fails, return a bounded local failed report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Run the first-round low-cost microscopic baseline task.
-            primary_capability=run_baseline_bundle
-            target_object_kind=none
+            execution_action=run_baseline_bundle
             requested_route_summary=Run the default low-cost baseline bundle.
             requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
             unsupported_requests=
-            constraint.perform_new_calculation=true
+            param.perform_new_calculation=true
             </microscopic_semantic_contract>
             """
         ],
@@ -422,18 +426,17 @@ def test_openai_microscopic_contracts_bad_baseline_capability_back_to_baseline(t
             If local execution fails, return a bounded local failed report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Incorrectly choose torsion follow-up during baseline round.
-            primary_capability=run_torsion_snapshots
-            needs_discovery=rotatable_dihedrals
-            target_object_kind=dihedral
+            execution_action=run_torsion_snapshots
+            discovery_actions=list_rotatable_dihedrals
             requested_route_summary=Run torsion snapshots.
             requested_deliverables=vertical excited-state manifold characterization | torsion sensitivity summary
             unsupported_requests=
-            constraint.perform_new_calculation=true
-            constraint.snapshot_count=2
-            constraint.angle_offsets_deg=35,70
-            constraint.state_window=1,2,3
+            param.perform_new_calculation=true
+            param.snapshot_count=2
+            param.angle_offsets_deg=35,70
+            param.state_window=1,2,3
             </microscopic_semantic_contract>
             """
         ],
@@ -482,26 +485,25 @@ def test_openai_microscopic_supports_semantic_contract_torsion_with_discovery(tm
             If no suitable dihedral can be found, return a local failed microscopic report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Collect torsion-sensitive microscopic evidence with exact bounded constraints.
-            primary_capability=run_torsion_snapshots
-            needs_discovery=rotatable_dihedrals
-            target_object_kind=dihedral
+            execution_action=run_torsion_snapshots
+            discovery_actions=list_rotatable_dihedrals
             requested_route_summary=Discover one relevant dihedral and run a bounded torsion follow-up.
             requested_deliverables=torsion sensitivity summary | vertical excited-state manifold characterization
             unsupported_requests=full torsion scan
-            constraint.perform_new_calculation=true
-            constraint.optimize_ground_state=false
-            constraint.snapshot_count=2
-            constraint.angle_offsets_deg=25,-25
-            constraint.state_window=1,2,3
-            constraint.honor_exact_target=true
-            constraint.allow_fallback=false
-            selection.exclude_dihedral_ids=dih_0_1_2_3
-            selection.prefer_adjacent_to_nsnc_core=true
-            selection.min_relevance=high
-            selection.include_peripheral=false
-            selection.preferred_bond_types=aryl-vinyl | heteroaryl-linkage
+            param.perform_new_calculation=true
+            param.optimize_ground_state=false
+            param.snapshot_count=2
+            param.angle_offsets_deg=25,-25
+            param.state_window=1,2,3
+            param.honor_exact_target=true
+            param.allow_fallback=false
+            param.exclude_dihedral_ids=dih_0_1_2_3
+            param.prefer_adjacent_to_nsnc_core=true
+            param.min_relevance=high
+            param.include_peripheral=false
+            param.preferred_bond_types=aryl-vinyl | heteroaryl-linkage
             </microscopic_semantic_contract>
             """
         ],
@@ -557,20 +559,18 @@ def test_semantic_contract_is_not_reinterpreted_from_task_text(tmp_path: Path) -
             If no canonical artifact bundle is discoverable, return a local failed report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Extract parse-only microscopic evidence from a selected artifact bundle.
-            primary_capability=parse_snapshot_outputs
-            needs_discovery=artifact_bundles
-            target_object_kind=artifact_bundle
+            execution_action=parse_snapshot_outputs
+            discovery_actions=list_artifact_bundles
             requested_route_summary=Reuse a discovered torsion artifact bundle without new calculations.
             requested_deliverables=per-snapshot excitation energies | per-snapshot oscillator strengths | state-ordering records
             unsupported_requests=
-            constraint.perform_new_calculation=false
-            constraint.optimize_ground_state=false
-            constraint.reuse_existing_artifacts_only=true
-            constraint.state_window=1,2,3
-            selection.artifact_kind=torsion_snapshots
-            selection.source_round_selector=round_02
+            param.perform_new_calculation=false
+            param.reuse_existing_artifacts_only=true
+            param.state_window=1,2,3
+            param.artifact_kind=torsion_snapshots
+            param.source_round_selector=round_02
             </microscopic_semantic_contract>
             """
         ],
@@ -624,20 +624,18 @@ def test_openai_microscopic_supports_semantic_contract_parse_only_and_selector_n
             If no canonical artifact bundle is discoverable, return a local failed report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Extract parse-only microscopic evidence from an existing torsion bundle.
-            primary_capability=parse_snapshot_outputs
-            needs_discovery=artifact_bundles
-            target_object_kind=artifact_bundle
+            execution_action=parse_snapshot_outputs
+            discovery_actions=list_artifact_bundles
             requested_route_summary=Reuse a discovered torsion artifact bundle without new calculations.
             requested_deliverables=per-snapshot excitation energies | per-snapshot oscillator strengths | state-ordering records
             unsupported_requests=
-            constraint.perform_new_calculation=false
-            constraint.optimize_ground_state=false
-            constraint.reuse_existing_artifacts_only=true
-            constraint.state_window=1,2,3
-            selection.artifact_kind=torsion_snapshots
-            selection.source_round_selector=round_02
+            param.perform_new_calculation=false
+            param.reuse_existing_artifacts_only=true
+            param.state_window=1,2,3
+            param.artifact_kind=torsion_snapshots
+            param.source_round_selector=round_02
             </microscopic_semantic_contract>
             """
         ],
@@ -689,16 +687,15 @@ def test_semantic_contract_explicit_target_skips_discovery(tmp_path: Path) -> No
             If torsion execution fails, return a local failed microscopic report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Run a bounded torsion follow-up on an explicit dihedral target.
-            primary_capability=run_torsion_snapshots
-            target_object_kind=dihedral
+            execution_action=run_torsion_snapshots
             requested_route_summary=Use the explicit dihedral target directly.
             requested_deliverables=torsion sensitivity summary
             unsupported_requests=
-            constraint.perform_new_calculation=true
-            constraint.snapshot_count=3
-            target.dihedral_id=dih_0_1_2_3
+            param.perform_new_calculation=true
+            param.snapshot_count=3
+            param.dihedral_id=dih_0_1_2_3
             </microscopic_semantic_contract>
             """
         ],
@@ -744,16 +741,15 @@ def test_semantic_contract_multi_target_instruction_contracts_to_single_executio
             If torsion execution fails, return a local failed microscopic report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Collect bounded torsion-sensitive evidence for the primary discriminative target.
-            primary_capability=run_torsion_snapshots
-            needs_discovery=rotatable_dihedrals
-            target_object_kind=dihedral
+            execution_action=run_torsion_snapshots
+            discovery_actions=list_rotatable_dihedrals
             requested_route_summary=Contract the task to one bounded torsion execution target.
             requested_deliverables=torsion sensitivity summary
             unsupported_requests=
-            constraint.perform_new_calculation=true
-            constraint.snapshot_count=3
+            param.perform_new_calculation=true
+            param.snapshot_count=3
             </microscopic_semantic_contract>
             """
         ],
@@ -799,14 +795,13 @@ def test_semantic_contract_placeholder_target_returns_local_failed_report(tmp_pa
             If planning fails, return a local failed report.
             </failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Collect torsion-sensitive evidence.
-            primary_capability=run_torsion_snapshots
-            target_object_kind=dihedral
+            execution_action=run_torsion_snapshots
             requested_route_summary=Use a placeholder target.
             requested_deliverables=torsion sensitivity summary
             unsupported_requests=
-            target.dihedral_id=to_be_selected_after_call_1
+            param.dihedral_id=to_be_selected_after_call_1
             </microscopic_semantic_contract>
             """
         ],
@@ -826,9 +821,10 @@ def test_semantic_contract_placeholder_target_returns_local_failed_report(tmp_pa
     )
 
     assert report.status == "failed"
-    assert report.completion_reason_code == "protocol_parse_failed"
+    assert report.completion_reason_code == "action_not_supported_by_registry"
     assert report.structured_results["reasoning_parse_mode"] == "failed"
     assert report.structured_results["reasoning_contract_mode"] == "failed"
+    assert report.structured_results["registry_infeasible_for_verifier_handshake"] is True
     assert any("Placeholder target values are not allowed" in item for item in report.structured_results["reasoning_contract_errors"])
 
 
@@ -844,10 +840,9 @@ def test_tagged_semantic_contract_parser_rejects_unknown_key() -> None:
             </expected_outputs>
             <failure_policy>Test.</failure_policy>
             <microscopic_semantic_contract>
-            contract_version=1
+            contract_version=2
             local_goal=Test goal
-            primary_capability=run_baseline_bundle
-            target_object_kind=none
+            execution_action=run_baseline_bundle
             requested_route_summary=Test summary
             requested_deliverables=output one
             unsupported_requests=
@@ -855,6 +850,137 @@ def test_tagged_semantic_contract_parser_rejects_unknown_key() -> None:
             </microscopic_semantic_contract>
             """
         )
+
+
+def test_tagged_action_card_parser_rejects_unknown_param() -> None:
+    with pytest.raises(ValueError):
+        _parse_tagged_microscopic_reasoning_response(
+            """
+            <task_understanding>Test.</task_understanding>
+            <reasoning_summary>Test.</reasoning_summary>
+            <capability_limit_note>Test.</capability_limit_note>
+            <expected_outputs>
+            output one
+            </expected_outputs>
+            <failure_policy>Test.</failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=2
+            local_goal=Test goal
+            execution_action=run_baseline_bundle
+            requested_route_summary=Test summary
+            requested_deliverables=output one
+            unsupported_requests=
+            param.unknown_param=oops
+            </microscopic_semantic_contract>
+            """
+        )
+
+
+def test_tagged_action_card_parser_rejects_python_owned_param() -> None:
+    with pytest.raises(ValueError):
+        _parse_tagged_microscopic_reasoning_response(
+            """
+            <task_understanding>Test.</task_understanding>
+            <reasoning_summary>Test.</reasoning_summary>
+            <capability_limit_note>Test.</capability_limit_note>
+            <expected_outputs>
+            output one
+            </expected_outputs>
+            <failure_policy>Test.</failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=2
+            local_goal=Test goal
+            execution_action=run_baseline_bundle
+            requested_route_summary=Test summary
+            requested_deliverables=output one
+            unsupported_requests=
+            param.structure_source=shared_prepared_structure
+            </microscopic_semantic_contract>
+            """
+        )
+
+
+def test_tagged_action_card_parser_rejects_illegal_enum_value() -> None:
+    with pytest.raises(ValueError):
+        _parse_tagged_microscopic_reasoning_response(
+            """
+            <task_understanding>Test.</task_understanding>
+            <reasoning_summary>Test.</reasoning_summary>
+            <capability_limit_note>Test.</capability_limit_note>
+            <expected_outputs>
+            output one
+            </expected_outputs>
+            <failure_policy>Test.</failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=2
+            local_goal=Test goal
+            execution_action=run_torsion_snapshots
+            requested_route_summary=Test summary
+            requested_deliverables=output one
+            unsupported_requests=
+            param.preferred_bond_types=aryl-heteroaryl
+            </microscopic_semantic_contract>
+            """
+        )
+
+
+def test_openai_microscopic_supports_legacy_semantic_contract_fallback(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Reuse an existing torsion artifact bundle and perform parse-only microscopic extraction.
+            </task_understanding>
+            <reasoning_summary>
+            Request artifact-bundle discovery and keep the route parse-only with no new calculations.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability can parse existing snapshot bundles but cannot create new evidence in this route.
+            </capability_limit_note>
+            <expected_outputs>
+            per-snapshot excitation energies
+            per-snapshot oscillator strengths
+            state-ordering records
+            </expected_outputs>
+            <failure_policy>
+            If no canonical artifact bundle is discoverable, return a local failed report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=1
+            local_goal=Extract parse-only microscopic evidence from an existing torsion bundle.
+            primary_capability=parse_snapshot_outputs
+            needs_discovery=artifact_bundles
+            target_object_kind=artifact_bundle
+            requested_route_summary=Reuse a discovered torsion artifact bundle without new calculations.
+            requested_deliverables=per-snapshot excitation energies | per-snapshot oscillator strengths | state-ordering records
+            unsupported_requests=
+            constraint.perform_new_calculation=false
+            constraint.reuse_existing_artifacts_only=true
+            constraint.state_window=1,2,3
+            selection.artifact_kind=torsion_snapshots
+            selection.source_round_selector=round_02
+            </microscopic_semantic_contract>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Do not run new calculations. Reuse round 2 torsion outputs and extract per-snapshot records only.",
+        current_hypothesis="ICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="legacy-semantic-contract-follow-up",
+            objective="Exercise legacy semantic contract fallback.",
+        ),
+        case_id="case123",
+        round_index=3,
+    )
+
+    assert report.structured_results["reasoning_parse_mode"] == "legacy_semantic_contract_fallback"
+    assert report.structured_results["execution_plan"]["capability_route"] == "artifact_parse_only"
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["capability_name"] == "parse_snapshot_outputs"
 
 
 def test_openai_microscopic_supports_legacy_tagged_protocol_fallback(tmp_path: Path) -> None:

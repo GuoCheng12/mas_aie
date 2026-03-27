@@ -678,6 +678,7 @@ class OpenAIPlannerBackend:
             decision = self._apply_pre_decision_gate(
                 decision=decision,
                 main_gap=main_gap,
+                latest_microscopic_report=payload.get("latest_microscopic_report"),
             )
             if decision.action == "verifier":
                 decision.action = "verifier"
@@ -868,6 +869,7 @@ class OpenAIPlannerBackend:
         *,
         decision: PlannerDecision,
         main_gap: str,
+        latest_microscopic_report: Any,
     ) -> PlannerDecision:
         current_pair_key = _decision_pair_key(decision.decision_pair)
         near_conclusion = (
@@ -882,6 +884,13 @@ class OpenAIPlannerBackend:
             decision.finalization_mode = "none"
             return decision
         if current_pair_key is None or decision.pairwise_task_completed_for_pair != current_pair_key:
+            if decision.action == "verifier" and self._latest_microscopic_blocks_internal_pairwise_verifier_handshake(
+                latest_microscopic_report
+            ):
+                return self._require_high_confidence_verifier(
+                    decision=decision,
+                    main_gap=main_gap,
+                )
             return self._require_pairwise_discriminative_task(
                 decision=decision,
                 main_gap=main_gap,
@@ -910,6 +919,29 @@ class OpenAIPlannerBackend:
         if isinstance(pair_key, str) and pair_key and pair_key == _decision_pair_key(decision_pair):
             return pair_key, str(specificity) if specificity else None
         return None, str(specificity) if specificity else None
+
+    def _latest_microscopic_blocks_internal_pairwise_verifier_handshake(
+        self,
+        latest_microscopic_report: Any,
+    ) -> bool:
+        if not isinstance(latest_microscopic_report, dict):
+            return False
+        structured = latest_microscopic_report.get("structured_results")
+        if not isinstance(structured, dict):
+            return False
+        if structured.get("registry_infeasible_for_verifier_handshake") is True:
+            return True
+        completion_reason_code = str(structured.get("completion_reason_code") or "")
+        if completion_reason_code in {
+            "action_not_supported_by_registry",
+            "capability_unsupported",
+        }:
+            return True
+        route_summary = structured.get("route_summary")
+        if isinstance(route_summary, dict) and route_summary.get("ct_proxy_availability") == "not_available":
+            return True
+        missing_deliverables = [str(item).lower() for item in list(structured.get("missing_deliverables") or [])]
+        return any("ct/localization proxy" in item or "dominant transition" in item for item in missing_deliverables)
 
     def _finalization_mode_for_decision(self, decision: PlannerDecision) -> str:
         current_pair_key = _decision_pair_key(decision.decision_pair)

@@ -126,6 +126,48 @@ class AmespCapabilityDefinition(BaseModel):
     default_budget_behavior: str
 
 
+AmespActionKind = Literal["discovery", "execution"]
+AmespActionParamType = Literal[
+    "bool",
+    "int",
+    "float_list",
+    "int_list",
+    "text",
+    "text_list",
+    "bond_type_list",
+    "min_relevance",
+    "artifact_kind",
+    "source_round_selector",
+    "dihedral_id",
+    "conformer_id",
+    "conformer_ids",
+    "artifact_bundle_id",
+]
+
+
+class AmespActionParameterDefinition(BaseModel):
+    name: str
+    param_type: AmespActionParamType
+    description: str
+    required: bool = False
+    enum_values: list[str] = Field(default_factory=list)
+    default: Any = None
+
+
+class AmespActionDefinition(BaseModel):
+    action_name: MicroscopicCapabilityName
+    action_kind: AmespActionKind
+    purpose: str
+    allowed_llm_params: list[str] = Field(default_factory=list)
+    python_owned_params: list[str] = Field(default_factory=list)
+    required_params: list[str] = Field(default_factory=list)
+    param_types: dict[str, AmespActionParameterDefinition] = Field(default_factory=dict)
+    defaults: dict[str, Any] = Field(default_factory=dict)
+    allowed_discovery_actions: list[MicroscopicCapabilityName] = Field(default_factory=list)
+    default_deliverables: list[str] = Field(default_factory=list)
+    unsupported_note: Optional[str] = None
+
+
 class AmespBaselineRunResult(BaseModel):
     route: str = "baseline_bundle"
     executed_capability: MicroscopicCapabilityName = "run_baseline_bundle"
@@ -242,6 +284,308 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
 }
 
 
+def _action_param(
+    name: str,
+    param_type: AmespActionParamType,
+    description: str,
+    *,
+    required: bool = False,
+    enum_values: Optional[list[str]] = None,
+    default: Any = None,
+) -> AmespActionParameterDefinition:
+    return AmespActionParameterDefinition(
+        name=name,
+        param_type=param_type,
+        description=description,
+        required=required,
+        enum_values=list(enum_values or []),
+        default=default,
+    )
+
+
+_DEFAULT_PYTHON_OWNED_ACTION_PARAMS = [
+    "capability_route",
+    "structure_source",
+    "structure_strategy",
+    "source_round_preference",
+    "resolved_target_ids",
+]
+
+
+AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = {
+    "list_rotatable_dihedrals": AmespActionDefinition(
+        action_name="list_rotatable_dihedrals",
+        action_kind="discovery",
+        purpose="Discover stable rotatable-dihedral IDs before bounded torsion execution.",
+        allowed_llm_params=["min_relevance", "include_peripheral", "preferred_bond_types"],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "min_relevance": _action_param(
+                "min_relevance",
+                "min_relevance",
+                "Requested relevance bucket for dihedral discovery.",
+                enum_values=["high", "medium", "low"],
+            ),
+            "include_peripheral": _action_param(
+                "include_peripheral",
+                "bool",
+                "Whether peripheral dihedrals may be included in discovery results.",
+                default=False,
+            ),
+            "preferred_bond_types": _action_param(
+                "preferred_bond_types",
+                "bond_type_list",
+                "Preferred bond-type classes for dihedral selection.",
+                enum_values=["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"],
+            ),
+        },
+        defaults={"include_peripheral": False},
+    ),
+    "list_available_conformers": AmespActionDefinition(
+        action_name="list_available_conformers",
+        action_kind="discovery",
+        purpose="Discover stable conformer IDs before bounded conformer execution.",
+        allowed_llm_params=["source_round_selector"],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector for conformer reuse.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+        },
+        defaults={"source_round_selector": "latest_available"},
+    ),
+    "list_artifact_bundles": AmespActionDefinition(
+        action_name="list_artifact_bundles",
+        action_kind="discovery",
+        purpose="Discover canonical reusable microscopic artifact bundles before parse-only execution.",
+        allowed_llm_params=["artifact_kind", "source_round_selector"],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "artifact_kind": _action_param(
+                "artifact_kind",
+                "artifact_kind",
+                "Requested artifact bundle kind.",
+                enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"],
+            ),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+        },
+        defaults={"source_round_selector": "latest_available"},
+    ),
+    "run_baseline_bundle": AmespActionDefinition(
+        action_name="run_baseline_bundle",
+        action_kind="execution",
+        purpose="Run a low-cost baseline S0 optimization plus vertical excited-state manifold.",
+        allowed_llm_params=["perform_new_calculation", "optimize_ground_state", "reuse_existing_artifacts_only", "state_window"],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param(
+                "perform_new_calculation",
+                "bool",
+                "Whether to launch a new baseline calculation.",
+                default=True,
+            ),
+            "optimize_ground_state": _action_param(
+                "optimize_ground_state",
+                "bool",
+                "Whether to perform the low-cost S0 optimization before vertical excitations.",
+                default=True,
+            ),
+            "reuse_existing_artifacts_only": _action_param(
+                "reuse_existing_artifacts_only",
+                "bool",
+                "Whether only reusable artifacts may be used.",
+                default=False,
+            ),
+            "state_window": _action_param(
+                "state_window",
+                "int_list",
+                "Requested vertical-state window.",
+            ),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": True,
+            "reuse_existing_artifacts_only": False,
+        },
+        default_deliverables=[
+            "low-cost aTB S0 geometry optimization",
+            "vertical excited-state manifold characterization",
+        ],
+    ),
+    "run_conformer_bundle": AmespActionDefinition(
+        action_name="run_conformer_bundle",
+        action_kind="execution",
+        purpose="Run a bounded conformer bundle follow-up.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "reuse_existing_artifacts_only",
+            "snapshot_count",
+            "max_conformers",
+            "state_window",
+            "honor_exact_target",
+            "allow_fallback",
+            "conformer_id",
+            "conformer_ids",
+            "source_round_selector",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new conformer calculations.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to optimize each conformer at S0.", default=True),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether to reuse only existing artifacts.", default=False),
+            "snapshot_count": _action_param("snapshot_count", "int", "Requested bounded conformer count."),
+            "max_conformers": _action_param("max_conformers", "int", "Maximum conformer count for the bounded bundle."),
+            "state_window": _action_param("state_window", "int_list", "Requested vertical-state window."),
+            "honor_exact_target": _action_param("honor_exact_target", "bool", "Whether the exact conformer target must be honored.", default=True),
+            "allow_fallback": _action_param("allow_fallback", "bool", "Whether bounded fallback is permitted.", default=False),
+            "conformer_id": _action_param("conformer_id", "conformer_id", "Explicit stable conformer target ID."),
+            "conformer_ids": _action_param("conformer_ids", "conformer_ids", "Explicit stable conformer target IDs."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector for conformer reuse.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": True,
+            "reuse_existing_artifacts_only": False,
+            "honor_exact_target": True,
+            "allow_fallback": False,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_available_conformers"],
+        default_deliverables=[
+            "bounded conformer vertical-state records",
+            "conformer-sensitivity summary",
+        ],
+    ),
+    "run_torsion_snapshots": AmespActionDefinition(
+        action_name="run_torsion_snapshots",
+        action_kind="execution",
+        purpose="Run bounded torsion snapshots and vertical excitations from a prepared structure.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "reuse_existing_artifacts_only",
+            "snapshot_count",
+            "angle_offsets_deg",
+            "state_window",
+            "honor_exact_target",
+            "allow_fallback",
+            "dihedral_id",
+            "exclude_dihedral_ids",
+            "prefer_adjacent_to_nsnc_core",
+            "min_relevance",
+            "include_peripheral",
+            "preferred_bond_types",
+            "source_round_selector",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new torsion snapshot calculations.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize the ground state for each snapshot.", default=False),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=False),
+            "snapshot_count": _action_param("snapshot_count", "int", "Requested bounded snapshot count."),
+            "angle_offsets_deg": _action_param("angle_offsets_deg", "float_list", "Requested torsion-angle offsets in degrees."),
+            "state_window": _action_param("state_window", "int_list", "Requested vertical-state window."),
+            "honor_exact_target": _action_param("honor_exact_target", "bool", "Whether the exact dihedral target must be honored.", default=True),
+            "allow_fallback": _action_param("allow_fallback", "bool", "Whether bounded fallback is permitted.", default=False),
+            "dihedral_id": _action_param("dihedral_id", "dihedral_id", "Explicit stable dihedral target ID."),
+            "exclude_dihedral_ids": _action_param("exclude_dihedral_ids", "text_list", "Dihedral IDs that must be excluded from selection."),
+            "prefer_adjacent_to_nsnc_core": _action_param("prefer_adjacent_to_nsnc_core", "bool", "Prefer torsions adjacent to the NSNC core.", default=None),
+            "min_relevance": _action_param("min_relevance", "min_relevance", "Requested relevance bucket for dihedral selection.", enum_values=["high", "medium", "low"]),
+            "include_peripheral": _action_param("include_peripheral", "bool", "Whether peripheral dihedrals may be considered.", default=False),
+            "preferred_bond_types": _action_param("preferred_bond_types", "bond_type_list", "Preferred bond-type classes for torsion selection.", enum_values=["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested source round selector for reusable optimized geometries.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "reuse_existing_artifacts_only": False,
+            "honor_exact_target": True,
+            "allow_fallback": False,
+            "include_peripheral": False,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_rotatable_dihedrals"],
+        default_deliverables=[
+            "snapshot vertical-state records",
+            "torsion sensitivity summary",
+        ],
+    ),
+    "parse_snapshot_outputs": AmespActionDefinition(
+        action_name="parse_snapshot_outputs",
+        action_kind="execution",
+        purpose="Parse existing snapshot artifacts without launching new calculations.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for parse-only reuse.", default=False),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for parsed records."),
+        },
+        defaults={
+            "perform_new_calculation": False,
+            "reuse_existing_artifacts_only": True,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "per-snapshot excitation energies",
+            "per-snapshot oscillator strengths",
+            "state-ordering summaries",
+        ],
+        unsupported_note="Dominant transition and CT/localization proxy extraction may be unavailable from existing files.",
+    ),
+    "unsupported_excited_state_relaxation": AmespActionDefinition(
+        action_name="unsupported_excited_state_relaxation",
+        action_kind="execution",
+        purpose="Return a structured capability-unsupported result for excited-state relaxation requests.",
+        allowed_llm_params=[],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        defaults={},
+        default_deliverables=[],
+        unsupported_note="Low-cost excited-state relaxation has not been validated for Amesp yet.",
+    ),
+}
+
+
 def render_amesp_capability_registry() -> str:
     lines: list[str] = []
     for capability in AMESP_CAPABILITY_REGISTRY.values():
@@ -251,6 +595,74 @@ def render_amesp_capability_registry() -> str:
             f"supported_deliverables={', '.join(capability.supported_deliverables) or 'none'})"
         )
     return "\n".join(lines)
+
+
+def render_amesp_action_registry() -> str:
+    lines: list[str] = []
+    for action in AMESP_ACTION_REGISTRY.values():
+        lines.append(f"- {action.action_name} [{action.action_kind}]: {action.purpose}")
+        if action.allowed_discovery_actions:
+            lines.append(f"  allowed_discovery_actions={', '.join(action.allowed_discovery_actions)}")
+        if action.allowed_llm_params:
+            lines.append(f"  allowed_llm_params={', '.join(action.allowed_llm_params)}")
+        if action.default_deliverables:
+            lines.append(f"  default_deliverables={'; '.join(action.default_deliverables)}")
+        for param_name in action.allowed_llm_params:
+            param = action.param_types[param_name]
+            enum_suffix = f" enum={','.join(param.enum_values)}" if param.enum_values else ""
+            default_suffix = f" default={param.default}" if param.default is not None else ""
+            required_suffix = " required" if param.required else ""
+            lines.append(
+                f"    - param.{param_name}: {param.param_type}{required_suffix}{enum_suffix}{default_suffix} -- {param.description}"
+            )
+        if action.unsupported_note:
+            lines.append(f"  unsupported_note={action.unsupported_note}")
+    return "\n".join(lines)
+
+
+def render_registry_backed_microscopic_examples() -> dict[str, str]:
+    return {
+        "baseline": "\n".join(
+            [
+                "<microscopic_semantic_contract>",
+                "contract_version=2",
+                "local_goal=Collect first-round low-cost S0 and vertical excited-state evidence.",
+                "execution_action=run_baseline_bundle",
+                "requested_route_summary=Run the default low-cost baseline bundle.",
+                "requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization",
+                "unsupported_requests=",
+                "param.perform_new_calculation=true",
+                "param.optimize_ground_state=true",
+                "</microscopic_semantic_contract>",
+            ]
+        ),
+        "torsion": "\n".join(
+            [
+                "<microscopic_semantic_contract>",
+                "contract_version=2",
+                "local_goal=Collect bounded torsion-dependent vertical-state evidence near the NSNC core.",
+                "execution_action=run_torsion_snapshots",
+                "discovery_actions=list_rotatable_dihedrals",
+                "requested_route_summary=Run a bounded torsion snapshot screen on one high-relevance dihedral near the NSNC core.",
+                "requested_deliverables=per-snapshot vertical-state records | torsion sensitivity summary",
+                "unsupported_requests=excited-state relaxation | solvent response",
+                "param.perform_new_calculation=true",
+                "param.optimize_ground_state=false",
+                "param.snapshot_count=2",
+                "param.angle_offsets_deg=35,70",
+                "param.state_window=1,2,3",
+                "param.honor_exact_target=true",
+                "param.allow_fallback=false",
+                "param.exclude_dihedral_ids=dih_0_1_2_3",
+                "param.prefer_adjacent_to_nsnc_core=true",
+                "param.min_relevance=high",
+                "param.include_peripheral=false",
+                "param.preferred_bond_types=aryl-vinyl | heteroaryl-linkage",
+                "param.source_round_selector=latest_available",
+                "</microscopic_semantic_contract>",
+            ]
+        ),
+    }
 
 
 class AmespMicroscopicTool:

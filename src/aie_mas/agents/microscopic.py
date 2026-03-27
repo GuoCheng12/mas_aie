@@ -29,10 +29,14 @@ from aie_mas.graph.state import (
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMicroscopicClient
 from aie_mas.tools.amesp import (
+    AMESP_ACTION_REGISTRY,
     AMESP_CAPABILITY_REGISTRY,
+    AmespActionDefinition,
     AmespExecutionError,
     AmespMicroscopicTool,
+    render_amesp_action_registry,
     render_amesp_capability_registry,
+    render_registry_backed_microscopic_examples,
 )
 from aie_mas.utils.prompts import PromptRepository
 
@@ -43,6 +47,7 @@ MicroscopicStructureStrategy = Literal[
 ]
 MicroscopicSemanticContractMode = Literal[
     "semantic_contract",
+    "legacy_semantic_contract_fallback",
     "legacy_tagged_protocol_fallback",
     "legacy_json_fallback",
     "failed",
@@ -312,6 +317,23 @@ class MicroscopicSemanticContractDraft(BaseModel):
     target: MicroscopicSemanticTargetDraft = Field(default_factory=MicroscopicSemanticTargetDraft)
 
 
+class MicroscopicActionCardDraft(BaseModel):
+    contract_version: Literal[2] = 2
+    local_goal: str
+    execution_action: Literal[
+        "run_baseline_bundle",
+        "run_conformer_bundle",
+        "run_torsion_snapshots",
+        "parse_snapshot_outputs",
+        "unsupported_excited_state_relaxation",
+    ]
+    discovery_actions: list[AmespCapabilityName] = Field(default_factory=list)
+    requested_route_summary: str
+    requested_deliverables: list[str] = Field(default_factory=list)
+    unsupported_requests: list[str] = Field(default_factory=list)
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
 class SelectionPolicyDraft(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
     prefer_adjacent_to_nsnc_core: Optional[bool] = None
@@ -469,6 +491,15 @@ _TAGGED_CONTRACT_TARGET_KEYS = {
     "conformer_id",
     "conformer_ids",
     "artifact_bundle_id",
+}
+_TAGGED_ACTION_CARD_ROOT_KEYS = {
+    "contract_version",
+    "local_goal",
+    "execution_action",
+    "discovery_actions",
+    "requested_route_summary",
+    "requested_deliverables",
+    "unsupported_requests",
 }
 
 
@@ -762,6 +793,354 @@ def _build_semantic_contract_draft(
         )
     except ValidationError as exc:
         raise TaggedMicroscopicProtocolError(f"Invalid microscopic semantic contract: {exc}") from exc
+
+
+def _tagged_contract_version(contract_text: str) -> Optional[str]:
+    for raw_line in contract_text.splitlines():
+        line = raw_line.strip()
+        if not line or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == "contract_version":
+            normalized = value.strip()
+            return normalized or None
+    return None
+
+
+def _parse_tagged_action_card_lines(contract_text: str) -> tuple[dict[str, str], dict[str, str]]:
+    root_values: dict[str, str] = {}
+    param_values: dict[str, str] = {}
+    seen_keys: set[str] = set()
+    for raw_line in contract_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise TaggedMicroscopicProtocolError(f"Invalid action-card line '{raw_line}'. Expected key=value.")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in seen_keys:
+            raise TaggedMicroscopicProtocolError(f"Duplicate action-card key '{key}'.")
+        seen_keys.add(key)
+        if key.startswith("param."):
+            field_name = key[len("param.") :]
+            if not field_name:
+                raise TaggedMicroscopicProtocolError("Action-card params must use the form param.<name>=value.")
+            param_values[field_name] = value
+            continue
+        if key not in _TAGGED_ACTION_CARD_ROOT_KEYS:
+            raise TaggedMicroscopicProtocolError(f"Unknown action-card key '{key}'.")
+        root_values[key] = value
+    return root_values, param_values
+
+
+def _parse_registry_param_value(
+    param_name: str,
+    raw_value: str,
+    definition: Any,
+) -> Any:
+    param_type = getattr(definition, "param_type", None)
+    if param_type == "bool":
+        return _parse_bool(raw_value)
+    if param_type == "int":
+        try:
+            return int(raw_value)
+        except ValueError as exc:
+            raise TaggedMicroscopicProtocolError(
+                f"Invalid integer literal for param.{param_name}: {raw_value!r}."
+            ) from exc
+    if param_type == "float_list":
+        return _parse_float_list(raw_value)
+    if param_type == "int_list":
+        return _parse_int_list(raw_value)
+    if param_type == "text":
+        return raw_value
+    if param_type == "text_list":
+        return _parse_symbolic_list(raw_value)
+    if param_type == "bond_type_list":
+        return _parse_symbolic_list(raw_value)
+    if param_type == "min_relevance":
+        return raw_value.strip()
+    if param_type == "artifact_kind":
+        return raw_value.strip()
+    if param_type == "source_round_selector":
+        return MicroscopicSemanticSelectionDraft._normalize_source_round_selector(raw_value)  # type: ignore[misc]
+    if param_type in {"dihedral_id", "conformer_id", "artifact_bundle_id"}:
+        normalized = raw_value.strip()
+        if _is_placeholder_target_value(normalized):
+            raise TaggedMicroscopicProtocolError(
+                f"Placeholder target values are not allowed for param.{param_name}: {normalized!r}."
+            )
+        return normalized
+    if param_type == "conformer_ids":
+        values = _parse_symbolic_list(raw_value)
+        placeholders = [item for item in values if _is_placeholder_target_value(item)]
+        if placeholders:
+            raise TaggedMicroscopicProtocolError(
+                f"Placeholder target values are not allowed for param.{param_name}: {', '.join(placeholders)}."
+            )
+        return values
+    raise TaggedMicroscopicProtocolError(
+        f"Unsupported registry param type '{param_type}' for param.{param_name}."
+    )
+
+
+def _validate_enum_param_values(
+    *,
+    param_name: str,
+    value: Any,
+    definition: Any,
+) -> None:
+    enum_values = list(getattr(definition, "enum_values", []) or [])
+    if not enum_values:
+        return
+    if isinstance(value, list):
+        invalid = [item for item in value if item not in enum_values]
+        if invalid:
+            raise TaggedMicroscopicProtocolError(
+                f"Invalid values for param.{param_name}: {invalid}. Allowed values: {enum_values}."
+            )
+        return
+    if value not in enum_values:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid value for param.{param_name}: {value!r}. Allowed values: {enum_values}."
+        )
+
+
+def _build_action_card_draft(
+    root_values: dict[str, str],
+    param_values: dict[str, str],
+) -> tuple[MicroscopicActionCardDraft, AmespActionDefinition]:
+    if root_values.get("contract_version") != "2":
+        raise TaggedMicroscopicProtocolError(
+            f"Unsupported microscopic semantic contract_version '{root_values.get('contract_version')}'."
+        )
+    required_root_keys = (
+        "contract_version",
+        "local_goal",
+        "execution_action",
+        "requested_route_summary",
+        "requested_deliverables",
+    )
+    missing_root_keys = [key for key in required_root_keys if key not in root_values]
+    if missing_root_keys:
+        raise TaggedMicroscopicProtocolError(
+            "Registry-backed action card is missing required keys: " + ", ".join(missing_root_keys)
+        )
+    execution_action = root_values["execution_action"]
+    action_definition = AMESP_ACTION_REGISTRY.get(execution_action)
+    if action_definition is None:
+        raise TaggedMicroscopicProtocolError(f"Unknown execution_action '{execution_action}'.")
+    if action_definition.action_kind != "execution":
+        raise TaggedMicroscopicProtocolError(
+            f"execution_action '{execution_action}' must resolve to an execution action."
+        )
+
+    discovery_actions = _parse_pipe_list(root_values.get("discovery_actions", ""))
+    if len(discovery_actions) > 1:
+        raise TaggedMicroscopicProtocolError(
+            "At most one discovery action may be requested in the current microscopic round."
+        )
+    for discovery_action in discovery_actions:
+        discovery_definition = AMESP_ACTION_REGISTRY.get(discovery_action)
+        if discovery_definition is None or discovery_definition.action_kind != "discovery":
+            raise TaggedMicroscopicProtocolError(
+                f"Invalid discovery action '{discovery_action}' for execution_action '{execution_action}'."
+            )
+        if discovery_action not in action_definition.allowed_discovery_actions:
+            raise TaggedMicroscopicProtocolError(
+                f"Discovery action '{discovery_action}' is not permitted for execution_action '{execution_action}'."
+            )
+
+    params_payload: dict[str, Any] = {}
+    for param_name, raw_value in param_values.items():
+        if param_name in action_definition.python_owned_params:
+            raise TaggedMicroscopicProtocolError(
+                f"param.{param_name} is Python-owned and must not be authored by the LLM."
+            )
+        if param_name not in action_definition.allowed_llm_params:
+            raise TaggedMicroscopicProtocolError(
+                f"param.{param_name} is not allowed for execution_action '{execution_action}'."
+            )
+        definition = action_definition.param_types[param_name]
+        parsed_value = _parse_registry_param_value(param_name, raw_value, definition)
+        _validate_enum_param_values(param_name=param_name, value=parsed_value, definition=definition)
+        params_payload[param_name] = parsed_value
+
+    missing_required = [
+        param_name
+        for param_name in action_definition.required_params
+        if param_name not in params_payload and param_name not in action_definition.defaults
+    ]
+    if missing_required:
+        raise TaggedMicroscopicProtocolError(
+            "Registry-backed action card is missing required params: "
+            + ", ".join(f"param.{name}" for name in missing_required)
+        )
+
+    try:
+        action_card = MicroscopicActionCardDraft.model_validate(
+            {
+                "contract_version": 2,
+                "local_goal": root_values["local_goal"],
+                "execution_action": execution_action,
+                "discovery_actions": discovery_actions,
+                "requested_route_summary": root_values["requested_route_summary"],
+                "requested_deliverables": _parse_pipe_list(root_values["requested_deliverables"]),
+                "unsupported_requests": _parse_pipe_list(root_values.get("unsupported_requests", "")),
+                "params": params_payload,
+            }
+        )
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid registry-backed microscopic action card: {exc}"
+        ) from exc
+    return action_card, action_definition
+
+
+def _semantic_contract_from_action_card(
+    action_card: MicroscopicActionCardDraft,
+    *,
+    action_definition: AmespActionDefinition,
+) -> MicroscopicSemanticContractDraft:
+    params = {**action_definition.defaults, **action_card.params}
+    execution_action = action_card.execution_action
+    discovery_action = action_card.discovery_actions[0] if action_card.discovery_actions else None
+
+    needs_discovery: Optional[MicroscopicSemanticDiscoveryNeed] = None
+    target_object_kind: MicroscopicSemanticTargetObjectKind = "none"
+    constraints_payload: dict[str, Any] = {}
+    selection_payload: dict[str, Any] = {}
+    target_payload: dict[str, Any] = {}
+
+    if execution_action == "run_baseline_bundle":
+        target_object_kind = "none"
+        for key in ("perform_new_calculation", "optimize_ground_state", "reuse_existing_artifacts_only", "state_window"):
+            if key in params:
+                constraints_payload[key] = params[key]
+    elif execution_action == "run_torsion_snapshots":
+        target_object_kind = "dihedral"
+        if discovery_action == "list_rotatable_dihedrals" or "dihedral_id" not in params:
+            needs_discovery = "rotatable_dihedrals"
+        if "dihedral_id" in params:
+            target_payload["dihedral_id"] = params["dihedral_id"]
+        for key in (
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "reuse_existing_artifacts_only",
+            "snapshot_count",
+            "angle_offsets_deg",
+            "state_window",
+            "honor_exact_target",
+            "allow_fallback",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in (
+            "exclude_dihedral_ids",
+            "prefer_adjacent_to_nsnc_core",
+            "min_relevance",
+            "include_peripheral",
+            "preferred_bond_types",
+            "source_round_selector",
+        ):
+            if key in params:
+                selection_payload[key] = params[key]
+    elif execution_action == "run_conformer_bundle":
+        target_object_kind = "conformer"
+        if discovery_action == "list_available_conformers" or not any(
+            key in params for key in ("conformer_id", "conformer_ids")
+        ):
+            needs_discovery = "conformers"
+        if "conformer_id" in params:
+            target_payload["conformer_id"] = params["conformer_id"]
+        if "conformer_ids" in params:
+            target_payload["conformer_ids"] = params["conformer_ids"]
+        for key in (
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "reuse_existing_artifacts_only",
+            "snapshot_count",
+            "max_conformers",
+            "state_window",
+            "honor_exact_target",
+            "allow_fallback",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        if "source_round_selector" in params:
+            selection_payload["source_round_selector"] = params["source_round_selector"]
+    elif execution_action == "parse_snapshot_outputs":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        for key in ("perform_new_calculation", "reuse_existing_artifacts_only", "state_window"):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
+    elif execution_action == "unsupported_excited_state_relaxation":
+        target_object_kind = "none"
+    else:
+        raise TaggedMicroscopicProtocolError(
+            f"Unsupported registry-backed execution_action '{execution_action}'."
+        )
+
+    try:
+        return MicroscopicSemanticContractDraft.model_validate(
+            {
+                "contract_version": 1,
+                "local_goal": action_card.local_goal,
+                "primary_capability": execution_action,
+                "needs_discovery": needs_discovery,
+                "target_object_kind": target_object_kind,
+                "requested_route_summary": action_card.requested_route_summary,
+                "requested_deliverables": list(action_card.requested_deliverables),
+                "unsupported_requests": list(action_card.unsupported_requests),
+                "constraints": constraints_payload,
+                "selection": selection_payload,
+                "target": target_payload,
+            }
+        )
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(
+            f"Registry-backed action card could not be compiled into the canonical semantic contract: {exc}"
+        ) from exc
+
+
+def compile_action_card_to_tool_plan(
+    action_card: MicroscopicActionCardDraft,
+    *,
+    action_definition: AmespActionDefinition,
+    task_instruction: str,
+    task_mode: str,
+    expected_outputs: list[str],
+    failure_policy: str,
+    budget_profile: Literal["conservative", "balanced", "aggressive"],
+    available_structure_context: Optional[dict[str, Any]] = None,
+    shared_structure_context: Optional[dict[str, Any]] = None,
+    current_round_index: Optional[int] = None,
+) -> tuple[MicroscopicSemanticContractDraft, MicroscopicToolPlan, MicroscopicToolRequest, MicroscopicExecutionPlan]:
+    contract = _semantic_contract_from_action_card(
+        action_card,
+        action_definition=action_definition,
+    )
+    tool_plan, execution_request, execution_plan = compile_semantic_contract_to_tool_plan(
+        contract,
+        task_instruction=task_instruction,
+        task_mode=task_mode,
+        expected_outputs=expected_outputs,
+        failure_policy=failure_policy,
+        budget_profile=budget_profile,
+        available_structure_context=available_structure_context,
+        shared_structure_context=shared_structure_context,
+        current_round_index=current_round_index,
+    )
+    return contract, tool_plan, execution_request, execution_plan
 
 
 def _has_explicit_contract_target(contract: MicroscopicSemanticContractDraft) -> bool:
@@ -1808,26 +2187,49 @@ def _parse_tagged_semantic_contract_response_with_plan(
     sections = _extract_tagged_reasoning_sections(raw_text)
     if "microscopic_semantic_contract" not in sections:
         raise TaggedMicroscopicProtocolError("Tagged response did not contain <microscopic_semantic_contract>.")
-    root_values, constraint_values, selection_values, target_values = _parse_tagged_semantic_contract_lines(
-        sections["microscopic_semantic_contract"]
-    )
-    contract = _build_semantic_contract_draft(
-        root_values,
-        constraint_values,
-        selection_values,
-        target_values,
-    )
-    tool_plan, execution_request, execution_plan = compile_semantic_contract_to_tool_plan(
-        contract,
-        task_instruction=str((payload or {}).get("task_instruction") or ""),
-        task_mode=str((payload or {}).get("task_mode") or "targeted_follow_up"),
-        expected_outputs=_parse_tagged_expected_outputs(sections["expected_outputs"]),
-        failure_policy=sections["failure_policy"],
-        budget_profile=(payload or {}).get("budget_profile") or "balanced",
-        available_structure_context=(payload or {}).get("available_structure_context"),
-        shared_structure_context=(payload or {}).get("shared_structure_context"),
-        current_round_index=(payload or {}).get("current_round_index"),
-    )
+    contract_text = sections["microscopic_semantic_contract"]
+    contract_version = _tagged_contract_version(contract_text)
+    expected_outputs = _parse_tagged_expected_outputs(sections["expected_outputs"])
+    task_instruction = str((payload or {}).get("task_instruction") or "")
+    task_mode = str((payload or {}).get("task_mode") or "targeted_follow_up")
+    budget_profile = (payload or {}).get("budget_profile") or "balanced"
+
+    if contract_version == "2":
+        root_values, param_values = _parse_tagged_action_card_lines(contract_text)
+        action_card, action_definition = _build_action_card_draft(root_values, param_values)
+        contract, tool_plan, execution_request, execution_plan = compile_action_card_to_tool_plan(
+            action_card,
+            action_definition=action_definition,
+            task_instruction=task_instruction,
+            task_mode=task_mode,
+            expected_outputs=expected_outputs,
+            failure_policy=sections["failure_policy"],
+            budget_profile=budget_profile,
+            available_structure_context=(payload or {}).get("available_structure_context"),
+            shared_structure_context=(payload or {}).get("shared_structure_context"),
+            current_round_index=(payload or {}).get("current_round_index"),
+        )
+    else:
+        root_values, constraint_values, selection_values, target_values = _parse_tagged_semantic_contract_lines(
+            contract_text
+        )
+        contract = _build_semantic_contract_draft(
+            root_values,
+            constraint_values,
+            selection_values,
+            target_values,
+        )
+        tool_plan, execution_request, execution_plan = compile_semantic_contract_to_tool_plan(
+            contract,
+            task_instruction=task_instruction,
+            task_mode=task_mode,
+            expected_outputs=expected_outputs,
+            failure_policy=sections["failure_policy"],
+            budget_profile=budget_profile,
+            available_structure_context=(payload or {}).get("available_structure_context"),
+            shared_structure_context=(payload or {}).get("shared_structure_context"),
+            current_round_index=(payload or {}).get("current_round_index"),
+        )
     try:
         response = MicroscopicReasoningResponse(
             task_understanding=sections["task_understanding"],
@@ -1858,7 +2260,7 @@ def _parse_tagged_semantic_contract_response_with_plan(
                 unsupported_requests=list(contract.unsupported_requests),
             ),
             capability_limit_note=sections["capability_limit_note"],
-            expected_outputs=_parse_tagged_expected_outputs(sections["expected_outputs"]),
+            expected_outputs=expected_outputs,
             failure_policy=sections["failure_policy"],
         )
         return response, execution_plan
@@ -1972,11 +2374,16 @@ class OpenAIMicroscopicReasoningBackend:
         except Exception as exc:
             contract_errors.append(f"semantic_contract: {exc}")
         else:
+            sections = _extract_tagged_reasoning_sections(raw_text)
+            contract_version = _tagged_contract_version(sections.get("microscopic_semantic_contract", ""))
+            contract_mode: MicroscopicSemanticContractMode = (
+                "semantic_contract" if contract_version == "2" else "legacy_semantic_contract_fallback"
+            )
             return MicroscopicReasoningOutcome(
                 reasoning_response=response,
                 compiled_execution_plan=compiled_plan,
-                reasoning_parse_mode="semantic_contract",
-                reasoning_contract_mode="semantic_contract",
+                reasoning_parse_mode=contract_mode,
+                reasoning_contract_mode=contract_mode,
                 reasoning_contract_errors=[],
             )
 
@@ -2281,6 +2688,8 @@ class MicroscopicAgent:
                 "reasoning_parse_mode": reasoning_parse_mode,
                 "reasoning_contract_mode": reasoning_contract_mode,
                 "reasoning_contract_errors": reasoning_contract_errors,
+                "registry_action_name": plan.microscopic_tool_request.capability_name,
+                "registry_validation_errors": [],
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -2336,6 +2745,8 @@ class MicroscopicAgent:
                 "reasoning_parse_mode": reasoning_parse_mode,
                 "reasoning_contract_mode": reasoning_contract_mode,
                 "reasoning_contract_errors": reasoning_contract_errors,
+                "registry_action_name": plan.microscopic_tool_request.capability_name,
+                "registry_validation_errors": [],
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": plan.capability_route,
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -2411,6 +2822,18 @@ class MicroscopicAgent:
         structured_results["task_completion_status"] = task_completion_status
         structured_results["completion_reason_code"] = completion_reason_code
         structured_results["task_completion"] = task_completion_text
+        registry_handshake_reason = self._registry_handshake_reason(
+            completion_reason_code=completion_reason_code,
+            missing_deliverables=list(structured_results.get("missing_deliverables") or []),
+            route_summary=(
+                structured_results.get("route_summary")
+                if isinstance(structured_results.get("route_summary"), dict)
+                else None
+            ),
+            registry_validation_errors=list(structured_results.get("registry_validation_errors") or []),
+        )
+        structured_results["registry_infeasible_for_verifier_handshake"] = registry_handshake_reason is not None
+        structured_results["registry_infeasible_reason"] = registry_handshake_reason
 
         rendered = self._prompts.render_sections(
             "microscopic_amesp_specialized",
@@ -2466,6 +2889,7 @@ class MicroscopicAgent:
         parse_error: MicroscopicReasoningParseError,
     ) -> AgentReport:
         contract_errors = list(parse_error.contract_errors)
+        completion_reason_code = self._registry_completion_code_for_parse_error(contract_errors)
         contract_error_text = "; ".join(contract_errors) if contract_errors else "No parser diagnostics were recorded."
         task_completion_text = (
             "Task could not be completed because the local microscopic semantic contract could not be parsed into a valid bounded execution plan."
@@ -2511,7 +2935,7 @@ class MicroscopicAgent:
             "task_label": task_spec.task_label,
             "task_objective": task_spec.objective,
             "task_completion_status": "failed",
-            "completion_reason_code": "protocol_parse_failed",
+            "completion_reason_code": completion_reason_code,
             "task_completion": rendered["task_completion"],
             "reasoning": {
                 "task_understanding": "Microscopic reasoning could not be parsed into a valid semantic contract.",
@@ -2521,6 +2945,14 @@ class MicroscopicAgent:
             "reasoning_parse_mode": "failed",
             "reasoning_contract_mode": parse_error.contract_mode,
             "reasoning_contract_errors": contract_errors,
+            "registry_action_name": None,
+            "registry_validation_errors": list(contract_errors),
+            "registry_infeasible_for_verifier_handshake": completion_reason_code == "action_not_supported_by_registry",
+            "registry_infeasible_reason": (
+                "action_not_supported_by_registry"
+                if completion_reason_code == "action_not_supported_by_registry"
+                else None
+            ),
             "requested_capability": None,
             "executed_capability": None,
             "performed_new_calculations": False,
@@ -2530,7 +2962,7 @@ class MicroscopicAgent:
             "unmet_constraints": list(contract_errors),
             "missing_deliverables": self._requested_deliverables(task_received),
             "error": {
-                "code": "protocol_parse_failed",
+                "code": completion_reason_code,
                 "message": str(parse_error),
             },
             "supported_scope": [],
@@ -2540,7 +2972,7 @@ class MicroscopicAgent:
             agent_name="microscopic",
             task_received=task_received,
             task_completion_status="failed",
-            completion_reason_code="protocol_parse_failed",
+            completion_reason_code=completion_reason_code,
             task_completion=rendered["task_completion"],
             task_understanding="Microscopic semantic-contract parsing failed before local execution planning.",
             reasoning_summary=rendered["reasoning_summary"],
@@ -2642,6 +3074,10 @@ class MicroscopicAgent:
                 "reasoning_parse_mode": reasoning_parse_mode,
                 "reasoning_contract_mode": reasoning_contract_mode,
                 "reasoning_contract_errors": reasoning_contract_errors,
+                "registry_action_name": plan.microscopic_tool_request.capability_name,
+                "registry_validation_errors": [],
+                "registry_infeasible_for_verifier_handshake": False,
+                "registry_infeasible_reason": None,
                 "execution_plan": plan.model_dump(mode="json"),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
                 "executed_capability": plan.microscopic_tool_request.capability_name,
@@ -2713,6 +3149,7 @@ class MicroscopicAgent:
     ) -> dict[str, Any]:
         requested_deliverables = self._requested_deliverables(task_instruction)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
+        registry_examples = render_registry_backed_microscopic_examples()
         return {
             "current_hypothesis": current_hypothesis,
             "task_instruction": task_instruction,
@@ -2721,6 +3158,9 @@ class MicroscopicAgent:
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "budget_profile": self._config.microscopic_budget_profile,
+            "action_registry": render_amesp_action_registry(),
+            "baseline_action_card_example": registry_examples["baseline"],
+            "torsion_action_card_example": registry_examples["torsion"],
             "capability_registry": render_amesp_capability_registry(),
             "recent_rounds_context": recent_rounds_context,
             "available_structure_context": self._available_structure_context(
@@ -2941,6 +3381,44 @@ class MicroscopicAgent:
         if not unsupported_requests:
             return "No unsupported local request was detected."
         return "; ".join(unsupported_requests)
+
+    def _registry_completion_code_for_parse_error(
+        self,
+        contract_errors: list[str],
+    ) -> MicroscopicCompletionReasonCode:
+        registry_markers = (
+            "unknown execution_action",
+            "not allowed for execution_action",
+            "python-owned and must not be authored",
+            "invalid discovery action",
+            "placeholder target values are not allowed for param.",
+            "registry-backed action card",
+        )
+        joined = " ".join(contract_errors).lower()
+        if any(marker in joined for marker in registry_markers):
+            return "action_not_supported_by_registry"
+        return "protocol_parse_failed"
+
+    def _registry_handshake_reason(
+        self,
+        *,
+        completion_reason_code: Optional[MicroscopicCompletionReasonCode],
+        missing_deliverables: list[str],
+        route_summary: Optional[dict[str, Any]],
+        registry_validation_errors: list[str],
+    ) -> Optional[str]:
+        if completion_reason_code == "action_not_supported_by_registry":
+            return "action_not_supported_by_registry"
+        if completion_reason_code == "capability_unsupported":
+            return "microscopic_capability_unsupported"
+        if registry_validation_errors:
+            return "registry_validation_failed"
+        missing_lower = [item.lower() for item in missing_deliverables]
+        if any("ct/localization proxy" in item or "dominant transition" in item for item in missing_lower):
+            return "required_registry_observables_unavailable"
+        if isinstance(route_summary, dict) and route_summary.get("ct_proxy_availability") == "not_available":
+            return "required_registry_observables_unavailable"
+        return None
 
     def _remaining_uncertainty_text(
         self,
@@ -3177,6 +3655,8 @@ class MicroscopicAgent:
             return "resource_budget_exceeded"
         if code in {"parse_failed"}:
             return "parse_failed"
+        if code in {"action_not_supported_by_registry"}:
+            return "action_not_supported_by_registry"
         if code in {"protocol_parse_failed"}:
             return "protocol_parse_failed"
         if code in {"subprocess_failed", "normal_termination_missing", "amesp_binary_missing"}:
