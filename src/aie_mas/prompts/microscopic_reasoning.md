@@ -33,6 +33,8 @@ Execution capability rules:
 - `run_torsion_snapshots`
 - `parse_snapshot_outputs`
 - `unsupported_excited_state_relaxation`
+- If `task_mode=baseline_s0_s1`, then `primary_capability` must be `run_baseline_bundle`.
+- Do not reinterpret a first-round baseline task as torsion snapshots, conformer follow-up, or parse-only reuse.
 
 Discovery rules:
 - Use `needs_discovery=rotatable_dihedrals` when torsion execution needs a dihedral target but no stable `dihedral_id` is already given.
@@ -107,6 +109,20 @@ One output per line.
 One short paragraph describing how a local failure should be reported.
 </failure_policy>
 
+Baseline example:
+<microscopic_semantic_contract>
+contract_version=1
+local_goal=Collect first-round low-cost S0 and vertical excited-state evidence.
+primary_capability=run_baseline_bundle
+target_object_kind=none
+requested_route_summary=Run the default low-cost baseline bundle.
+requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
+unsupported_requests=
+constraint.perform_new_calculation=true
+constraint.optimize_ground_state=true
+</microscopic_semantic_contract>
+
+Torsion follow-up example:
 <microscopic_semantic_contract>
 contract_version=1
 local_goal=...

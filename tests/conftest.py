@@ -6,11 +6,14 @@ from typing import Any, Callable
 
 import pytest
 
+from aie_mas.config import AieMasConfig
 from aie_mas.agents.macro import MacroReasoningPlanDraft, MacroReasoningResponse
 from aie_mas.agents.microscopic import (
+    MicroscopicReasoningOutcome,
     MicroscopicReasoningPlanDraft,
     MicroscopicReasoningResponse,
     MicroscopicToolRequestDraft,
+    compile_reasoning_response_to_execution_plan,
 )
 from aie_mas.chem.structure_prep import PreparedStructure
 from aie_mas.graph import builder as graph_builder
@@ -83,7 +86,7 @@ class TestMacroReasoningBackend:
 
 
 class TestMicroscopicReasoningBackend:
-    def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
+    def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningOutcome:
         del rendered_prompt
         task_instruction = str(payload["task_instruction"])
         requested_deliverables = list(payload["requested_deliverables"])
@@ -92,6 +95,20 @@ class TestMicroscopicReasoningBackend:
         task_mode = payload["task_mode"]
         capability_route = _microscopic_capability_route(task_instruction, task_mode)
         capability_name = _microscopic_capability_name(capability_route)
+        lower_instruction = task_instruction.lower()
+        no_reoptimization = any(
+            token in lower_instruction
+            for token in (
+                "no re-optimization",
+                "no reoptimization",
+                "no re-opt",
+                "do not re-optimize",
+                "do not reoptimize",
+                "without re-optimization",
+                "without reoptimization",
+                "without full re-optimization",
+            )
+        )
 
         if structure_context.get("has_prepared_structure"):
             structure_strategy = "reuse_if_available_else_prepare_from_smiles"
@@ -110,7 +127,7 @@ class TestMicroscopicReasoningBackend:
                 f"{'; '.join(unsupported_requests)}."
             )
 
-        return MicroscopicReasoningResponse(
+        response = MicroscopicReasoningResponse(
             task_understanding=(
                 f"Use the Planner instruction to collect local microscopic evidence for the current working hypothesis "
                 f"'{payload['current_hypothesis']}' without making any global mechanism judgment: {task_instruction}"
@@ -128,6 +145,11 @@ class TestMicroscopicReasoningBackend:
                     capability_name=capability_name,
                     perform_new_calculation=capability_name not in {"parse_snapshot_outputs", "unsupported_excited_state_relaxation"},
                     reuse_existing_artifacts_only=capability_name == "parse_snapshot_outputs",
+                    optimize_ground_state=(
+                        False
+                        if capability_name in {"run_torsion_snapshots", "run_conformer_bundle"} and no_reoptimization
+                        else None
+                    ),
                     artifact_source_round=2 if "round_02" in task_instruction.lower() else None,
                     artifact_scope="torsion_snapshots" if capability_name in {"run_torsion_snapshots", "parse_snapshot_outputs"} else "conformer_bundle" if capability_name == "run_conformer_bundle" else None,
                     snapshot_count=2 if any(token in task_instruction.lower() for token in ("two torsion", "2 torsion", "±25", "+25", "-25")) else None,
@@ -156,6 +178,18 @@ class TestMicroscopicReasoningBackend:
                 "If any Amesp step fails, return a local failed or partial report with the available artifacts and "
                 "do not escalate into a global mechanism decision."
             ),
+        )
+        compiled_plan = compile_reasoning_response_to_execution_plan(
+            response,
+            payload=payload,
+            config=AieMasConfig(),
+        )
+        return MicroscopicReasoningOutcome(
+            reasoning_response=response,
+            compiled_execution_plan=compiled_plan,
+            reasoning_parse_mode="legacy_json_fallback",
+            reasoning_contract_mode="legacy_json_fallback",
+            reasoning_contract_errors=[],
         )
 
 

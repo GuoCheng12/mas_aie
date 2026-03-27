@@ -534,6 +534,73 @@ def test_openai_microscopic_supports_semantic_contract_torsion_with_discovery(tm
     assert report.structured_results["unsupported_requests"] == ["full torsion scan"]
 
 
+def test_semantic_contract_is_not_reinterpreted_from_task_text(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Reuse an existing torsion artifact bundle and perform parse-only microscopic extraction.
+            </task_understanding>
+            <reasoning_summary>
+            Keep the task parse-only and preserve the semantic selection contract exactly as written.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability can parse existing snapshot bundles but cannot create new evidence in this route.
+            </capability_limit_note>
+            <expected_outputs>
+            per-snapshot excitation energies
+            per-snapshot oscillator strengths
+            state-ordering records
+            </expected_outputs>
+            <failure_policy>
+            If no canonical artifact bundle is discoverable, return a local failed report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=1
+            local_goal=Extract parse-only microscopic evidence from a selected artifact bundle.
+            primary_capability=parse_snapshot_outputs
+            needs_discovery=artifact_bundles
+            target_object_kind=artifact_bundle
+            requested_route_summary=Reuse a discovered torsion artifact bundle without new calculations.
+            requested_deliverables=per-snapshot excitation energies | per-snapshot oscillator strengths | state-ordering records
+            unsupported_requests=
+            constraint.perform_new_calculation=false
+            constraint.optimize_ground_state=false
+            constraint.reuse_existing_artifacts_only=true
+            constraint.state_window=1,2,3
+            selection.artifact_kind=torsion_snapshots
+            selection.source_round_selector=round_02
+            </microscopic_semantic_contract>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Use a torsion follow-up with a central NSNC-adjacent dihedral, include peripheral candidates, "
+            "and prefer the latest available round if possible."
+        ),
+        current_hypothesis="ICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="semantic-contract-source-of-truth",
+            objective="Ensure the semantic contract remains the single source of truth.",
+        ),
+        case_id="case123",
+        round_index=3,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    assert plan["capability_route"] == "artifact_parse_only"
+    assert plan["microscopic_tool_request"]["capability_name"] == "parse_snapshot_outputs"
+    assert plan["microscopic_tool_request"]["source_round_preference"] == 2
+    assert plan["microscopic_tool_plan"]["selection_policy"]["source_round_preference"] == 2
+    assert plan["microscopic_tool_plan"]["selection_policy"]["artifact_kind"] == "torsion_snapshots"
+    assert plan["microscopic_tool_plan"]["calls"][0]["request"]["capability_name"] == "list_artifact_bundles"
+
+
 def test_openai_microscopic_supports_semantic_contract_parse_only_and_selector_normalization(tmp_path: Path) -> None:
     agent, _ = _build_agent(
         tmp_path,
