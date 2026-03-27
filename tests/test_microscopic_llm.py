@@ -762,6 +762,144 @@ def test_openai_microscopic_reasoning_drops_trailing_discovery_calls_after_execu
     assert any("Dropped trailing discovery call" in note for note in normalization_notes)
 
 
+def test_openai_microscopic_tagged_protocol_recovers_aliases_and_multiple_execution_calls(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            <task_understanding>
+            Perform a first-round low-cost ground-state optimization and vertical excited-state characterization with optional conformer and torsion sensitivity summaries.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse the shared prepared structure context, then emit bounded baseline, conformer, and torsion execution calls under the balanced budget profile.
+            </reasoning_summary>
+            <capability_limit_note>
+            The Amesp microscopic capability is limited to bounded low-cost routes and cannot perform heavy full-DFT geometry optimization or excited-state relaxation.
+            </capability_limit_note>
+            <expected_outputs>
+            low-cost aTB S0 optimized geometry
+            vertical excited-state manifold characterization
+            conformer-sensitivity summary
+            torsion-sensitivity summary
+            </expected_outputs>
+            <failure_policy>
+            If any local step fails, report the available partial outputs without making a mechanism judgment.
+            </failure_policy>
+            <microscopic_protocol>
+            protocol_version=1
+            local_goal=First-round low-cost S0 optimization and vertical excited-state characterization with conformer and torsion sensitivity.
+            structure_strategy=prefer_shared_prepared_structure
+            requested_route_summary=Run baseline low-cost aTB S0 optimization plus vertical excitations and optional bounded sensitivity analyses.
+            requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization | conformer-sensitivity summary | torsion-sensitivity summary
+            unsupported_requests=heavy full-DFT geometry optimization
+            call.1.kind=discovery
+            call.1.capability_name=list_available_conformers
+            call.1.structure_source=shared_prepared_structure_context
+            call.1.min_relevance=high
+            call.1.include_peripheral=false
+            call.2.kind=discovery
+            call.2.capability_name=list_rotatable_dihedrals
+            call.2.structure_source=shared_prepared_structure_context
+            call.2.min_relevance=high
+            call.2.include_peripheral=false
+            call.3.kind=execution
+            call.3.capability_name=run_baseline_bundle
+            call.3.structure_source=shared_prepared_structure_context
+            call.3.perform_new_calculation=true
+            call.3.optimize_ground_state=true
+            call.3.deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
+            call.3.budget_profile=balanced
+            call.3.honor_exact_target=true
+            call.4.kind=execution
+            call.4.capability_name=run_conformer_bundle
+            call.4.conformer_ids=conformer_0,conformer_1,conformer_2
+            call.4.perform_new_calculation=true
+            call.4.deliverables=conformer-sensitivity summary
+            call.4.budget_profile=balanced
+            call.5.kind=execution
+            call.5.capability_name=run_torsion_snapshots
+            call.5.dihedral_id=dih_0_1_2_3
+            call.5.snapshot_count=6
+            call.5.angle_offsets_deg=30,60,90,120,150,180
+            call.5.perform_new_calculation=true
+            call.5.deliverables=torsion-sensitivity summary
+            call.5.budget_profile=balanced
+            selection.min_relevance=high
+            selection.include_peripheral=false
+            selection.preferred_bond_types=aryl-vinyl | heteroaryl-linkage
+            </microscopic_protocol>
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="linux-prod",
+        tool_backend="real",
+        planner_backend="openai_sdk",
+        microscopic_backend="openai_sdk",
+        microscopic_base_url="http://34.13.73.248:3888/v1",
+        microscopic_model="gpt-4.1-mini",
+        microscopic_api_key="test-key",
+        prompts_dir=PROMPTS_DIR,
+    )
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+        config=config,
+        prompts=PromptRepository(PROMPTS_DIR),
+        llm_client=OpenAICompatibleMicroscopicClient(config, client=fake_client),
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Run first-round microscopic baseline evidence collection using the shared prepared structure.",
+        current_hypothesis="neutral aromatic",
+        shared_structure_context=SharedStructureContext(
+            input_smiles="C1=CCCCC1",
+            canonical_smiles="C1=CCCCC1",
+            charge=0,
+            multiplicity=1,
+            atom_count=16,
+            conformer_count=3,
+            selected_conformer_id=0,
+            prepared_xyz_path=str(tmp_path / "prepared.xyz"),
+            prepared_sdf_path=str(tmp_path / "prepared.sdf"),
+            summary_path=str(tmp_path / "summary.json"),
+            rotatable_bond_count=2,
+            aromatic_ring_count=1,
+            ring_system_count=1,
+            hetero_atom_count=0,
+            branch_point_count=1,
+            donor_acceptor_partition_proxy=0.0,
+            planarity_proxy=0.7,
+            compactness_proxy=0.5,
+            torsion_candidate_count=2,
+            principal_span_proxy=6.0,
+            conformer_dispersion_proxy=0.2,
+        ),
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Collect first-round microscopic baseline evidence.",
+        ),
+        case_id="case123",
+        round_index=1,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    calls = plan["microscopic_tool_plan"]["calls"]
+    normalization_notes = plan["microscopic_tool_plan"]["normalization_notes"]
+
+    assert report.structured_results["reasoning_parse_mode"] == "tagged_protocol"
+    assert plan["capability_route"] == "baseline_bundle"
+    assert plan["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
+    assert len(calls) == 3
+    assert calls[0]["call_kind"] == "discovery"
+    assert calls[0]["request"]["structure_source"] == "shared_prepared_structure"
+    assert calls[1]["call_kind"] == "discovery"
+    assert calls[2]["call_kind"] == "execution"
+    assert any("Dropped trailing execution call" in note for note in normalization_notes)
+
+
 def test_tagged_microscopic_protocol_rejects_unknown_capability_name() -> None:
     with pytest.raises(ValueError):
         _parse_tagged_microscopic_reasoning_response(

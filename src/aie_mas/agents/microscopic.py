@@ -95,6 +95,21 @@ class MicroscopicReasoningPlanDraft(BaseModel):
     ] = Field(default_factory=lambda: ["structure_prep", "s0_optimization", "s1_vertical_excitation"])
     unsupported_requests: list[str] = Field(default_factory=list)
 
+    @field_validator("structure_strategy", mode="before")
+    @classmethod
+    def _normalize_structure_strategy(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return "reuse_if_available_else_prepare_from_smiles"
+        aliases = {
+            "prefer_shared_prepared_structure": "reuse_if_available_else_prepare_from_smiles",
+            "prefer_shared_prepared_structure_context": "reuse_if_available_else_prepare_from_smiles",
+            "reuse_shared_prepared_structure_if_available": "reuse_if_available_else_prepare_from_smiles",
+        }
+        return aliases.get(normalized, normalized)
+
     @field_validator("capability_route", mode="before")
     @classmethod
     def _normalize_compatibility_route(cls, value: Any) -> Any:
@@ -141,6 +156,22 @@ class MicroscopicToolRequestDraft(BaseModel):
     deliverables: list[str] = Field(default_factory=list)
     budget_profile: Optional[Literal["conservative", "balanced", "aggressive"]] = None
     requested_route_summary: Optional[str] = None
+
+    @field_validator("structure_source", mode="before")
+    @classmethod
+    def _normalize_structure_source(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return None
+        aliases = {
+            "shared_prepared_structure_context": "shared_prepared_structure",
+            "shared_prepared_structure_if_available": "shared_prepared_structure",
+            "round_s0_optimized_geometry_context": "round_s0_optimized_geometry",
+            "latest_available_structure": "latest_available",
+        }
+        return aliases.get(normalized, normalized)
 
 
 class SelectionPolicyDraft(BaseModel):
@@ -277,6 +308,14 @@ def _parse_pipe_list(value: str) -> list[str]:
     return [item.strip() for item in value.split("|") if item.strip()]
 
 
+def _parse_symbolic_list(value: str) -> list[str]:
+    if not value.strip():
+        return []
+    if "|" in value:
+        return [item.strip() for item in value.split("|") if item.strip()]
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def _parse_int_list(value: str) -> list[int]:
     if not value.strip():
         return []
@@ -365,13 +404,13 @@ def _build_tagged_selection_policy(selection_values: dict[str, str]) -> Optional
     payload: dict[str, Any] = {}
     for key, value in selection_values.items():
         if key == "exclude_dihedral_ids":
-            payload[key] = _parse_pipe_list(value)
+            payload[key] = _parse_symbolic_list(value)
         elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
             payload[key] = _parse_bool(value)
         elif key == "source_round_preference":
             payload[key] = int(value)
         elif key == "preferred_bond_types":
-            payload[key] = _parse_pipe_list(value)
+            payload[key] = _parse_symbolic_list(value)
         else:
             payload[key] = value
     try:
@@ -380,7 +419,11 @@ def _build_tagged_selection_policy(selection_values: dict[str, str]) -> Optional
         raise TaggedMicroscopicProtocolError(f"Invalid selection policy in microscopic protocol: {exc}") from exc
 
 
-def _build_tagged_tool_calls(call_values: dict[int, dict[str, str]]) -> list[MicroscopicToolCallDraft]:
+def _build_tagged_tool_calls(
+    call_values: dict[int, dict[str, str]],
+    *,
+    strict: bool = True,
+) -> list[MicroscopicToolCallDraft]:
     if not call_values:
         raise TaggedMicroscopicProtocolError("The microscopic protocol did not define any tool calls.")
     sorted_indices = sorted(call_values)
@@ -400,7 +443,7 @@ def _build_tagged_tool_calls(call_values: dict[int, dict[str, str]]) -> list[Mic
             raise TaggedMicroscopicProtocolError(
                 f"Call {index} must define both 'kind' and 'capability_name'."
             )
-        if execution_seen and call_kind == "discovery":
+        if strict and execution_seen and call_kind == "discovery":
             raise TaggedMicroscopicProtocolError(
                 "Discovery calls must appear before the execution call."
             )
@@ -431,8 +474,10 @@ def _build_tagged_tool_calls(call_values: dict[int, dict[str, str]]) -> list[Mic
                 request_payload[key] = _parse_float_list(value)
             elif key in {"state_window", "dihedral_atom_indices"}:
                 request_payload[key] = _parse_int_list(value)
-            elif key in {"deliverables", "conformer_ids", "preferred_bond_types"}:
+            elif key in {"deliverables"}:
                 request_payload[key] = _parse_pipe_list(value)
+            elif key in {"conformer_ids", "preferred_bond_types"}:
+                request_payload[key] = _parse_symbolic_list(value)
             else:
                 request_payload[key] = value
         try:
@@ -449,14 +494,20 @@ def _build_tagged_tool_calls(call_values: dict[int, dict[str, str]]) -> list[Mic
                 f"Invalid microscopic protocol call {index}: {exc}"
             ) from exc
         calls.append(call_draft)
-    if execution_count != 1:
+    if strict and execution_count != 1:
         raise TaggedMicroscopicProtocolError(
             f"Exactly one execution call is required. Received {execution_count}."
         )
+    if execution_count == 0:
+        raise TaggedMicroscopicProtocolError("At least one execution call is required.")
     return calls
 
 
-def _parse_tagged_microscopic_reasoning_response(raw_text: str) -> MicroscopicReasoningResponse:
+def _parse_tagged_microscopic_reasoning_response(
+    raw_text: str,
+    *,
+    strict: bool = True,
+) -> MicroscopicReasoningResponse:
     sections = _extract_tagged_reasoning_sections(raw_text)
     root_values, selection_values, call_values = _parse_tagged_protocol_lines(sections["microscopic_protocol"])
     protocol_version = root_values.get("protocol_version")
@@ -476,7 +527,7 @@ def _parse_tagged_microscopic_reasoning_response(raw_text: str) -> MicroscopicRe
         raise TaggedMicroscopicProtocolError(
             "The microscopic protocol is missing 'requested_deliverables'."
         )
-    calls = _build_tagged_tool_calls(call_values)
+    calls = _build_tagged_tool_calls(call_values, strict=strict)
     selection_policy = _build_tagged_selection_policy(selection_values)
     execution_call = next(call for call in calls if call.call_kind == "execution")
     execution_capability = execution_call.request.capability_name
@@ -535,6 +586,14 @@ class OpenAIMicroscopicReasoningBackend:
             response = _parse_tagged_microscopic_reasoning_response(raw_text)
         except Exception as exc:
             tagged_error = exc
+        else:
+            self.last_parse_mode = "tagged_protocol"
+            return response
+
+        try:
+            response = _parse_tagged_microscopic_reasoning_response(raw_text, strict=False)
+        except Exception:
+            pass
         else:
             self.last_parse_mode = "tagged_protocol"
             return response

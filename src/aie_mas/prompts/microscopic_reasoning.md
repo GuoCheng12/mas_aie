@@ -129,6 +129,14 @@ Key syntax rules:
 - Use pipe-separated lists for text lists.
 - Omit absent values instead of writing `null`.
 - Use only canonical capability names and canonical key names.
+- Use only these canonical `structure_strategy` values:
+  - `prepare_from_smiles`
+  - `reuse_if_available_else_prepare_from_smiles`
+- Use only these canonical `structure_source` values:
+  - `shared_prepared_structure`
+  - `round_s0_optimized_geometry`
+  - `latest_available`
+- Do not invent aliases such as `shared_prepared_structure_context` or `prefer_shared_prepared_structure`.
 - Use only these execution capability names:
   - `run_baseline_bundle`
   - `run_conformer_bundle`
