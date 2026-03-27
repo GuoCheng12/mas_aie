@@ -106,6 +106,7 @@ class MicroscopicReasoningPlanDraft(BaseModel):
     microscopic_tool_request: Optional["MicroscopicToolRequestDraft"] = None
     microscopic_tool_plan: Optional["MicroscopicToolPlanDraft"] = None
     structure_strategy: MicroscopicStructureStrategy = "reuse_if_available_else_prepare_from_smiles"
+    planning_unmet_constraints: list[str] = Field(default_factory=list)
     step_sequence: list[
         Literal[
             "structure_prep",
@@ -472,17 +473,26 @@ def _strip_reasoning_code_fence(raw_text: str) -> str:
 
 def _extract_tagged_reasoning_sections(raw_text: str) -> dict[str, str]:
     candidate = _strip_reasoning_code_fence(raw_text)
-    matches = list(re.finditer(r"<([a-z_]+)>\s*(.*?)\s*</\1>", candidate, flags=re.DOTALL))
-    if not matches:
+    opening_matches = list(re.finditer(r"<([a-z_]+)>", candidate))
+    if not opening_matches:
         raise TaggedMicroscopicProtocolError("Tagged microscopic reasoning sections were not found.")
     sections: dict[str, str] = {}
-    for match in matches:
+    for index, match in enumerate(opening_matches):
         section_name = match.group(1)
         if section_name not in _TAGGED_REASONING_BASE_SECTION_NAMES and section_name not in _TAGGED_REASONING_PROTOCOL_SECTION_NAMES:
             raise TaggedMicroscopicProtocolError(f"Unknown tagged reasoning section '{section_name}'.")
         if section_name in sections:
             raise TaggedMicroscopicProtocolError(f"Duplicate tagged reasoning section '{section_name}'.")
-        sections[section_name] = match.group(2).strip()
+        content_start = match.end()
+        next_open_start = opening_matches[index + 1].start() if index + 1 < len(opening_matches) else len(candidate)
+        explicit_close = re.search(rf"</{re.escape(section_name)}>", candidate[content_start:next_open_start], flags=re.DOTALL)
+        if explicit_close is not None:
+            content_end = content_start + explicit_close.start()
+        else:
+            content_end = next_open_start
+        section_text = candidate[content_start:content_end].strip()
+        section_lines = [line for line in section_text.splitlines() if line.strip() != "```"]
+        sections[section_name] = "\n".join(section_lines).strip()
     missing_sections = [name for name in _TAGGED_REASONING_BASE_SECTION_NAMES if name not in sections]
     if missing_sections:
         raise TaggedMicroscopicProtocolError(
@@ -547,6 +557,8 @@ def _parse_tagged_expected_outputs(section_text: str) -> list[str]:
     for line in section_text.splitlines():
         item = line.strip()
         if not item:
+            continue
+        if item == "```":
             continue
         if item.startswith("- "):
             item = item[2:].strip()
@@ -831,7 +843,17 @@ def compile_semantic_contract_to_tool_plan(
         contract,
         current_round_index=current_round_index,
     )
-    discovery_need = _required_discovery_for_contract(contract)
+    effective_capability = contract.primary_capability
+    planning_unmet_constraints = _planning_unmet_constraints_for_instruction(
+        task_instruction=task_instruction,
+        capability_name=contract.primary_capability,
+    )
+    if task_mode == "baseline_s0_s1" and effective_capability != "run_baseline_bundle":
+        planning_unmet_constraints.append(
+            f"Baseline microscopic rounds must execute `run_baseline_bundle`; the semantic contract requested `{effective_capability}` and was contracted to the fixed baseline route."
+        )
+        effective_capability = "run_baseline_bundle"
+    discovery_need = _required_discovery_for_contract(contract) if effective_capability == contract.primary_capability else None
     calls: list[MicroscopicToolCall] = []
 
     if discovery_need == "rotatable_dihedrals":
@@ -885,11 +907,11 @@ def compile_semantic_contract_to_tool_plan(
             )
         )
 
-    capability_definition = AMESP_CAPABILITY_REGISTRY[contract.primary_capability]
+    capability_definition = AMESP_CAPABILITY_REGISTRY[effective_capability]
     execution_request = MicroscopicToolRequest(
-        capability_name=contract.primary_capability,
+        capability_name=effective_capability,
         structure_source=_structure_source_for_semantic_capability(
-            contract.primary_capability,
+            effective_capability,
             task_mode=task_mode,
             has_reusable_structure=has_reusable_structure,
         ),
@@ -901,26 +923,26 @@ def compile_semantic_contract_to_tool_plan(
         optimize_ground_state=(
             contract.constraints.optimize_ground_state
             if contract.constraints.optimize_ground_state is not None
-            else contract.primary_capability != "parse_snapshot_outputs"
+            else effective_capability != "parse_snapshot_outputs"
         ),
         reuse_existing_artifacts_only=(
             contract.constraints.reuse_existing_artifacts_only
             if contract.constraints.reuse_existing_artifacts_only is not None
             else not capability_definition.requires_new_calculation
         ),
-        artifact_bundle_id=contract.target.artifact_bundle_id,
-        artifact_kind=selection_policy.artifact_kind,
-        artifact_source_round=selection_policy.source_round_preference,
-        source_round_preference=selection_policy.source_round_preference,
+        artifact_bundle_id=contract.target.artifact_bundle_id if effective_capability == "parse_snapshot_outputs" else None,
+        artifact_kind=selection_policy.artifact_kind if effective_capability == "parse_snapshot_outputs" else None,
+        artifact_source_round=selection_policy.source_round_preference if effective_capability == "parse_snapshot_outputs" else None,
+        source_round_preference=selection_policy.source_round_preference if effective_capability in {"parse_snapshot_outputs", "list_artifact_bundles"} else selection_policy.source_round_preference,
         min_relevance=selection_policy.min_relevance,
         include_peripheral=selection_policy.include_peripheral,
         preferred_bond_types=list(selection_policy.preferred_bond_types),
-        dihedral_id=contract.target.dihedral_id,
-        conformer_id=contract.target.conformer_id,
-        conformer_ids=list(contract.target.conformer_ids),
+        dihedral_id=contract.target.dihedral_id if effective_capability == "run_torsion_snapshots" else None,
+        conformer_id=contract.target.conformer_id if effective_capability == "run_conformer_bundle" else None,
+        conformer_ids=list(contract.target.conformer_ids) if effective_capability == "run_conformer_bundle" else [],
         max_conformers=contract.constraints.max_conformers,
-        snapshot_count=contract.constraints.snapshot_count,
-        angle_offsets_deg=list(contract.constraints.angle_offsets_deg),
+        snapshot_count=contract.constraints.snapshot_count if effective_capability in {"run_torsion_snapshots", "run_conformer_bundle"} else None,
+        angle_offsets_deg=list(contract.constraints.angle_offsets_deg) if effective_capability == "run_torsion_snapshots" else [],
         state_window=list(contract.constraints.state_window),
         honor_exact_target=contract.constraints.honor_exact_target if contract.constraints.honor_exact_target is not None else True,
         allow_fallback=contract.constraints.allow_fallback if contract.constraints.allow_fallback is not None else False,
@@ -930,14 +952,10 @@ def compile_semantic_contract_to_tool_plan(
     )
     calls.append(
         MicroscopicToolCall(
-            call_id=f"execute_{contract.primary_capability}",
+            call_id=f"execute_{effective_capability}",
             call_kind="execution",
             request=execution_request,
         )
-    )
-    planning_unmet_constraints = _planning_unmet_constraints_for_instruction(
-        task_instruction=task_instruction,
-        capability_name=contract.primary_capability,
     )
     tool_plan = MicroscopicToolPlan(
         calls=calls,
@@ -950,7 +968,7 @@ def compile_semantic_contract_to_tool_plan(
     execution_plan = MicroscopicExecutionPlan(
         local_goal=contract.local_goal,
         requested_deliverables=list(contract.requested_deliverables),
-        capability_route=_compatibility_route_for_capability_name(contract.primary_capability),
+        capability_route=_compatibility_route_for_capability_name(effective_capability),
         microscopic_tool_plan=tool_plan,
         microscopic_tool_request=execution_request,
         budget_profile=budget_profile,
@@ -1169,6 +1187,7 @@ def _parse_tagged_semantic_contract_response(
                     execution_request.model_dump(mode="json")
                 ),
                 structure_strategy=_derive_structure_strategy_from_payload(payload),
+                planning_unmet_constraints=list(execution_plan.planning_unmet_constraints),
                 step_sequence=[],
                 unsupported_requests=list(contract.unsupported_requests),
             ),
@@ -2137,7 +2156,8 @@ class MicroscopicAgent:
                 "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
             ],
             unsupported_requests=unsupported_requests,
-            planning_unmet_constraints=self._planning_unmet_constraints(
+            planning_unmet_constraints=list(reasoning.execution_plan.planning_unmet_constraints)
+            + self._planning_unmet_constraints(
                 task_received=task_received,
                 capability_name=tool_request.capability_name,
             ),

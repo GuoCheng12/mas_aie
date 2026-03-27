@@ -345,6 +345,120 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
     assert "response_format" not in fake_client.chat.completions.calls[0]
 
 
+def test_openai_microscopic_recovers_unclosed_expected_outputs_section(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Run the first-round low-cost microscopic baseline study.
+            </task_understanding>
+            <reasoning_summary>
+            Use the bounded baseline route and keep the task local.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to low-cost baseline evidence collection.
+            </capability_limit_note>
+            <expected_outputs>
+            S0 optimized geometry
+            Vertical excited-state manifold data
+            Torsion sensitivity summary
+            ```
+            <failure_policy>
+            If local execution fails, return a bounded local failed report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=1
+            local_goal=Run the first-round low-cost microscopic baseline task.
+            primary_capability=run_baseline_bundle
+            target_object_kind=none
+            requested_route_summary=Run the default low-cost baseline bundle.
+            requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
+            unsupported_requests=
+            constraint.perform_new_calculation=true
+            </microscopic_semantic_contract>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Run the first-round low-cost S0/S1 microscopic baseline task.",
+        current_hypothesis="neutral aromatic",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Collect first-round microscopic baseline evidence.",
+        ),
+        case_id="case123",
+        round_index=1,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["reasoning_parse_mode"] == "semantic_contract"
+    assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+
+
+def test_openai_microscopic_contracts_bad_baseline_capability_back_to_baseline(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Run a first-round low-cost microscopic study on a torsion-like route.
+            </task_understanding>
+            <reasoning_summary>
+            Use a bounded torsion follow-up.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to low-cost routes.
+            </capability_limit_note>
+            <expected_outputs>
+            S0 optimized geometry
+            Vertical excited-state manifold data
+            </expected_outputs>
+            <failure_policy>
+            If local execution fails, return a bounded local failed report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=1
+            local_goal=Incorrectly choose torsion follow-up during baseline round.
+            primary_capability=run_torsion_snapshots
+            needs_discovery=rotatable_dihedrals
+            target_object_kind=dihedral
+            requested_route_summary=Run torsion snapshots.
+            requested_deliverables=vertical excited-state manifold characterization | torsion sensitivity summary
+            unsupported_requests=
+            constraint.perform_new_calculation=true
+            constraint.snapshot_count=2
+            constraint.angle_offsets_deg=35,70
+            constraint.state_window=1,2,3
+            </microscopic_semantic_contract>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Run the first-round low-cost S0/S1 microscopic baseline task.",
+        current_hypothesis="neutral aromatic",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Collect first-round microscopic baseline evidence.",
+        ),
+        case_id="case123",
+        round_index=1,
+    )
+
+    assert report.task_completion_status == "contracted"
+    assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+    assert report.structured_results["execution_plan"]["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
+    assert any("Baseline microscopic rounds must execute `run_baseline_bundle`" in item for item in report.structured_results["unmet_constraints"])
+
+
 def test_openai_microscopic_supports_semantic_contract_torsion_with_discovery(tmp_path: Path) -> None:
     agent, _ = _build_agent(
         tmp_path,
