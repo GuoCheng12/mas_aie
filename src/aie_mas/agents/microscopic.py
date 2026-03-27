@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Literal, Optional, Protocol
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError, field_validator
 
 from aie_mas.compat.langchain import prompt_value_to_messages
 from aie_mas.config import AieMasConfig
@@ -46,6 +46,34 @@ def _default_prompt_repository() -> PromptRepository:
     return PromptRepository(Path(__file__).resolve().parents[1] / "prompts")
 
 
+def _compatibility_route_for_capability_name(capability_name: AmespCapabilityName) -> MicroscopicCapabilityRoute:
+    if capability_name == "run_baseline_bundle":
+        return "baseline_bundle"
+    if capability_name == "run_conformer_bundle":
+        return "conformer_bundle_follow_up"
+    if capability_name == "run_torsion_snapshots":
+        return "torsion_snapshot_follow_up"
+    if capability_name == "parse_snapshot_outputs":
+        return "artifact_parse_only"
+    return "excited_state_relaxation_follow_up"
+
+
+def _capability_name_for_compatibility_route(
+    capability_route: Optional[MicroscopicCapabilityRoute],
+) -> Optional[AmespCapabilityName]:
+    if capability_route == "baseline_bundle":
+        return "run_baseline_bundle"
+    if capability_route == "conformer_bundle_follow_up":
+        return "run_conformer_bundle"
+    if capability_route == "torsion_snapshot_follow_up":
+        return "run_torsion_snapshots"
+    if capability_route == "artifact_parse_only":
+        return "parse_snapshot_outputs"
+    if capability_route == "excited_state_relaxation_follow_up":
+        return "unsupported_excited_state_relaxation"
+    return None
+
+
 class MicroscopicReasoningPlanDraft(BaseModel):
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
@@ -66,6 +94,24 @@ class MicroscopicReasoningPlanDraft(BaseModel):
         ]
     ] = Field(default_factory=lambda: ["structure_prep", "s0_optimization", "s1_vertical_excitation"])
     unsupported_requests: list[str] = Field(default_factory=list)
+
+    @field_validator("capability_route", mode="before")
+    @classmethod
+    def _normalize_compatibility_route(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if normalized in {
+            "run_baseline_bundle",
+            "run_conformer_bundle",
+            "run_torsion_snapshots",
+            "parse_snapshot_outputs",
+            "unsupported_excited_state_relaxation",
+        }:
+            return _compatibility_route_for_capability_name(normalized)  # type: ignore[arg-type]
+        return normalized
 
 
 class MicroscopicToolRequestDraft(BaseModel):
@@ -134,6 +180,337 @@ MicroscopicToolPlanDraft.model_rebuild()
 MicroscopicReasoningPlanDraft.model_rebuild()
 
 
+class TaggedMicroscopicProtocolError(ValueError):
+    pass
+
+
+_TAGGED_REASONING_SECTION_NAMES = (
+    "task_understanding",
+    "reasoning_summary",
+    "capability_limit_note",
+    "expected_outputs",
+    "failure_policy",
+    "microscopic_protocol",
+)
+_TAGGED_PROTOCOL_ROOT_KEYS = {
+    "protocol_version",
+    "local_goal",
+    "structure_strategy",
+    "requested_route_summary",
+    "requested_deliverables",
+    "unsupported_requests",
+}
+_TAGGED_PROTOCOL_SELECTION_KEYS = {
+    "exclude_dihedral_ids",
+    "prefer_adjacent_to_nsnc_core",
+    "min_relevance",
+    "include_peripheral",
+    "preferred_bond_types",
+    "artifact_kind",
+    "source_round_preference",
+}
+_TAGGED_PROTOCOL_CALL_KEYS = {
+    "kind",
+    "capability_name",
+    "structure_source",
+    "perform_new_calculation",
+    "optimize_ground_state",
+    "reuse_existing_artifacts_only",
+    "artifact_source_round",
+    "artifact_scope",
+    "artifact_bundle_id",
+    "artifact_kind",
+    "source_round_preference",
+    "min_relevance",
+    "include_peripheral",
+    "preferred_bond_types",
+    "dihedral_id",
+    "dihedral_atom_indices",
+    "conformer_id",
+    "conformer_ids",
+    "max_conformers",
+    "snapshot_count",
+    "angle_offsets_deg",
+    "state_window",
+    "honor_exact_target",
+    "allow_fallback",
+    "deliverables",
+    "budget_profile",
+    "requested_route_summary",
+}
+
+
+def _strip_reasoning_code_fence(raw_text: str) -> str:
+    candidate = raw_text.strip()
+    if candidate.startswith("```"):
+        lines = candidate.splitlines()
+        if len(lines) >= 2 and lines[0].startswith("```") and lines[-1].startswith("```"):
+            return "\n".join(lines[1:-1]).strip()
+    return candidate
+
+
+def _extract_tagged_reasoning_sections(raw_text: str) -> dict[str, str]:
+    candidate = _strip_reasoning_code_fence(raw_text)
+    matches = list(re.finditer(r"<([a-z_]+)>\s*(.*?)\s*</\1>", candidate, flags=re.DOTALL))
+    if not matches:
+        raise TaggedMicroscopicProtocolError("Tagged microscopic reasoning sections were not found.")
+    sections: dict[str, str] = {}
+    for match in matches:
+        section_name = match.group(1)
+        if section_name not in _TAGGED_REASONING_SECTION_NAMES:
+            raise TaggedMicroscopicProtocolError(f"Unknown tagged reasoning section '{section_name}'.")
+        if section_name in sections:
+            raise TaggedMicroscopicProtocolError(f"Duplicate tagged reasoning section '{section_name}'.")
+        sections[section_name] = match.group(2).strip()
+    missing_sections = [name for name in _TAGGED_REASONING_SECTION_NAMES if name not in sections]
+    if missing_sections:
+        raise TaggedMicroscopicProtocolError(
+            "Tagged microscopic reasoning response is missing required sections: "
+            + ", ".join(missing_sections)
+        )
+    return sections
+
+
+def _parse_pipe_list(value: str) -> list[str]:
+    if not value.strip():
+        return []
+    return [item.strip() for item in value.split("|") if item.strip()]
+
+
+def _parse_int_list(value: str) -> list[int]:
+    if not value.strip():
+        return []
+    try:
+        return [int(item.strip()) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise TaggedMicroscopicProtocolError(f"Invalid integer list '{value}'.") from exc
+
+
+def _parse_float_list(value: str) -> list[float]:
+    if not value.strip():
+        return []
+    try:
+        return [float(item.strip()) for item in value.split(",") if item.strip()]
+    except ValueError as exc:
+        raise TaggedMicroscopicProtocolError(f"Invalid float list '{value}'.") from exc
+
+
+def _parse_bool(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized == "true":
+        return True
+    if normalized == "false":
+        return False
+    raise TaggedMicroscopicProtocolError(f"Invalid boolean literal '{value}'.")
+
+
+def _parse_tagged_expected_outputs(section_text: str) -> list[str]:
+    outputs: list[str] = []
+    for line in section_text.splitlines():
+        item = line.strip()
+        if not item:
+            continue
+        if item.startswith("- "):
+            item = item[2:].strip()
+        elif item.startswith("* "):
+            item = item[2:].strip()
+        if item:
+            outputs.append(item)
+    return outputs
+
+
+def _parse_tagged_protocol_lines(protocol_text: str) -> tuple[dict[str, str], dict[str, str], dict[int, dict[str, str]]]:
+    root_values: dict[str, str] = {}
+    selection_values: dict[str, str] = {}
+    call_values: dict[int, dict[str, str]] = {}
+    seen_keys: set[str] = set()
+    for raw_line in protocol_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise TaggedMicroscopicProtocolError(f"Invalid protocol line '{raw_line}'. Expected key=value.")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in seen_keys:
+            raise TaggedMicroscopicProtocolError(f"Duplicate protocol key '{key}'.")
+        seen_keys.add(key)
+        if key.startswith("call."):
+            match = re.fullmatch(r"call\.(\d+)\.([A-Za-z0-9_]+)", key)
+            if match is None:
+                raise TaggedMicroscopicProtocolError(f"Invalid call key '{key}'.")
+            call_index = int(match.group(1))
+            field_name = match.group(2)
+            if field_name not in _TAGGED_PROTOCOL_CALL_KEYS:
+                raise TaggedMicroscopicProtocolError(f"Unknown call field '{field_name}'.")
+            call_values.setdefault(call_index, {})
+            call_values[call_index][field_name] = value
+            continue
+        if key.startswith("selection."):
+            field_name = key[len("selection.") :]
+            if field_name not in _TAGGED_PROTOCOL_SELECTION_KEYS:
+                raise TaggedMicroscopicProtocolError(f"Unknown selection field '{field_name}'.")
+            selection_values[field_name] = value
+            continue
+        if key not in _TAGGED_PROTOCOL_ROOT_KEYS:
+            raise TaggedMicroscopicProtocolError(f"Unknown protocol key '{key}'.")
+        root_values[key] = value
+    return root_values, selection_values, call_values
+
+
+def _build_tagged_selection_policy(selection_values: dict[str, str]) -> Optional[SelectionPolicyDraft]:
+    if not selection_values:
+        return None
+    payload: dict[str, Any] = {}
+    for key, value in selection_values.items():
+        if key == "exclude_dihedral_ids":
+            payload[key] = _parse_pipe_list(value)
+        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
+            payload[key] = _parse_bool(value)
+        elif key == "source_round_preference":
+            payload[key] = int(value)
+        elif key == "preferred_bond_types":
+            payload[key] = _parse_pipe_list(value)
+        else:
+            payload[key] = value
+    try:
+        return SelectionPolicyDraft.model_validate(payload)
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(f"Invalid selection policy in microscopic protocol: {exc}") from exc
+
+
+def _build_tagged_tool_calls(call_values: dict[int, dict[str, str]]) -> list[MicroscopicToolCallDraft]:
+    if not call_values:
+        raise TaggedMicroscopicProtocolError("The microscopic protocol did not define any tool calls.")
+    sorted_indices = sorted(call_values)
+    expected_indices = list(range(1, len(sorted_indices) + 1))
+    if sorted_indices != expected_indices:
+        raise TaggedMicroscopicProtocolError(
+            f"Tool call indices must be contiguous and start at 1. Received: {sorted_indices!r}."
+        )
+    calls: list[MicroscopicToolCallDraft] = []
+    execution_seen = False
+    execution_count = 0
+    for index in sorted_indices:
+        fields = call_values[index]
+        call_kind = fields.get("kind")
+        capability_name = fields.get("capability_name")
+        if call_kind is None or capability_name is None:
+            raise TaggedMicroscopicProtocolError(
+                f"Call {index} must define both 'kind' and 'capability_name'."
+            )
+        if execution_seen and call_kind == "discovery":
+            raise TaggedMicroscopicProtocolError(
+                "Discovery calls must appear before the execution call."
+            )
+        if call_kind == "execution":
+            execution_seen = True
+            execution_count += 1
+        request_payload: dict[str, Any] = {"capability_name": capability_name}
+        for key, value in fields.items():
+            if key in {"kind", "capability_name"}:
+                continue
+            if key in {
+                "perform_new_calculation",
+                "optimize_ground_state",
+                "reuse_existing_artifacts_only",
+                "honor_exact_target",
+                "allow_fallback",
+                "include_peripheral",
+            }:
+                request_payload[key] = _parse_bool(value)
+            elif key in {
+                "artifact_source_round",
+                "source_round_preference",
+                "max_conformers",
+                "snapshot_count",
+            }:
+                request_payload[key] = int(value)
+            elif key in {"angle_offsets_deg"}:
+                request_payload[key] = _parse_float_list(value)
+            elif key in {"state_window", "dihedral_atom_indices"}:
+                request_payload[key] = _parse_int_list(value)
+            elif key in {"deliverables", "conformer_ids", "preferred_bond_types"}:
+                request_payload[key] = _parse_pipe_list(value)
+            else:
+                request_payload[key] = value
+        try:
+            request_draft = MicroscopicToolRequestDraft.model_validate(request_payload)
+            call_draft = MicroscopicToolCallDraft.model_validate(
+                {
+                    "call_id": f"{call_kind}_{capability_name}_{index}",
+                    "call_kind": call_kind,
+                    "request": request_draft.model_dump(mode="json"),
+                }
+            )
+        except ValidationError as exc:
+            raise TaggedMicroscopicProtocolError(
+                f"Invalid microscopic protocol call {index}: {exc}"
+            ) from exc
+        calls.append(call_draft)
+    if execution_count != 1:
+        raise TaggedMicroscopicProtocolError(
+            f"Exactly one execution call is required. Received {execution_count}."
+        )
+    return calls
+
+
+def _parse_tagged_microscopic_reasoning_response(raw_text: str) -> MicroscopicReasoningResponse:
+    sections = _extract_tagged_reasoning_sections(raw_text)
+    root_values, selection_values, call_values = _parse_tagged_protocol_lines(sections["microscopic_protocol"])
+    protocol_version = root_values.get("protocol_version")
+    if protocol_version != "1":
+        raise TaggedMicroscopicProtocolError(
+            f"Unsupported microscopic protocol_version '{protocol_version}'."
+        )
+    if "local_goal" not in root_values:
+        raise TaggedMicroscopicProtocolError("The microscopic protocol is missing 'local_goal'.")
+    if "structure_strategy" not in root_values:
+        raise TaggedMicroscopicProtocolError("The microscopic protocol is missing 'structure_strategy'.")
+    if "requested_route_summary" not in root_values:
+        raise TaggedMicroscopicProtocolError(
+            "The microscopic protocol is missing 'requested_route_summary'."
+        )
+    if "requested_deliverables" not in root_values:
+        raise TaggedMicroscopicProtocolError(
+            "The microscopic protocol is missing 'requested_deliverables'."
+        )
+    calls = _build_tagged_tool_calls(call_values)
+    selection_policy = _build_tagged_selection_policy(selection_values)
+    execution_call = next(call for call in calls if call.call_kind == "execution")
+    execution_capability = execution_call.request.capability_name
+    capability_route = _compatibility_route_for_capability_name(execution_capability)
+    try:
+        return MicroscopicReasoningResponse(
+            task_understanding=sections["task_understanding"],
+            reasoning_summary=sections["reasoning_summary"],
+            execution_plan=MicroscopicReasoningPlanDraft(
+                local_goal=root_values["local_goal"],
+                requested_deliverables=_parse_pipe_list(root_values["requested_deliverables"]),
+                capability_route=capability_route,
+                requested_route_summary=root_values["requested_route_summary"],
+                microscopic_tool_plan=MicroscopicToolPlanDraft(
+                    calls=calls,
+                    requested_route_summary=root_values["requested_route_summary"],
+                    requested_deliverables=_parse_pipe_list(root_values["requested_deliverables"]),
+                    selection_policy=selection_policy,
+                    failure_reporting=sections["failure_policy"],
+                ),
+                structure_strategy=root_values["structure_strategy"],  # type: ignore[arg-type]
+                step_sequence=[],
+                unsupported_requests=_parse_pipe_list(root_values.get("unsupported_requests", "")),
+            ),
+            capability_limit_note=sections["capability_limit_note"],
+            expected_outputs=_parse_tagged_expected_outputs(sections["expected_outputs"]),
+            failure_policy=sections["failure_policy"],
+        )
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid tagged microscopic reasoning response: {exc}"
+        ) from exc
+
+
 class MicroscopicReasoningBackend(Protocol):
     def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
         ...
@@ -146,14 +523,33 @@ class OpenAIMicroscopicReasoningBackend:
         client: Optional[OpenAICompatibleMicroscopicClient] = None,
     ) -> None:
         self._client = client or OpenAICompatibleMicroscopicClient(config)
+        self.last_parse_mode = "legacy_json_fallback"
+        self.last_raw_text: Optional[str] = None
 
     def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
         _ = payload
-        response = self._client.invoke_json_schema(
-            messages=prompt_value_to_messages(rendered_prompt),
-            response_model=MicroscopicReasoningResponse,
-            schema_name="microscopic_reasoning_response",
-        )
+        raw_text = self._client.invoke_text(messages=prompt_value_to_messages(rendered_prompt))
+        self.last_raw_text = raw_text
+        tagged_error: Exception | None = None
+        try:
+            response = _parse_tagged_microscopic_reasoning_response(raw_text)
+        except Exception as exc:
+            tagged_error = exc
+        else:
+            self.last_parse_mode = "tagged_protocol"
+            return response
+
+        try:
+            payload_obj = self._client.parse_json_object_text(raw_text)
+            response = MicroscopicReasoningResponse.model_validate(payload_obj)
+        except Exception as exc:
+            if tagged_error is None:
+                raise
+            raise ValueError(
+                "Microscopic reasoning output was neither a valid tagged protocol nor valid legacy JSON. "
+                f"Tagged error: {tagged_error}. JSON error: {exc}."
+            ) from exc
+        self.last_parse_mode = "legacy_json_fallback"
         return MicroscopicReasoningResponse.model_validate(response.model_dump(mode="json"))
 
 
@@ -222,6 +618,7 @@ class MicroscopicAgent:
         )
         rendered_prompt = self._prompts.render("microscopic_reasoning", reasoning_payload)
         reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
+        reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
         self._emit_probe(
             round_index=round_index,
             case_id=resolved_case_id,
@@ -234,6 +631,7 @@ class MicroscopicAgent:
                 "reasoning_summary": reasoning.reasoning_summary,
                 "capability_limit_note": reasoning.capability_limit_note,
                 "expected_outputs": reasoning.expected_outputs,
+                "reasoning_parse_mode": reasoning_parse_mode,
             },
         )
         plan = self._normalize_execution_plan(
@@ -300,6 +698,7 @@ class MicroscopicAgent:
         case_id: str,
         round_index: int,
     ) -> AgentReport:
+        reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
@@ -370,6 +769,7 @@ class MicroscopicAgent:
                 "task_label": task_spec.task_label,
                 "task_objective": task_spec.objective,
                 "reasoning": reasoning.model_dump(mode="json"),
+                "reasoning_parse_mode": reasoning_parse_mode,
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -422,6 +822,7 @@ class MicroscopicAgent:
                 "task_label": task_spec.task_label,
                 "task_objective": task_spec.objective,
                 "reasoning": reasoning.model_dump(mode="json"),
+                "reasoning_parse_mode": reasoning_parse_mode,
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": plan.capability_route,
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -549,6 +950,7 @@ class MicroscopicAgent:
         plan: MicroscopicExecutionPlan,
         shared_structure_status: SharedStructureStatus,
     ) -> AgentReport:
+        reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
         task_completion_text = (
             "Task could not be completed. The requested microscopic instruction depended on a prepared structure, "
             "but shared structure context was unavailable and private structure preparation was not allowed in this path."
@@ -616,6 +1018,7 @@ class MicroscopicAgent:
                 "completion_reason_code": "precondition_missing",
                 "task_completion": rendered["task_completion"],
                 "reasoning": reasoning.model_dump(mode="json"),
+                "reasoning_parse_mode": reasoning_parse_mode,
                 "execution_plan": plan.model_dump(mode="json"),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
                 "executed_capability": plan.microscopic_tool_request.capability_name,
@@ -1215,31 +1618,16 @@ class MicroscopicAgent:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
     ) -> AmespCapabilityName:
-        if capability_route == "baseline_bundle":
-            return "run_baseline_bundle"
-        if capability_route == "conformer_bundle_follow_up":
-            return "run_conformer_bundle"
-        if capability_route == "torsion_snapshot_follow_up":
-            return "run_torsion_snapshots"
-        if capability_route == "artifact_parse_only":
-            return "parse_snapshot_outputs"
-        if capability_route == "excited_state_relaxation_follow_up":
-            return "unsupported_excited_state_relaxation"
+        derived_capability_name = _capability_name_for_compatibility_route(capability_route)
+        if derived_capability_name is not None:
+            return derived_capability_name
         return self._resolve_capability_name(task_received, task_spec)
 
     def _compatibility_route_for_capability(
         self,
         capability_name: AmespCapabilityName,
     ) -> MicroscopicCapabilityRoute:
-        if capability_name == "run_baseline_bundle":
-            return "baseline_bundle"
-        if capability_name == "run_conformer_bundle":
-            return "conformer_bundle_follow_up"
-        if capability_name == "run_torsion_snapshots":
-            return "torsion_snapshot_follow_up"
-        if capability_name == "parse_snapshot_outputs":
-            return "artifact_parse_only"
-        return "excited_state_relaxation_follow_up"
+        return _compatibility_route_for_capability_name(capability_name)
 
     def _build_step(
         self,

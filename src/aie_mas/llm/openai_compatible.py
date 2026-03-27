@@ -35,10 +35,7 @@ class OpenAICompatibleJsonSchemaClient:
         response_model: Type[BaseModel],
         schema_name: str,
     ) -> BaseModel:
-        client = self._get_client()
         response_schema = response_model.model_json_schema()
-        response_format = {"type": "json_object"}
-
         final_messages = list(messages)
         final_messages.append(
             {
@@ -50,13 +47,24 @@ class OpenAICompatibleJsonSchemaClient:
                 ),
             }
         )
+        raw_text = self.invoke_text(messages=final_messages, response_format={"type": "json_object"})
+        payload = self._extract_json_object(raw_text)
+        return response_model.model_validate(payload)
 
+    def invoke_text(
+        self,
+        *,
+        messages: list[dict[str, str]],
+        response_format: Optional[dict[str, str]] = None,
+    ) -> str:
+        client = self._get_client()
         request_kwargs = {
             "model": self._model,
-            "messages": final_messages,
+            "messages": list(messages),
             "temperature": self._temperature,
-            "response_format": response_format,
         }
+        if response_format is not None:
+            request_kwargs["response_format"] = response_format
 
         try:
             completion = client.chat.completions.create(**request_kwargs)
@@ -64,9 +72,10 @@ class OpenAICompatibleJsonSchemaClient:
             request_kwargs.pop("response_format", None)
             completion = client.chat.completions.create(**request_kwargs)
 
-        raw_text = self._extract_content(completion)
-        payload = self._extract_json_object(raw_text)
-        return response_model.model_validate(payload)
+        return self._extract_content(completion)
+
+    def parse_json_object_text(self, raw_text: str) -> dict[str, Any]:
+        return self._extract_json_object(raw_text)
 
     def _get_client(self) -> Any:
         if self._client is not None:
