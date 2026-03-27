@@ -59,6 +59,7 @@ MicroscopicCompletionReasonCode = Literal[
     "precondition_missing",
     "resource_budget_exceeded",
     "parse_failed",
+    "protocol_parse_failed",
     "partial_observable_only",
 ]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
@@ -359,6 +360,7 @@ class MicroscopicExecutionPlan(BaseModel):
     structure_source: MicroscopicStructureSource
     supported_scope: list[str] = Field(default_factory=list)
     unsupported_requests: list[str] = Field(default_factory=list)
+    planning_unmet_constraints: list[str] = Field(default_factory=list)
     steps: list[MicroscopicExecutionStep] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
     failure_reporting: str

@@ -40,6 +40,23 @@ MicroscopicStructureStrategy = Literal[
     "prepare_from_smiles",
     "reuse_if_available_else_prepare_from_smiles",
 ]
+MicroscopicSemanticContractMode = Literal[
+    "semantic_contract",
+    "legacy_tagged_protocol_fallback",
+    "legacy_json_fallback",
+    "failed",
+]
+MicroscopicSemanticDiscoveryNeed = Literal["rotatable_dihedrals", "conformers", "artifact_bundles"]
+MicroscopicSemanticTargetObjectKind = Literal["none", "dihedral", "conformer", "artifact_bundle"]
+
+
+_PLACEHOLDER_TARGET_PATTERNS = (
+    "to_be_selected",
+    "discover_first",
+    "after_call",
+    "to_be_resolved",
+    "tbd",
+)
 
 
 def _default_prompt_repository() -> PromptRepository:
@@ -72,6 +89,13 @@ def _capability_name_for_compatibility_route(
     if capability_route == "excited_state_relaxation_follow_up":
         return "unsupported_excited_state_relaxation"
     return None
+
+
+def _is_placeholder_target_value(value: str) -> bool:
+    normalized = value.strip().lower()
+    if not normalized:
+        return False
+    return any(pattern in normalized for pattern in _PLACEHOLDER_TARGET_PATTERNS)
 
 
 class MicroscopicReasoningPlanDraft(BaseModel):
@@ -173,6 +197,118 @@ class MicroscopicToolRequestDraft(BaseModel):
         }
         return aliases.get(normalized, normalized)
 
+    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", mode="before")
+    @classmethod
+    def _reject_placeholder_target_value(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if _is_placeholder_target_value(normalized):
+            raise ValueError(f"Placeholder target values are not allowed: {normalized!r}")
+        return normalized
+
+    @field_validator("conformer_ids", mode="before")
+    @classmethod
+    def _reject_placeholder_conformer_ids(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        for item in value:
+            if isinstance(item, str) and _is_placeholder_target_value(item):
+                raise ValueError(f"Placeholder target values are not allowed: {item!r}")
+        return value
+
+
+class MicroscopicSemanticConstraintsDraft(BaseModel):
+    perform_new_calculation: Optional[bool] = None
+    optimize_ground_state: Optional[bool] = None
+    reuse_existing_artifacts_only: Optional[bool] = None
+    snapshot_count: Optional[int] = None
+    angle_offsets_deg: list[float] = Field(default_factory=list)
+    state_window: list[int] = Field(default_factory=list)
+    max_conformers: Optional[int] = None
+    honor_exact_target: Optional[bool] = None
+    allow_fallback: Optional[bool] = None
+
+
+class MicroscopicSemanticSelectionDraft(BaseModel):
+    exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    prefer_adjacent_to_nsnc_core: Optional[bool] = None
+    min_relevance: Optional[Literal["high", "medium", "low"]] = None
+    include_peripheral: Optional[bool] = None
+    preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    source_round_selector: Optional[str] = None
+
+    @field_validator("source_round_selector", mode="before")
+    @classmethod
+    def _normalize_source_round_selector(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if not normalized:
+            return None
+        if normalized in {"current_run", "current"}:
+            return "current_run"
+        if normalized in {"latest_available", "latest"}:
+            return "latest_available"
+        match = re.fullmatch(r"round[_\s-]?0*(\d+)", normalized)
+        if match is not None:
+            return f"round_{int(match.group(1)):02d}"
+        raise ValueError(
+            "source_round_selector must be current_run, latest_available, or round_XX."
+        )
+
+
+class MicroscopicSemanticTargetDraft(BaseModel):
+    dihedral_id: Optional[str] = None
+    conformer_id: Optional[str] = None
+    conformer_ids: list[str] = Field(default_factory=list)
+    artifact_bundle_id: Optional[str] = None
+
+    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", mode="before")
+    @classmethod
+    def _reject_placeholder_target_value(cls, value: Any) -> Any:
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip()
+        if not normalized:
+            return None
+        if _is_placeholder_target_value(normalized):
+            raise ValueError(f"Placeholder target values are not allowed: {normalized!r}")
+        return normalized
+
+    @field_validator("conformer_ids", mode="before")
+    @classmethod
+    def _reject_placeholder_conformer_ids(cls, value: Any) -> Any:
+        if not isinstance(value, list):
+            return value
+        for item in value:
+            if isinstance(item, str) and _is_placeholder_target_value(item):
+                raise ValueError(f"Placeholder target values are not allowed: {item!r}")
+        return value
+
+
+class MicroscopicSemanticContractDraft(BaseModel):
+    contract_version: Literal[1] = 1
+    local_goal: str
+    primary_capability: Literal[
+        "run_baseline_bundle",
+        "run_conformer_bundle",
+        "run_torsion_snapshots",
+        "parse_snapshot_outputs",
+        "unsupported_excited_state_relaxation",
+    ]
+    needs_discovery: Optional[MicroscopicSemanticDiscoveryNeed] = None
+    target_object_kind: MicroscopicSemanticTargetObjectKind = "none"
+    requested_route_summary: str
+    requested_deliverables: list[str] = Field(default_factory=list)
+    unsupported_requests: list[str] = Field(default_factory=list)
+    constraints: MicroscopicSemanticConstraintsDraft = Field(default_factory=MicroscopicSemanticConstraintsDraft)
+    selection: MicroscopicSemanticSelectionDraft = Field(default_factory=MicroscopicSemanticSelectionDraft)
+    target: MicroscopicSemanticTargetDraft = Field(default_factory=MicroscopicSemanticTargetDraft)
+
 
 class SelectionPolicyDraft(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
@@ -215,12 +351,30 @@ class TaggedMicroscopicProtocolError(ValueError):
     pass
 
 
-_TAGGED_REASONING_SECTION_NAMES = (
+class MicroscopicReasoningParseError(ValueError):
+    def __init__(
+        self,
+        message: str,
+        *,
+        raw_text: str,
+        contract_mode: MicroscopicSemanticContractMode,
+        contract_errors: list[str],
+    ) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
+        self.contract_mode = contract_mode
+        self.contract_errors = list(contract_errors)
+
+
+_TAGGED_REASONING_BASE_SECTION_NAMES = (
     "task_understanding",
     "reasoning_summary",
     "capability_limit_note",
     "expected_outputs",
     "failure_policy",
+)
+_TAGGED_REASONING_PROTOCOL_SECTION_NAMES = (
+    "microscopic_semantic_contract",
     "microscopic_protocol",
 )
 _TAGGED_PROTOCOL_ROOT_KEYS = {
@@ -269,6 +423,42 @@ _TAGGED_PROTOCOL_CALL_KEYS = {
     "budget_profile",
     "requested_route_summary",
 }
+_TAGGED_CONTRACT_ROOT_KEYS = {
+    "contract_version",
+    "local_goal",
+    "primary_capability",
+    "needs_discovery",
+    "target_object_kind",
+    "requested_route_summary",
+    "requested_deliverables",
+    "unsupported_requests",
+}
+_TAGGED_CONTRACT_CONSTRAINT_KEYS = {
+    "perform_new_calculation",
+    "optimize_ground_state",
+    "reuse_existing_artifacts_only",
+    "snapshot_count",
+    "angle_offsets_deg",
+    "state_window",
+    "max_conformers",
+    "honor_exact_target",
+    "allow_fallback",
+}
+_TAGGED_CONTRACT_SELECTION_KEYS = {
+    "exclude_dihedral_ids",
+    "prefer_adjacent_to_nsnc_core",
+    "min_relevance",
+    "include_peripheral",
+    "preferred_bond_types",
+    "artifact_kind",
+    "source_round_selector",
+}
+_TAGGED_CONTRACT_TARGET_KEYS = {
+    "dihedral_id",
+    "conformer_id",
+    "conformer_ids",
+    "artifact_bundle_id",
+}
 
 
 def _strip_reasoning_code_fence(raw_text: str) -> str:
@@ -288,16 +478,25 @@ def _extract_tagged_reasoning_sections(raw_text: str) -> dict[str, str]:
     sections: dict[str, str] = {}
     for match in matches:
         section_name = match.group(1)
-        if section_name not in _TAGGED_REASONING_SECTION_NAMES:
+        if section_name not in _TAGGED_REASONING_BASE_SECTION_NAMES and section_name not in _TAGGED_REASONING_PROTOCOL_SECTION_NAMES:
             raise TaggedMicroscopicProtocolError(f"Unknown tagged reasoning section '{section_name}'.")
         if section_name in sections:
             raise TaggedMicroscopicProtocolError(f"Duplicate tagged reasoning section '{section_name}'.")
         sections[section_name] = match.group(2).strip()
-    missing_sections = [name for name in _TAGGED_REASONING_SECTION_NAMES if name not in sections]
+    missing_sections = [name for name in _TAGGED_REASONING_BASE_SECTION_NAMES if name not in sections]
     if missing_sections:
         raise TaggedMicroscopicProtocolError(
             "Tagged microscopic reasoning response is missing required sections: "
             + ", ".join(missing_sections)
+        )
+    protocol_sections = [name for name in _TAGGED_REASONING_PROTOCOL_SECTION_NAMES if name in sections]
+    if not protocol_sections:
+        raise TaggedMicroscopicProtocolError(
+            "Tagged microscopic reasoning response is missing either <microscopic_semantic_contract> or <microscopic_protocol>."
+        )
+    if len(protocol_sections) > 1:
+        raise TaggedMicroscopicProtocolError(
+            "Tagged microscopic reasoning response must contain exactly one protocol section."
         )
     return sections
 
@@ -358,6 +557,417 @@ def _parse_tagged_expected_outputs(section_text: str) -> list[str]:
     return outputs
 
 
+def _has_reusable_structure_from_payload(payload: Optional[dict[str, Any]]) -> bool:
+    if payload is None:
+        return False
+    shared_structure_context = payload.get("shared_structure_context")
+    if shared_structure_context:
+        return True
+    available_structure_context = payload.get("available_structure_context")
+    if isinstance(available_structure_context, dict):
+        return bool(available_structure_context.get("has_prepared_structure"))
+    return False
+
+
+def _derive_structure_strategy_from_payload(payload: Optional[dict[str, Any]]) -> MicroscopicStructureStrategy:
+    if _has_reusable_structure_from_payload(payload):
+        return "reuse_if_available_else_prepare_from_smiles"
+    return "prepare_from_smiles"
+
+
+def _structure_source_for_semantic_capability(
+    capability_name: AmespCapabilityName,
+    *,
+    task_mode: str,
+    has_reusable_structure: bool,
+) -> Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]]:
+    if capability_name == "parse_snapshot_outputs":
+        return None
+    if capability_name == "run_baseline_bundle":
+        return "shared_prepared_structure" if has_reusable_structure else "latest_available"
+    if capability_name in {"run_torsion_snapshots", "run_conformer_bundle", "list_rotatable_dihedrals", "list_available_conformers"}:
+        if task_mode == "targeted_follow_up":
+            return "round_s0_optimized_geometry"
+        return "shared_prepared_structure" if has_reusable_structure else "latest_available"
+    return "shared_prepared_structure" if has_reusable_structure else "latest_available"
+
+
+def _source_round_preference_from_selector(
+    selector: Optional[str],
+    *,
+    current_round_index: Optional[int],
+) -> Optional[int]:
+    if not selector or selector == "latest_available":
+        return None
+    if selector == "current_run":
+        return current_round_index
+    match = re.fullmatch(r"round_(\d{2})", selector)
+    if match is None:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid source_round_selector '{selector}'. Expected current_run, latest_available, or round_XX."
+        )
+    return int(match.group(1))
+
+
+def _parse_source_round_preference_value(value: str) -> Optional[int]:
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized.isdigit():
+        return int(normalized)
+    if re.fullmatch(r"round[_\s-]?0*\d+", normalized):
+        selector = MicroscopicSemanticSelectionDraft._normalize_source_round_selector(normalized)  # type: ignore[misc]
+        return _source_round_preference_from_selector(selector, current_round_index=None)
+    if normalized in {"latest", "latest_available"}:
+        return None
+    raise TaggedMicroscopicProtocolError(f"Invalid source round preference '{value}'.")
+
+
+def _parse_tagged_semantic_contract_lines(
+    contract_text: str,
+) -> tuple[dict[str, str], dict[str, str], dict[str, str], dict[str, str]]:
+    root_values: dict[str, str] = {}
+    constraint_values: dict[str, str] = {}
+    selection_values: dict[str, str] = {}
+    target_values: dict[str, str] = {}
+    seen_keys: set[str] = set()
+    for raw_line in contract_text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if "=" not in line:
+            raise TaggedMicroscopicProtocolError(f"Invalid semantic contract line '{raw_line}'. Expected key=value.")
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if key in seen_keys:
+            raise TaggedMicroscopicProtocolError(f"Duplicate semantic contract key '{key}'.")
+        seen_keys.add(key)
+        if key.startswith("constraint."):
+            field_name = key[len("constraint.") :]
+            if field_name not in _TAGGED_CONTRACT_CONSTRAINT_KEYS:
+                raise TaggedMicroscopicProtocolError(f"Unknown contract constraint field '{field_name}'.")
+            constraint_values[field_name] = value
+            continue
+        if key.startswith("selection."):
+            field_name = key[len("selection.") :]
+            if field_name not in _TAGGED_CONTRACT_SELECTION_KEYS:
+                raise TaggedMicroscopicProtocolError(f"Unknown contract selection field '{field_name}'.")
+            selection_values[field_name] = value
+            continue
+        if key.startswith("target."):
+            field_name = key[len("target.") :]
+            if field_name not in _TAGGED_CONTRACT_TARGET_KEYS:
+                raise TaggedMicroscopicProtocolError(f"Unknown contract target field '{field_name}'.")
+            target_values[field_name] = value
+            continue
+        if key not in _TAGGED_CONTRACT_ROOT_KEYS:
+            raise TaggedMicroscopicProtocolError(f"Unknown semantic contract key '{key}'.")
+        root_values[key] = value
+    return root_values, constraint_values, selection_values, target_values
+
+
+def _build_semantic_contract_draft(
+    root_values: dict[str, str],
+    constraint_values: dict[str, str],
+    selection_values: dict[str, str],
+    target_values: dict[str, str],
+) -> MicroscopicSemanticContractDraft:
+    if root_values.get("contract_version") != "1":
+        raise TaggedMicroscopicProtocolError(
+            f"Unsupported microscopic semantic contract_version '{root_values.get('contract_version')}'."
+        )
+    required_root_keys = (
+        "contract_version",
+        "local_goal",
+        "primary_capability",
+        "target_object_kind",
+        "requested_route_summary",
+        "requested_deliverables",
+    )
+    missing_root_keys = [key for key in required_root_keys if key not in root_values]
+    if missing_root_keys:
+        raise TaggedMicroscopicProtocolError(
+            "Semantic contract is missing required keys: " + ", ".join(missing_root_keys)
+        )
+
+    constraints_payload: dict[str, Any] = {}
+    for key, value in constraint_values.items():
+        if key in {"perform_new_calculation", "optimize_ground_state", "reuse_existing_artifacts_only", "honor_exact_target", "allow_fallback"}:
+            constraints_payload[key] = _parse_bool(value)
+        elif key in {"snapshot_count", "max_conformers"}:
+            constraints_payload[key] = int(value)
+        elif key == "angle_offsets_deg":
+            constraints_payload[key] = _parse_float_list(value)
+        elif key == "state_window":
+            constraints_payload[key] = _parse_int_list(value)
+        else:
+            constraints_payload[key] = value
+
+    selection_payload: dict[str, Any] = {}
+    for key, value in selection_values.items():
+        if key == "exclude_dihedral_ids":
+            selection_payload[key] = _parse_symbolic_list(value)
+        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
+            selection_payload[key] = _parse_bool(value)
+        elif key == "preferred_bond_types":
+            selection_payload[key] = _parse_symbolic_list(value)
+        else:
+            selection_payload[key] = value
+
+    target_payload: dict[str, Any] = {}
+    for key, value in target_values.items():
+        if key == "conformer_ids":
+            target_payload[key] = _parse_symbolic_list(value)
+        else:
+            target_payload[key] = value
+
+    try:
+        return MicroscopicSemanticContractDraft.model_validate(
+            {
+                "contract_version": int(root_values["contract_version"]),
+                "local_goal": root_values["local_goal"],
+                "primary_capability": root_values["primary_capability"],
+                "needs_discovery": root_values.get("needs_discovery") or None,
+                "target_object_kind": root_values["target_object_kind"],
+                "requested_route_summary": root_values["requested_route_summary"],
+                "requested_deliverables": _parse_pipe_list(root_values["requested_deliverables"]),
+                "unsupported_requests": _parse_pipe_list(root_values.get("unsupported_requests", "")),
+                "constraints": constraints_payload,
+                "selection": selection_payload,
+                "target": target_payload,
+            }
+        )
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(f"Invalid microscopic semantic contract: {exc}") from exc
+
+
+def _has_explicit_contract_target(contract: MicroscopicSemanticContractDraft) -> bool:
+    return any(
+        (
+            contract.target.dihedral_id,
+            contract.target.conformer_id,
+            contract.target.conformer_ids,
+            contract.target.artifact_bundle_id,
+        )
+    )
+
+
+def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft) -> Optional[MicroscopicSemanticDiscoveryNeed]:
+    if _has_explicit_contract_target(contract):
+        return None
+    if contract.needs_discovery is not None:
+        return contract.needs_discovery
+    if contract.primary_capability == "run_torsion_snapshots":
+        return "rotatable_dihedrals"
+    if contract.primary_capability == "run_conformer_bundle":
+        return "conformers"
+    if contract.primary_capability == "parse_snapshot_outputs":
+        return "artifact_bundles"
+    return None
+
+
+def _selection_policy_from_semantic_contract(
+    contract: MicroscopicSemanticContractDraft,
+    *,
+    current_round_index: Optional[int],
+) -> SelectionPolicy:
+    return SelectionPolicy(
+        exclude_dihedral_ids=list(contract.selection.exclude_dihedral_ids),
+        prefer_adjacent_to_nsnc_core=bool(contract.selection.prefer_adjacent_to_nsnc_core or False),
+        min_relevance=contract.selection.min_relevance or "medium",
+        include_peripheral=True if contract.selection.include_peripheral is None else contract.selection.include_peripheral,
+        preferred_bond_types=list(contract.selection.preferred_bond_types),
+        artifact_kind=contract.selection.artifact_kind,
+        source_round_preference=_source_round_preference_from_selector(
+            contract.selection.source_round_selector,
+            current_round_index=current_round_index,
+        ),
+    )
+
+
+def _planning_unmet_constraints_for_instruction(
+    *,
+    task_instruction: str,
+    capability_name: AmespCapabilityName,
+) -> list[str]:
+    lower_instruction = task_instruction.lower()
+    unmet: list[str] = []
+    if capability_name == "run_torsion_snapshots":
+        multi_target_patterns = (
+            "two dihedrals",
+            "two selected dihedrals",
+            "two selected rotatable dihedrals",
+            "2 dihedrals",
+            "multiple dihedrals",
+            "two key dihedrals",
+        )
+        if any(pattern in lower_instruction for pattern in multi_target_patterns):
+            unmet.append(
+                "The Planner instruction referenced multiple torsion targets, but the current microscopic contract executes one resolved dihedral per round."
+            )
+    return unmet
+
+
+def compile_semantic_contract_to_tool_plan(
+    contract: MicroscopicSemanticContractDraft,
+    *,
+    task_instruction: str,
+    task_mode: str,
+    expected_outputs: list[str],
+    failure_policy: str,
+    budget_profile: Literal["conservative", "balanced", "aggressive"],
+    available_structure_context: Optional[dict[str, Any]] = None,
+    shared_structure_context: Optional[dict[str, Any]] = None,
+    current_round_index: Optional[int] = None,
+) -> tuple[MicroscopicToolPlan, MicroscopicToolRequest, MicroscopicExecutionPlan]:
+    payload = {
+        "available_structure_context": available_structure_context or {},
+        "shared_structure_context": shared_structure_context,
+    }
+    has_reusable_structure = _has_reusable_structure_from_payload(payload)
+    structure_strategy = _derive_structure_strategy_from_payload(payload)
+    selection_policy = _selection_policy_from_semantic_contract(
+        contract,
+        current_round_index=current_round_index,
+    )
+    discovery_need = _required_discovery_for_contract(contract)
+    calls: list[MicroscopicToolCall] = []
+
+    if discovery_need == "rotatable_dihedrals":
+        calls.append(
+            MicroscopicToolCall(
+                call_id="discover_rotatable_dihedrals",
+                call_kind="discovery",
+                request=MicroscopicToolRequest(
+                    capability_name="list_rotatable_dihedrals",
+                    structure_source=_structure_source_for_semantic_capability(
+                        "list_rotatable_dihedrals",
+                        task_mode=task_mode,
+                        has_reusable_structure=has_reusable_structure,
+                    ),
+                    min_relevance=selection_policy.min_relevance,
+                    include_peripheral=selection_policy.include_peripheral,
+                    preferred_bond_types=list(selection_policy.preferred_bond_types),
+                    requested_route_summary="Discover stable rotatable dihedral targets before bounded torsion execution.",
+                ),
+            )
+        )
+    elif discovery_need == "conformers":
+        calls.append(
+            MicroscopicToolCall(
+                call_id="discover_conformers",
+                call_kind="discovery",
+                request=MicroscopicToolRequest(
+                    capability_name="list_available_conformers",
+                    structure_source=_structure_source_for_semantic_capability(
+                        "list_available_conformers",
+                        task_mode=task_mode,
+                        has_reusable_structure=has_reusable_structure,
+                    ),
+                    requested_route_summary="Discover stable conformer targets before bounded conformer execution.",
+                ),
+            )
+        )
+    elif discovery_need == "artifact_bundles":
+        calls.append(
+            MicroscopicToolCall(
+                call_id="discover_artifact_bundles",
+                call_kind="discovery",
+                request=MicroscopicToolRequest(
+                    capability_name="list_artifact_bundles",
+                    artifact_kind=selection_policy.artifact_kind,
+                    source_round_preference=selection_policy.source_round_preference,
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    requested_route_summary="Discover canonical artifact bundles before parse-only microscopic execution.",
+                ),
+            )
+        )
+
+    capability_definition = AMESP_CAPABILITY_REGISTRY[contract.primary_capability]
+    execution_request = MicroscopicToolRequest(
+        capability_name=contract.primary_capability,
+        structure_source=_structure_source_for_semantic_capability(
+            contract.primary_capability,
+            task_mode=task_mode,
+            has_reusable_structure=has_reusable_structure,
+        ),
+        perform_new_calculation=(
+            contract.constraints.perform_new_calculation
+            if contract.constraints.perform_new_calculation is not None
+            else capability_definition.requires_new_calculation
+        ),
+        optimize_ground_state=(
+            contract.constraints.optimize_ground_state
+            if contract.constraints.optimize_ground_state is not None
+            else contract.primary_capability != "parse_snapshot_outputs"
+        ),
+        reuse_existing_artifacts_only=(
+            contract.constraints.reuse_existing_artifacts_only
+            if contract.constraints.reuse_existing_artifacts_only is not None
+            else not capability_definition.requires_new_calculation
+        ),
+        artifact_bundle_id=contract.target.artifact_bundle_id,
+        artifact_kind=selection_policy.artifact_kind,
+        artifact_source_round=selection_policy.source_round_preference,
+        source_round_preference=selection_policy.source_round_preference,
+        min_relevance=selection_policy.min_relevance,
+        include_peripheral=selection_policy.include_peripheral,
+        preferred_bond_types=list(selection_policy.preferred_bond_types),
+        dihedral_id=contract.target.dihedral_id,
+        conformer_id=contract.target.conformer_id,
+        conformer_ids=list(contract.target.conformer_ids),
+        max_conformers=contract.constraints.max_conformers,
+        snapshot_count=contract.constraints.snapshot_count,
+        angle_offsets_deg=list(contract.constraints.angle_offsets_deg),
+        state_window=list(contract.constraints.state_window),
+        honor_exact_target=contract.constraints.honor_exact_target if contract.constraints.honor_exact_target is not None else True,
+        allow_fallback=contract.constraints.allow_fallback if contract.constraints.allow_fallback is not None else False,
+        deliverables=list(contract.requested_deliverables),
+        budget_profile=budget_profile,
+        requested_route_summary=contract.requested_route_summary,
+    )
+    calls.append(
+        MicroscopicToolCall(
+            call_id=f"execute_{contract.primary_capability}",
+            call_kind="execution",
+            request=execution_request,
+        )
+    )
+    planning_unmet_constraints = _planning_unmet_constraints_for_instruction(
+        task_instruction=task_instruction,
+        capability_name=contract.primary_capability,
+    )
+    tool_plan = MicroscopicToolPlan(
+        calls=calls,
+        requested_route_summary=contract.requested_route_summary,
+        requested_deliverables=list(contract.requested_deliverables),
+        selection_policy=selection_policy,
+        normalization_notes=[],
+        failure_reporting=failure_policy,
+    )
+    execution_plan = MicroscopicExecutionPlan(
+        local_goal=contract.local_goal,
+        requested_deliverables=list(contract.requested_deliverables),
+        capability_route=_compatibility_route_for_capability_name(contract.primary_capability),
+        microscopic_tool_plan=tool_plan,
+        microscopic_tool_request=execution_request,
+        budget_profile=budget_profile,
+        requested_route_summary=contract.requested_route_summary,
+        structure_source=(
+            "existing_prepared_structure"
+            if structure_strategy == "reuse_if_available_else_prepare_from_smiles" and has_reusable_structure
+            else "prepared_from_smiles"
+        ),
+        unsupported_requests=list(contract.unsupported_requests),
+        planning_unmet_constraints=planning_unmet_constraints,
+        expected_outputs=list(expected_outputs),
+        failure_reporting=failure_policy,
+    )
+    return tool_plan, execution_request, execution_plan
+
+
 def _parse_tagged_protocol_lines(protocol_text: str) -> tuple[dict[str, str], dict[str, str], dict[int, dict[str, str]]]:
     root_values: dict[str, str] = {}
     selection_values: dict[str, str] = {}
@@ -408,7 +1018,7 @@ def _build_tagged_selection_policy(selection_values: dict[str, str]) -> Optional
         elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
             payload[key] = _parse_bool(value)
         elif key == "source_round_preference":
-            payload[key] = int(value)
+            payload[key] = _parse_source_round_preference_value(value)
         elif key == "preferred_bond_types":
             payload[key] = _parse_symbolic_list(value)
         else:
@@ -469,7 +1079,10 @@ def _build_tagged_tool_calls(
                 "max_conformers",
                 "snapshot_count",
             }:
-                request_payload[key] = int(value)
+                if key == "source_round_preference":
+                    request_payload[key] = _parse_source_round_preference_value(value)
+                else:
+                    request_payload[key] = int(value)
             elif key in {"angle_offsets_deg"}:
                 request_payload[key] = _parse_float_list(value)
             elif key in {"state_window", "dihedral_atom_indices"}:
@@ -503,12 +1116,80 @@ def _build_tagged_tool_calls(
     return calls
 
 
-def _parse_tagged_microscopic_reasoning_response(
+def _parse_tagged_semantic_contract_response(
+    raw_text: str,
+    *,
+    payload: Optional[dict[str, Any]] = None,
+) -> MicroscopicReasoningResponse:
+    sections = _extract_tagged_reasoning_sections(raw_text)
+    if "microscopic_semantic_contract" not in sections:
+        raise TaggedMicroscopicProtocolError("Tagged response did not contain <microscopic_semantic_contract>.")
+    root_values, constraint_values, selection_values, target_values = _parse_tagged_semantic_contract_lines(
+        sections["microscopic_semantic_contract"]
+    )
+    contract = _build_semantic_contract_draft(
+        root_values,
+        constraint_values,
+        selection_values,
+        target_values,
+    )
+    tool_plan, execution_request, execution_plan = compile_semantic_contract_to_tool_plan(
+        contract,
+        task_instruction=str((payload or {}).get("task_instruction") or ""),
+        task_mode=str((payload or {}).get("task_mode") or "targeted_follow_up"),
+        expected_outputs=_parse_tagged_expected_outputs(sections["expected_outputs"]),
+        failure_policy=sections["failure_policy"],
+        budget_profile=(payload or {}).get("budget_profile") or "balanced",
+        available_structure_context=(payload or {}).get("available_structure_context"),
+        shared_structure_context=(payload or {}).get("shared_structure_context"),
+        current_round_index=(payload or {}).get("current_round_index"),
+    )
+    try:
+        return MicroscopicReasoningResponse(
+            task_understanding=sections["task_understanding"],
+            reasoning_summary=sections["reasoning_summary"],
+            execution_plan=MicroscopicReasoningPlanDraft(
+                local_goal=contract.local_goal,
+                requested_deliverables=list(contract.requested_deliverables),
+                capability_route=execution_plan.capability_route,
+                requested_route_summary=contract.requested_route_summary,
+                microscopic_tool_plan=MicroscopicToolPlanDraft(
+                    calls=[
+                        MicroscopicToolCallDraft.model_validate(call.model_dump(mode="json"))
+                        for call in tool_plan.calls
+                    ],
+                    requested_route_summary=tool_plan.requested_route_summary,
+                    requested_deliverables=list(tool_plan.requested_deliverables),
+                    selection_policy=SelectionPolicyDraft.model_validate(
+                        tool_plan.selection_policy.model_dump(mode="json")
+                    ),
+                    failure_reporting=sections["failure_policy"],
+                ),
+                microscopic_tool_request=MicroscopicToolRequestDraft.model_validate(
+                    execution_request.model_dump(mode="json")
+                ),
+                structure_strategy=_derive_structure_strategy_from_payload(payload),
+                step_sequence=[],
+                unsupported_requests=list(contract.unsupported_requests),
+            ),
+            capability_limit_note=sections["capability_limit_note"],
+            expected_outputs=_parse_tagged_expected_outputs(sections["expected_outputs"]),
+            failure_policy=sections["failure_policy"],
+        )
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid semantic-contract microscopic reasoning response: {exc}"
+        ) from exc
+
+
+def _parse_legacy_tagged_microscopic_reasoning_response(
     raw_text: str,
     *,
     strict: bool = True,
 ) -> MicroscopicReasoningResponse:
     sections = _extract_tagged_reasoning_sections(raw_text)
+    if "microscopic_protocol" not in sections:
+        raise TaggedMicroscopicProtocolError("Tagged response did not contain <microscopic_protocol>.")
     root_values, selection_values, call_values = _parse_tagged_protocol_lines(sections["microscopic_protocol"])
     protocol_version = root_values.get("protocol_version")
     if protocol_version != "1":
@@ -562,6 +1243,18 @@ def _parse_tagged_microscopic_reasoning_response(
         ) from exc
 
 
+def _parse_tagged_microscopic_reasoning_response(
+    raw_text: str,
+    *,
+    payload: Optional[dict[str, Any]] = None,
+    strict: bool = True,
+) -> MicroscopicReasoningResponse:
+    sections = _extract_tagged_reasoning_sections(raw_text)
+    if "microscopic_semantic_contract" in sections:
+        return _parse_tagged_semantic_contract_response(raw_text, payload=payload)
+    return _parse_legacy_tagged_microscopic_reasoning_response(raw_text, strict=strict)
+
+
 class MicroscopicReasoningBackend(Protocol):
     def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
         ...
@@ -574,41 +1267,61 @@ class OpenAIMicroscopicReasoningBackend:
         client: Optional[OpenAICompatibleMicroscopicClient] = None,
     ) -> None:
         self._client = client or OpenAICompatibleMicroscopicClient(config)
-        self.last_parse_mode = "legacy_json_fallback"
+        self.last_parse_mode: MicroscopicSemanticContractMode = "legacy_json_fallback"
+        self.last_contract_mode: MicroscopicSemanticContractMode = "legacy_json_fallback"
+        self.last_contract_errors: list[str] = []
         self.last_raw_text: Optional[str] = None
 
     def reason(self, rendered_prompt: Any, payload: dict[str, Any]) -> MicroscopicReasoningResponse:
-        _ = payload
         raw_text = self._client.invoke_text(messages=prompt_value_to_messages(rendered_prompt))
         self.last_raw_text = raw_text
-        tagged_error: Exception | None = None
+        contract_errors: list[str] = []
         try:
-            response = _parse_tagged_microscopic_reasoning_response(raw_text)
+            response = _parse_tagged_semantic_contract_response(raw_text, payload=payload)
         except Exception as exc:
-            tagged_error = exc
+            contract_errors.append(f"semantic_contract: {exc}")
         else:
-            self.last_parse_mode = "tagged_protocol"
+            self.last_parse_mode = "semantic_contract"
+            self.last_contract_mode = "semantic_contract"
+            self.last_contract_errors = []
             return response
 
         try:
-            response = _parse_tagged_microscopic_reasoning_response(raw_text, strict=False)
-        except Exception:
-            pass
+            response = _parse_legacy_tagged_microscopic_reasoning_response(raw_text)
+        except Exception as exc:
+            contract_errors.append(f"legacy_tagged_protocol: {exc}")
+            try:
+                response = _parse_legacy_tagged_microscopic_reasoning_response(raw_text, strict=False)
+            except Exception as recovery_exc:
+                contract_errors.append(f"legacy_tagged_protocol_recovery: {recovery_exc}")
+            else:
+                self.last_parse_mode = "legacy_tagged_protocol_fallback"
+                self.last_contract_mode = "legacy_tagged_protocol_fallback"
+                self.last_contract_errors = list(contract_errors)
+                return response
         else:
-            self.last_parse_mode = "tagged_protocol"
+            self.last_parse_mode = "legacy_tagged_protocol_fallback"
+            self.last_contract_mode = "legacy_tagged_protocol_fallback"
+            self.last_contract_errors = list(contract_errors)
             return response
 
         try:
             payload_obj = self._client.parse_json_object_text(raw_text)
             response = MicroscopicReasoningResponse.model_validate(payload_obj)
         except Exception as exc:
-            if tagged_error is None:
-                raise
-            raise ValueError(
-                "Microscopic reasoning output was neither a valid tagged protocol nor valid legacy JSON. "
-                f"Tagged error: {tagged_error}. JSON error: {exc}."
+            contract_errors.append(f"legacy_json: {exc}")
+            self.last_parse_mode = "failed"
+            self.last_contract_mode = "failed"
+            self.last_contract_errors = list(contract_errors)
+            raise MicroscopicReasoningParseError(
+                "Microscopic reasoning output was neither a valid semantic contract, valid legacy tagged protocol, nor valid legacy JSON.",
+                raw_text=raw_text,
+                contract_mode="failed",
+                contract_errors=contract_errors,
             ) from exc
         self.last_parse_mode = "legacy_json_fallback"
+        self.last_contract_mode = "legacy_json_fallback"
+        self.last_contract_errors = list(contract_errors)
         return MicroscopicReasoningResponse.model_validate(response.model_dump(mode="json"))
 
 
@@ -674,10 +1387,34 @@ class MicroscopicAgent:
             recent_rounds_context=recent_rounds_context,
             available_artifacts=available_artifacts,
             shared_structure_context=shared_structure_context,
+            round_index=round_index,
         )
         rendered_prompt = self._prompts.render("microscopic_reasoning", reasoning_payload)
-        reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
+        try:
+            reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
+        except MicroscopicReasoningParseError as exc:
+            self._emit_probe(
+                round_index=round_index,
+                case_id=resolved_case_id,
+                current_hypothesis=current_hypothesis,
+                stage="reasoning",
+                status="end",
+                details={
+                    "reasoning_backend": self._config.microscopic_backend,
+                    "reasoning_parse_mode": "failed",
+                    "reasoning_contract_mode": exc.contract_mode,
+                    "reasoning_contract_errors": list(exc.contract_errors),
+                },
+            )
+            return self._reasoning_parse_failure_report(
+                task_received=task_received,
+                task_spec=task_spec,
+                current_hypothesis=current_hypothesis,
+                parse_error=exc,
+            )
         reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
+        reasoning_contract_mode = getattr(self._reasoning_backend, "last_contract_mode", reasoning_parse_mode)
+        reasoning_contract_errors = list(getattr(self._reasoning_backend, "last_contract_errors", []))
         self._emit_probe(
             round_index=round_index,
             case_id=resolved_case_id,
@@ -691,6 +1428,8 @@ class MicroscopicAgent:
                 "capability_limit_note": reasoning.capability_limit_note,
                 "expected_outputs": reasoning.expected_outputs,
                 "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
             },
         )
         plan = self._normalize_execution_plan(
@@ -758,6 +1497,8 @@ class MicroscopicAgent:
         round_index: int,
     ) -> AgentReport:
         reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
+        reasoning_contract_mode = getattr(self._reasoning_backend, "last_contract_mode", reasoning_parse_mode)
+        reasoning_contract_errors = list(getattr(self._reasoning_backend, "last_contract_errors", []))
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
@@ -829,6 +1570,8 @@ class MicroscopicAgent:
                 "task_objective": task_spec.objective,
                 "reasoning": reasoning.model_dump(mode="json"),
                 "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -882,6 +1625,8 @@ class MicroscopicAgent:
                 "task_objective": task_spec.objective,
                 "reasoning": reasoning.model_dump(mode="json"),
                 "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": plan.capability_route,
                 "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -933,6 +1678,10 @@ class MicroscopicAgent:
             generated_artifacts["source_round"] = round_index
             result_summary_text = self._failed_result_summary(exc)
             status = exc.status
+
+        structured_results["unmet_constraints"] = list(structured_results.get("unmet_constraints") or []) + list(
+            plan.planning_unmet_constraints
+        )
 
         task_completion_status, completion_reason_code, task_completion_text = self._task_completion_for_result(
             run_status=status,
@@ -999,6 +1748,107 @@ class MicroscopicAgent:
             planner_readable_report=rendered["planner_readable_report"],
         )
 
+    def _reasoning_parse_failure_report(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        current_hypothesis: str,
+        parse_error: MicroscopicReasoningParseError,
+    ) -> AgentReport:
+        contract_errors = list(parse_error.contract_errors)
+        contract_error_text = "; ".join(contract_errors) if contract_errors else "No parser diagnostics were recorded."
+        task_completion_text = (
+            "Task could not be completed because the local microscopic semantic contract could not be parsed into a valid bounded execution plan."
+        )
+        result_summary_text = (
+            "Microscopic reasoning stopped before tool runtime because the semantic-contract translation was invalid. "
+            f"Diagnostics: {contract_error_text}"
+        )
+        render_payload = {
+            "task_received": task_received,
+            "current_hypothesis": current_hypothesis,
+            "requested_focus": ", ".join(self._requested_deliverables(task_received)),
+            "capability_route": "baseline_bundle",
+            "requested_capability": "unknown",
+            "executed_capability": "unknown",
+            "performed_new_calculations": "false",
+            "reused_existing_artifacts": "false",
+            "resolved_target_ids_text": "No target IDs were resolved because reasoning stopped before tool runtime.",
+            "honored_constraints_text": "No honored constraints were recorded because reasoning stopped before tool runtime.",
+            "unmet_constraints_text": contract_error_text,
+            "missing_deliverables_text": "No deliverables were produced because tool execution never started.",
+            "requested_route_summary": "Microscopic reasoning could not be compiled into a bounded execution route.",
+            "task_completion_text": task_completion_text,
+            "recent_context_note": "No microscopic tool runtime was attempted because semantic-contract parsing failed.",
+            "capability_scope": self._capability_scope_text(),
+            "structure_source_note": "Tool execution did not start because the semantic contract could not be compiled.",
+            "unsupported_requests_note": self._unsupported_requests_note(self._unsupported_requests(task_received, task_spec)),
+            "reasoning_summary_text": "Microscopic semantic-contract parsing failed before a valid local execution plan could be compiled.",
+            "capability_limit_note": "Current microscopic execution requires a valid semantic contract or a valid migration fallback representation.",
+            "failure_policy": "Return a local failed report and preserve parser diagnostics for Planner review.",
+            "plan_steps": "No execution steps were compiled because semantic-contract parsing failed.",
+            "expected_outputs_text": "No outputs were produced because tool execution never started.",
+            "result_summary_text": result_summary_text,
+            "local_uncertainty_detail": (
+                "the Planner did not receive new microscopic evidence because local contract parsing failed before any Amesp execution could begin"
+            ),
+        }
+        rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
+        structured_results = {
+            "backend": "amesp",
+            "reasoning_backend": self._config.microscopic_backend,
+            "task_mode": task_spec.mode,
+            "task_label": task_spec.task_label,
+            "task_objective": task_spec.objective,
+            "task_completion_status": "failed",
+            "completion_reason_code": "protocol_parse_failed",
+            "task_completion": rendered["task_completion"],
+            "reasoning": {
+                "task_understanding": "Microscopic reasoning could not be parsed into a valid semantic contract.",
+                "reasoning_summary": "No valid bounded execution route was compiled.",
+                "failure_policy": "Return parser diagnostics only.",
+            },
+            "reasoning_parse_mode": "failed",
+            "reasoning_contract_mode": parse_error.contract_mode,
+            "reasoning_contract_errors": contract_errors,
+            "requested_capability": None,
+            "executed_capability": None,
+            "performed_new_calculations": False,
+            "reused_existing_artifacts": False,
+            "resolved_target_ids": {},
+            "honored_constraints": [],
+            "unmet_constraints": list(contract_errors),
+            "missing_deliverables": self._requested_deliverables(task_received),
+            "error": {
+                "code": "protocol_parse_failed",
+                "message": str(parse_error),
+            },
+            "supported_scope": [],
+            "unsupported_requests": self._unsupported_requests(task_received, task_spec),
+        }
+        return AgentReport(
+            agent_name="microscopic",
+            task_received=task_received,
+            task_completion_status="failed",
+            completion_reason_code="protocol_parse_failed",
+            task_completion=rendered["task_completion"],
+            task_understanding="Microscopic semantic-contract parsing failed before local execution planning.",
+            reasoning_summary=rendered["reasoning_summary"],
+            execution_plan=rendered["execution_plan"],
+            result_summary=rendered["result_summary"],
+            remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
+            tool_calls=["microscopic_reasoning(task_instruction_to_semantic_contract)"],
+            raw_results={
+                "reasoning_raw_text": parse_error.raw_text,
+                "reasoning_contract_errors": contract_errors,
+            },
+            structured_results=structured_results,
+            generated_artifacts={},
+            status="failed",
+            planner_readable_report=rendered["planner_readable_report"],
+        )
+
     def _shared_structure_unavailable_report(
         self,
         *,
@@ -1010,6 +1860,8 @@ class MicroscopicAgent:
         shared_structure_status: SharedStructureStatus,
     ) -> AgentReport:
         reasoning_parse_mode = getattr(self._reasoning_backend, "last_parse_mode", "legacy_json_fallback")
+        reasoning_contract_mode = getattr(self._reasoning_backend, "last_contract_mode", reasoning_parse_mode)
+        reasoning_contract_errors = list(getattr(self._reasoning_backend, "last_contract_errors", []))
         task_completion_text = (
             "Task could not be completed. The requested microscopic instruction depended on a prepared structure, "
             "but shared structure context was unavailable and private structure preparation was not allowed in this path."
@@ -1078,6 +1930,8 @@ class MicroscopicAgent:
                 "task_completion": rendered["task_completion"],
                 "reasoning": reasoning.model_dump(mode="json"),
                 "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
                 "execution_plan": plan.model_dump(mode="json"),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
                 "executed_capability": plan.microscopic_tool_request.capability_name,
@@ -1085,7 +1939,9 @@ class MicroscopicAgent:
                 "reused_existing_artifacts": False,
                 "resolved_target_ids": {},
                 "honored_constraints": [],
-                "unmet_constraints": ["shared_structure_context was unavailable before tool execution"],
+                "unmet_constraints": ["shared_structure_context was unavailable before tool execution"] + list(
+                    plan.planning_unmet_constraints
+                ),
                 "missing_deliverables": list(plan.requested_deliverables),
                 "error": {
                     "code": "shared_structure_unavailable",
@@ -1143,6 +1999,7 @@ class MicroscopicAgent:
         recent_rounds_context: list[dict[str, object]],
         available_artifacts: dict[str, Any],
         shared_structure_context: Optional[SharedStructureContext],
+        round_index: int,
     ) -> dict[str, Any]:
         requested_deliverables = self._requested_deliverables(task_instruction)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
@@ -1150,6 +2007,7 @@ class MicroscopicAgent:
             "current_hypothesis": current_hypothesis,
             "task_instruction": task_instruction,
             "task_mode": task_spec.mode,
+            "current_round_index": round_index,
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "budget_profile": self._config.microscopic_budget_profile,
@@ -1279,6 +2137,10 @@ class MicroscopicAgent:
                 "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
             ],
             unsupported_requests=unsupported_requests,
+            planning_unmet_constraints=self._planning_unmet_constraints(
+                task_received=task_received,
+                capability_name=tool_request.capability_name,
+            ),
             steps=steps,
             expected_outputs=expected_outputs,
             failure_reporting=reasoning.failure_policy,
@@ -1654,6 +2516,17 @@ class MicroscopicAgent:
         if "heteroaryl" in lower_instruction or "nsnc" in lower_instruction:
             preferred.append("heteroaryl-linkage")
         return preferred
+
+    def _planning_unmet_constraints(
+        self,
+        *,
+        task_received: str,
+        capability_name: AmespCapabilityName,
+    ) -> list[str]:
+        return _planning_unmet_constraints_for_instruction(
+            task_instruction=task_received,
+            capability_name=capability_name,
+        )
 
     def _source_round_preference_from_instruction(self, lower_instruction: str) -> Optional[int]:
         match = self._round_reference_pattern().search(lower_instruction)
@@ -2278,6 +3151,8 @@ class MicroscopicAgent:
             return "resource_budget_exceeded"
         if code in {"parse_failed"}:
             return "parse_failed"
+        if code in {"protocol_parse_failed"}:
+            return "protocol_parse_failed"
         if code in {"subprocess_failed", "normal_termination_missing", "amesp_binary_missing"}:
             return "runtime_failed"
         return None
