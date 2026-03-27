@@ -20,13 +20,17 @@ You will be given:
 - `runner_up_confidence`
 - `decision_pair`
 - `decision_gate_status`
-- `pairwise_task_agent`
-- `pairwise_task_completed_for_pair`
-- `pairwise_task_outcome`
-- `pairwise_task_rationale`
-- `finalization_mode`
-- `pairwise_verifier_completed_for_pair`
-- `pairwise_verifier_evidence_specificity`
+- `verifier_supplement_target_pair`
+- `verifier_supplement_status`
+- `verifier_information_gain`
+- `verifier_evidence_relation`
+- `verifier_supplement_summary`
+- `closure_justification_target_pair`
+- `closure_justification_status`
+- `closure_justification_evidence_source`
+- `closure_justification_basis`
+- `closure_justification_summary`
+- compatibility fields: `pairwise_task_agent`, `pairwise_task_completed_for_pair`, `pairwise_task_outcome`, `pairwise_task_rationale`, `finalization_mode`, `pairwise_verifier_completed_for_pair`, `pairwise_verifier_evidence_specificity`
 - `working_memory_summary`
 - `recent_rounds_context`
 - `recent_capability_context`
@@ -38,26 +42,29 @@ You will be given:
 
 Your task is to:
 1. Reweight the full 5-label hypothesis pool after reading the verifier evidence.
-2. Interpret the raw verifier evidence with respect to top1 and top2.
-3. Decide how the verifier evidence changes the confidence of the current top1 and top2, without treating verifier as the internal decision gate.
+2. Interpret the verifier evidence with respect to the current top1 and top2.
+3. Decide whether the verifier evidence:
+   - provides genuinely new information
+   - challenges the current top1
+   - suggests a better targeted follow-up task
 4. Decide whether to:
-   - request a new bounded internal pairwise discriminative task
-   - request another bounded internal follow-up
+   - request a new bounded internal follow-up
+   - request another verifier supplement
    - finalize the case
-5. Finalize only if:
-   - an internal pairwise discriminative task has already been completed for the current pair
-   - the verifier has also completed a high-confidence external supplement for the same pair
-6. If the internal pairwise task was decisive, you may allow decisive finalize.
-7. If the internal pairwise task was completed but remained inconclusive, you may allow best-available finalize.
+5. Finalize decisively only if:
+   - verifier supplementation for the current pair is sufficient
+   - closure justification for the current pair is sufficient
+6. Finalize best-available only if:
+   - verifier supplementation for the current pair is sufficient
+   - closure justification is still collecting or blocked
+   - the unresolved main gap is stated explicitly in the rationale
 
 Important rules:
 - Do not rely on scaffold stereotypes or hardcoded chemistry rules.
 - Use only the evidence chain from this run.
-- Do not treat generic similar-family or generic review material as decisive by itself.
-- The verifier is an external supplement, not the internal discriminative gate.
-- If the internal pairwise task for the current pair was never completed, do not finalize.
-- If the internal pairwise task for the current pair failed, do not finalize.
-- If top2 changes after verifier reweighting, any previous internal pairwise task or verifier run for the old pair no longer closes the new pair.
+- The verifier is an external supplement, not the final judge.
+- Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
+- If top2 changes after verifier reweighting, re-evaluate the current closure pair accordingly.
 - Do not ask specialized agents to decide the global mechanism.
 
 Output requirements:
@@ -84,41 +91,50 @@ Return:
 - `capability_lesson_candidates`
 - `hypothesis_reweight_explanation`
 - `decision_gate_status`
-- `pairwise_task_agent`
-- `pairwise_task_completed_for_pair`
-- `pairwise_task_outcome`
-- `pairwise_task_rationale`
+- `verifier_supplement_target_pair`
+- `verifier_supplement_status`
+- `verifier_information_gain`
+- `verifier_evidence_relation`
+- `verifier_supplement_summary`
+- `closure_justification_target_pair`
+- `closure_justification_status`
+- `closure_justification_evidence_source`
+- `closure_justification_basis`
+- `closure_justification_summary`
+- compatibility fields: `pairwise_task_agent`, `pairwise_task_completed_for_pair`, `pairwise_task_outcome`, `pairwise_task_rationale`, `pairwise_verifier_completed_for_pair`, `pairwise_verifier_evidence_specificity`
 - `finalization_mode`
 
 Rules for these fields:
 - `hypothesis_pool` must include all 5 labels and sum to 1.0.
 - `current_hypothesis` must be the top1 label from that pool.
 - `confidence` must equal the top1 confidence.
-- `finalize=true` is allowed only if the current pair already has:
-  - a completed internal pairwise discriminative task
-  - a completed verifier supplement
+- `verifier_supplement_status` must be one of:
+  - `missing`
+  - `partial`
+  - `sufficient`
+- `closure_justification_status` must be one of:
+  - `missing`
+  - `collecting`
+  - `sufficient`
+  - `blocked`
+- `finalize=true` is allowed only when verifier supplementation is already sufficient for the current pair.
 - `decision_gate_status` should be:
-  - `ready_to_finalize_decisive` only when the internal pairwise task was decisive and top1 still clearly beats top2
-  - `ready_to_finalize_best_available` only when the internal pairwise task was completed but remained inconclusive, and top1 still remains first after verifier supplementation
-  - `needs_pairwise_discriminative_task` if the current top1/top2 pair still lacks an internal discriminative task
-  - `needs_high_confidence_verifier` if the internal pairwise task exists but verifier supplementation for the same pair still has not been completed
-  - `blocked_by_missing_decisive_evidence` if the current pairwise task failed or the case still cannot close safely
-- `pairwise_task_outcome` must be one of:
-  - `decisive`
-  - `inconclusive`
-  - `failed`
-  - `not_run`
+  - `ready_to_finalize_decisive` only when decisive finalize conditions are met
+  - `ready_to_finalize_best_available` only when best-available finalize conditions are met
+  - `needs_high_confidence_verifier` if verifier supplementation is still missing or partial
+  - `needs_pairwise_discriminative_task` if closure justification still requires a targeted task
+  - `blocked_by_missing_decisive_evidence` only when closure remains blocked and no safe decisive close is available
 - `finalization_mode` must be:
   - `decisive`
   - `best_available`
   - `none`
+- Keep compatibility fields populated conservatively, but do not let them override the new verifier/closure interpretation.
 - `hypothesis_reweight_explanation` must provide one short explanation for each label.
 
 The diagnosis must explicitly include:
 - the current top1 and top2
 - how the Planner interprets the verifier evidence
-- whether the verifier evidence is exact-compound, close-family, generic, or limited
-- whether the internal pairwise task outcome for the current pair is decisive, inconclusive, failed, or absent
-- whether top2 was actually pushed down
-- whether a mechanism switch is necessary
-- whether the case is truly ready for decisive finalize, best-available finalize, or blocked closure
+- whether the verifier evidence is limited, generic, close-family, or strong enough to materially change the closure state
+- whether the verifier evidence supports top1, challenges top1, is mixed, or adds no new information
+- whether closure justification is already sufficient, still collecting, or blocked
+- whether the case is ready for decisive finalize, best-available finalize, or further follow-up

@@ -101,8 +101,14 @@ def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review"
         "tool_calls": [],
         "raw_results": {},
         "structured_results": {
+            "verifier_target_pair": pair_key,
+            "verifier_supplement_status": "sufficient",
+            "verifier_information_gain": "high" if specificity in {"close_family", "exact_compound"} else "medium",
+            "verifier_evidence_relation": "mixed",
+            "verifier_supplement_summary": "Verifier returned source-backed external supplement.",
             "pairwise_verifier_completed_for_pair": pair_key,
             "pairwise_verifier_evidence_specificity": specificity,
+            "status": "success",
         },
         "status": "success",
         "planner_readable_report": "verifier planner readable report",
@@ -553,7 +559,7 @@ def test_workflow_stores_planner_raw_and_normalized_responses(tmp_path: Path) ->
     assert updated.planner_response_history[-1]["node"] == "planner_initial"
 
 
-def test_planner_diagnosis_requires_internal_pairwise_task_before_verifier(tmp_path: Path) -> None:
+def test_planner_diagnosis_redirects_finalize_to_verifier_when_supplement_is_missing(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
         [
@@ -580,11 +586,11 @@ def test_planner_diagnosis_requires_internal_pairwise_task_before_verifier(tmp_p
 
     result = planner.plan_diagnosis(_base_state())
 
-    assert result["decision"].action == "microscopic"
-    assert result["decision"].decision_gate_status == "needs_pairwise_discriminative_task"
-    assert result["decision"].pairwise_task_agent == "microscopic"
+    assert result["decision"].action == "verifier"
+    assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
+    assert result["decision"].verifier_supplement_status == "missing"
     assert result["decision"].finalize is False
-    assert "distinguish 'ICT' from 'TICT'" in (result["decision"].task_instruction or "")
+    assert "high-confidence external verification" in (result["decision"].task_instruction or "")
 
 
 def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_path: Path) -> None:
@@ -627,6 +633,7 @@ def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_
     assert result["decision"].action == "verifier"
     assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
     assert result["decision"].needs_verifier is True
+    assert result["decision"].closure_justification_status == "sufficient"
     assert "high-confidence external verification" in (result["decision"].task_instruction or "")
 
 
@@ -679,6 +686,107 @@ def test_planner_diagnosis_preserves_verifier_when_microscopic_is_registry_block
     assert result["decision"].needs_verifier is True
 
 
+def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_missing(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.64},
+                {"name": "neutral aromatic", "confidence": 0.24},
+                {"name": "TICT", "confidence": 0.05},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.03}
+              ],
+              "diagnosis": "Verifier supplementation exists, but closure justification has not yet been established for ICT versus neutral aromatic.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.64,
+              "finalize": true,
+              "evidence_summary": "Verifier returned new external context, but no closing discriminator was yet stated.",
+              "main_gap": "Need a final targeted discriminator between ICT and neutral aromatic.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            runner_up_hypothesis="neutral aromatic",
+            runner_up_confidence=0.24,
+            decision_pair=["ICT", "neutral aromatic"],
+            hypothesis_pool=[
+                {"name": "ICT", "confidence": 0.64},
+                {"name": "neutral aromatic", "confidence": 0.24},
+                {"name": "TICT", "confidence": 0.05},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.03},
+            ],
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__neutral aromatic", "close_family")],
+        )
+    )
+
+    assert result["decision"].action == "microscopic"
+    assert result["decision"].finalize is False
+    assert result["decision"].decision_gate_status == "needs_pairwise_discriminative_task"
+    assert result["decision"].closure_justification_status == "collecting"
+    assert result["decision"].closure_justification_basis == "new_targeted_task"
+
+
+def test_planner_reweight_allows_decisive_finalize_when_verifier_and_closure_are_sufficient(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.81},
+                {"name": "TICT", "confidence": 0.10},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "neutral aromatic", "confidence": 0.03},
+                {"name": "unknown", "confidence": 0.02}
+              ],
+              "diagnosis": "Verifier supplementation and existing internal evidence together now justify decisive closure for ICT over TICT.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.81,
+              "finalize": true,
+              "evidence_summary": "Internal and external evidence both support the current top pair ordering.",
+              "main_gap": "The decisive gap is closed.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            confidence=0.81,
+            runner_up_confidence=0.10,
+            hypothesis_pool=[
+                {"name": "ICT", "confidence": 0.81},
+                {"name": "TICT", "confidence": 0.10},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "neutral aromatic", "confidence": 0.03},
+                {"name": "unknown", "confidence": 0.02},
+            ],
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="ICT__vs__TICT",
+            pairwise_task_outcome="decisive",
+            pairwise_task_rationale="Existing internal evidence directly separates ICT from TICT.",
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT", "close_family")],
+        )
+    )
+
+    assert result["decision"].finalize is True
+    assert result["decision"].finalization_mode == "decisive"
+    assert result["decision"].decision_gate_status == "ready_to_finalize_decisive"
+    assert result["decision"].closure_justification_status == "sufficient"
+    assert result["decision"].verifier_supplement_status == "sufficient"
+
+
 def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pairwise_task(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
@@ -718,10 +826,12 @@ def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pair
     assert result["decision"].finalize is True
     assert result["decision"].finalization_mode == "best_available"
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+    assert result["decision"].verifier_supplement_status == "sufficient"
+    assert result["decision"].closure_justification_status == "collecting"
     assert "Best-available closure" in (result["decision"].final_hypothesis_rationale or "")
 
 
-def test_planner_reweight_blocks_finalize_when_pairwise_task_failed(tmp_path: Path) -> None:
+def test_planner_reweight_allows_best_available_finalize_when_closure_is_blocked(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
         [
@@ -757,6 +867,7 @@ def test_planner_reweight_blocks_finalize_when_pairwise_task_failed(tmp_path: Pa
         )
     )
 
-    assert result["decision"].finalize is False
-    assert result["decision"].finalization_mode == "none"
-    assert result["decision"].decision_gate_status == "blocked_by_missing_decisive_evidence"
+    assert result["decision"].finalize is True
+    assert result["decision"].finalization_mode == "best_available"
+    assert result["decision"].closure_justification_status == "blocked"
+    assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"

@@ -82,6 +82,12 @@ VerifierEvidenceSpecificity = Literal[
     "generic_review",
     "no_direct_hit",
 ]
+VerifierSupplementStatus = Literal["missing", "partial", "sufficient"]
+VerifierInformationGain = Literal["none", "low", "medium", "high"]
+VerifierEvidenceRelation = Literal["supports_top1", "challenges_top1", "mixed", "no_new_info"]
+ClosureJustificationStatus = Literal["missing", "collecting", "sufficient", "blocked"]
+ClosureJustificationEvidenceSource = Literal["internal", "external", "mixed"]
+ClosureJustificationBasis = Literal["existing_evidence", "new_targeted_task"]
 
 
 class WorkflowProgressEvent(TypedDict):
@@ -201,6 +207,16 @@ class PlannerDecision(BaseModel):
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    verifier_supplement_target_pair: Optional[str] = None
+    verifier_supplement_status: VerifierSupplementStatus = "missing"
+    verifier_information_gain: VerifierInformationGain = "none"
+    verifier_evidence_relation: VerifierEvidenceRelation = "no_new_info"
+    verifier_supplement_summary: Optional[str] = None
+    closure_justification_target_pair: Optional[str] = None
+    closure_justification_status: ClosureJustificationStatus = "missing"
+    closure_justification_evidence_source: Optional[ClosureJustificationEvidenceSource] = None
+    closure_justification_basis: Optional[ClosureJustificationBasis] = None
+    closure_justification_summary: Optional[str] = None
     pairwise_task_agent: Optional[PairwiseTaskAgent] = None
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
@@ -236,6 +252,16 @@ class WorkingMemoryEntry(BaseModel):
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    verifier_supplement_target_pair: Optional[str] = None
+    verifier_supplement_status: VerifierSupplementStatus = "missing"
+    verifier_information_gain: VerifierInformationGain = "none"
+    verifier_evidence_relation: VerifierEvidenceRelation = "no_new_info"
+    verifier_supplement_summary: Optional[str] = None
+    closure_justification_target_pair: Optional[str] = None
+    closure_justification_status: ClosureJustificationStatus = "missing"
+    closure_justification_evidence_source: Optional[ClosureJustificationEvidenceSource] = None
+    closure_justification_basis: Optional[ClosureJustificationBasis] = None
+    closure_justification_summary: Optional[str] = None
     pairwise_task_agent: Optional[PairwiseTaskAgent] = None
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
@@ -465,6 +491,16 @@ class AieMasState(BaseModel):
     runner_up_confidence: Optional[float] = None
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    verifier_supplement_target_pair: Optional[str] = None
+    verifier_supplement_status: VerifierSupplementStatus = "missing"
+    verifier_information_gain: VerifierInformationGain = "none"
+    verifier_evidence_relation: VerifierEvidenceRelation = "no_new_info"
+    verifier_supplement_summary: Optional[str] = None
+    closure_justification_target_pair: Optional[str] = None
+    closure_justification_status: ClosureJustificationStatus = "missing"
+    closure_justification_evidence_source: Optional[ClosureJustificationEvidenceSource] = None
+    closure_justification_basis: Optional[ClosureJustificationBasis] = None
+    closure_justification_summary: Optional[str] = None
     pairwise_task_agent: Optional[PairwiseTaskAgent] = None
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"

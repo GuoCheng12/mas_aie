@@ -21,6 +21,11 @@ class _FakeVerifierTool:
         return {
             "status": "success",
             "source_count": 1,
+            "verifier_target_pair": f"{current_hypothesis}__vs__unknown",
+            "verifier_supplement_status": "sufficient",
+            "verifier_information_gain": "medium",
+            "verifier_evidence_relation": "supports_top1",
+            "verifier_supplement_summary": "Test-only verifier supplement is available.",
             "evidence_cards": [
                 {
                     "card_id": "test-verifier-card",
@@ -90,6 +95,7 @@ def test_verifier_agent_returns_specialized_local_report() -> None:
     assert report.task_completion_status == "completed"
     assert "retrieving raw verifier evidence" in report.task_completion
     assert report.structured_results["source_count"] >= 1
+    assert report.structured_results["verifier_supplement_status"] == "sufficient"
     assert report.structured_results["evidence_cards"]
     assert "topic_tags" in report.structured_results["evidence_cards"][0]
     assert report.planner_readable_report.startswith("Task completion:")

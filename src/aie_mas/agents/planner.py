@@ -32,6 +32,16 @@ class PlannerInitialResponse(BaseModel):
     capability_assessment: str = "Current specialized-agent capability has not been assessed."
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    verifier_supplement_target_pair: str = ""
+    verifier_supplement_status: str = "missing"
+    verifier_information_gain: str = "none"
+    verifier_evidence_relation: str = "no_new_info"
+    verifier_supplement_summary: str = ""
+    closure_justification_target_pair: str = ""
+    closure_justification_status: str = "missing"
+    closure_justification_evidence_source: str = ""
+    closure_justification_basis: str = ""
+    closure_justification_summary: str = ""
     pairwise_task_agent: str = ""
     pairwise_task_completed_for_pair: str = ""
     pairwise_task_outcome: str = "not_run"
@@ -63,6 +73,16 @@ class PlannerRoundResponse(BaseModel):
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_gate_status: DecisionGateStatus = "not_ready"
+    verifier_supplement_target_pair: str = ""
+    verifier_supplement_status: str = "missing"
+    verifier_information_gain: str = "none"
+    verifier_evidence_relation: str = "no_new_info"
+    verifier_supplement_summary: str = ""
+    closure_justification_target_pair: str = ""
+    closure_justification_status: str = "missing"
+    closure_justification_evidence_source: str = ""
+    closure_justification_basis: str = ""
+    closure_justification_summary: str = ""
     pairwise_task_agent: str = ""
     pairwise_task_completed_for_pair: str = ""
     pairwise_task_outcome: str = "not_run"
@@ -286,6 +306,42 @@ def _normalize_finalization_mode(raw_mode: str | None) -> str:
     return "none"
 
 
+def _normalize_verifier_supplement_status(raw_status: str | None) -> str:
+    if raw_status in {"missing", "partial", "sufficient"}:
+        return raw_status
+    return "missing"
+
+
+def _normalize_verifier_information_gain(raw_gain: str | None) -> str:
+    if raw_gain in {"none", "low", "medium", "high"}:
+        return raw_gain
+    return "none"
+
+
+def _normalize_verifier_evidence_relation(raw_relation: str | None) -> str:
+    if raw_relation in {"supports_top1", "challenges_top1", "mixed", "no_new_info"}:
+        return raw_relation
+    return "no_new_info"
+
+
+def _normalize_closure_justification_status(raw_status: str | None) -> str:
+    if raw_status in {"missing", "collecting", "sufficient", "blocked"}:
+        return raw_status
+    return "missing"
+
+
+def _normalize_closure_justification_evidence_source(raw_source: str | None) -> str | None:
+    if raw_source in {"internal", "external", "mixed"}:
+        return raw_source
+    return None
+
+
+def _normalize_closure_justification_basis(raw_basis: str | None) -> str | None:
+    if raw_basis in {"existing_evidence", "new_targeted_task"}:
+        return raw_basis
+    return None
+
+
 def _default_pairwise_task_agent(main_gap: str, preferred_action: str | None = None) -> str:
     if preferred_action in {"macro", "microscopic"}:
         return preferred_action
@@ -380,6 +436,16 @@ def _planner_normalized_payload(
     payload["hypothesis_reweight_explanation"] = dict(decision.hypothesis_reweight_explanation)
     payload["decision_pair"] = list(decision.decision_pair)
     payload["decision_gate_status"] = decision.decision_gate_status
+    payload["verifier_supplement_target_pair"] = decision.verifier_supplement_target_pair
+    payload["verifier_supplement_status"] = decision.verifier_supplement_status
+    payload["verifier_information_gain"] = decision.verifier_information_gain
+    payload["verifier_evidence_relation"] = decision.verifier_evidence_relation
+    payload["verifier_supplement_summary"] = decision.verifier_supplement_summary
+    payload["closure_justification_target_pair"] = decision.closure_justification_target_pair
+    payload["closure_justification_status"] = decision.closure_justification_status
+    payload["closure_justification_evidence_source"] = decision.closure_justification_evidence_source
+    payload["closure_justification_basis"] = decision.closure_justification_basis
+    payload["closure_justification_summary"] = decision.closure_justification_summary
     payload["pairwise_task_agent"] = decision.pairwise_task_agent
     payload["pairwise_task_completed_for_pair"] = decision.pairwise_task_completed_for_pair
     payload["pairwise_task_outcome"] = decision.pairwise_task_outcome
@@ -549,6 +615,16 @@ class OpenAIPlannerBackend:
             ),
             decision_pair=_decision_pair_from_pool(hypothesis_pool),
             decision_gate_status="not_ready",
+            verifier_supplement_target_pair=_decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            verifier_supplement_status="missing",
+            verifier_information_gain="none",
+            verifier_evidence_relation="no_new_info",
+            verifier_supplement_summary=None,
+            closure_justification_target_pair=_decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            closure_justification_status="missing",
+            closure_justification_evidence_source=None,
+            closure_justification_basis=None,
+            closure_justification_summary=None,
             pairwise_task_agent=None,
             pairwise_task_completed_for_pair=None,
             pairwise_task_outcome="not_run",
@@ -663,11 +739,52 @@ class OpenAIPlannerBackend:
             ),
             decision_pair=_decision_pair_from_pool(hypothesis_pool),
             decision_gate_status=response.decision_gate_status,
+            verifier_supplement_target_pair=response.verifier_supplement_target_pair.strip()
+            or str(payload.get("verifier_supplement_target_pair") or "").strip()
+            or _decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            verifier_supplement_status=_normalize_verifier_supplement_status(
+                response.verifier_supplement_status
+            ),
+            verifier_information_gain=_normalize_verifier_information_gain(
+                response.verifier_information_gain
+            ),
+            verifier_evidence_relation=_normalize_verifier_evidence_relation(
+                response.verifier_evidence_relation
+            ),
+            verifier_supplement_summary=response.verifier_supplement_summary.strip()
+            or str(payload.get("verifier_supplement_summary") or "").strip()
+            or None,
+            closure_justification_target_pair=response.closure_justification_target_pair.strip()
+            or str(payload.get("closure_justification_target_pair") or "").strip()
+            or _decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            closure_justification_status=_normalize_closure_justification_status(
+                response.closure_justification_status
+            ),
+            closure_justification_evidence_source=_normalize_closure_justification_evidence_source(
+                response.closure_justification_evidence_source.strip() or None
+            )
+            or _normalize_closure_justification_evidence_source(
+                str(payload.get("closure_justification_evidence_source") or "").strip() or None
+            ),
+            closure_justification_basis=_normalize_closure_justification_basis(
+                response.closure_justification_basis.strip() or None
+            )
+            or _normalize_closure_justification_basis(
+                str(payload.get("closure_justification_basis") or "").strip() or None
+            ),
+            closure_justification_summary=response.closure_justification_summary.strip()
+            or str(payload.get("closure_justification_summary") or "").strip()
+            or None,
             pairwise_task_agent=pairwise_task_agent,
             pairwise_task_completed_for_pair=pairwise_task_completed_for_pair,
             pairwise_task_outcome=pairwise_task_outcome,
             pairwise_task_rationale=pairwise_task_rationale,
             finalization_mode=finalization_mode,
+        )
+        decision = self._hydrate_verifier_and_closure_state(
+            decision=decision,
+            latest_verifier_report=payload.get("verifier_report") or payload.get("latest_verifier_report"),
+            main_gap=payload.get("main_gap") or response.main_gap,
         )
 
         evidence_summary = response.evidence_summary
@@ -680,45 +797,11 @@ class OpenAIPlannerBackend:
                 main_gap=main_gap,
                 latest_microscopic_report=payload.get("latest_microscopic_report"),
             )
-            if decision.action == "verifier":
-                decision.action = "verifier"
-                decision.needs_verifier = True
-                decision.finalize = False
-                decision.task_instruction = _default_follow_up_task_instruction(
-                    "verifier",
-                    decision.current_hypothesis,
-                    {
-                        "main_gap": main_gap,
-                        "challenger_hypothesis": decision.runner_up_hypothesis,
-                        "pairwise_decision_question": _pairwise_decision_question(
-                            decision.current_hypothesis,
-                            decision.runner_up_hypothesis or "unknown",
-                            main_gap,
-                        ),
-                        "capability_assessment": decision.capability_assessment,
-                        "contraction_reason": decision.contraction_reason,
-                    },
-                )
-                decision.agent_task_instructions = _normalize_agent_task_instructions(
-                    {"verifier": decision.task_instruction or ""}
-                )  # type: ignore[assignment]
-            elif decision.action == "finalize":
-                decision = self._require_high_confidence_verifier(
-                    decision=decision,
-                    main_gap=main_gap,
-                )
             decision.planned_agents = self._planned_agents_for_action(decision.action)
-            if decision.action not in {"verifier", "finalize"}:
-                decision.needs_verifier = False
-                decision.finalize = False
-                decision.final_hypothesis_rationale = None
-                decision.finalization_mode = "none"
-                if decision.decision_gate_status != "needs_pairwise_discriminative_task":
-                    decision.decision_gate_status = "not_ready"
-                if decision.action in {"macro", "microscopic"} and not decision.agent_task_instructions:
-                    decision.agent_task_instructions = _normalize_agent_task_instructions(
-                        {decision.action: decision.task_instruction or ""}
-                    )  # type: ignore[assignment]
+            if decision.action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
+                decision.agent_task_instructions = _normalize_agent_task_instructions(
+                    {decision.action: decision.task_instruction or ""}
+                )  # type: ignore[assignment]
         else:
             decision, conflict_status, main_gap = self._postprocess_reweight(
                 decision,
@@ -768,100 +851,79 @@ class OpenAIPlannerBackend:
         main_gap: str,
         payload: dict[str, Any],
     ) -> tuple[PlannerDecision, str, str]:
-        decision.needs_verifier = False
-        decision.planned_agents = self._planned_agents_for_action(decision.action)
-        current_pair_key = _decision_pair_key(decision.decision_pair)
-        latest_verifier_report = payload.get("verifier_report")
-        completed_pair_key, verifier_specificity = self._latest_pairwise_verifier_state(
-            latest_verifier_report,
-            decision.decision_pair,
+        decision = self._hydrate_verifier_and_closure_state(
+            decision=decision,
+            latest_verifier_report=payload.get("verifier_report"),
+            main_gap=main_gap,
         )
-        decision.pairwise_verifier_completed_for_pair = completed_pair_key
-        decision.pairwise_verifier_evidence_specificity = verifier_specificity
-        if current_pair_key is not None and decision.pairwise_task_completed_for_pair != current_pair_key:
-            decision = self._require_pairwise_discriminative_task(
-                decision=decision,
-                main_gap=main_gap,
-            )
-            return decision, conflict_status, main_gap
-
-        if decision.pairwise_task_outcome == "failed":
+        decision.planned_agents = self._planned_agents_for_action(decision.action)
+        if decision.action != "finalize":
             decision.finalize = False
-            decision.finalization_mode = "none"
-            decision.decision_gate_status = "blocked_by_missing_decisive_evidence"
-            decision.action = "finalize"
-            decision.planned_agents = []
-            decision.task_instruction = None
-            decision.agent_task_instructions = {}  # type: ignore[assignment]
             decision.final_hypothesis_rationale = None
+            if decision.action == "verifier":
+                decision.needs_verifier = True
+                decision.decision_gate_status = "needs_high_confidence_verifier"
+            elif decision.action in {"macro", "microscopic"}:
+                decision.needs_verifier = False
+                decision.finalization_mode = "none"
+                if decision.action in {"macro", "microscopic"} and not decision.task_instruction:
+                    decision.task_instruction = _default_follow_up_task_instruction(
+                        decision.action,
+                        decision.current_hypothesis,
+                        {
+                            "main_gap": main_gap,
+                            "challenger_hypothesis": decision.runner_up_hypothesis,
+                            "capability_assessment": decision.capability_assessment,
+                            "contraction_reason": decision.contraction_reason,
+                        },
+                    )
+                if decision.closure_justification_status in {"collecting", "blocked"}:
+                    decision.decision_gate_status = "needs_pairwise_discriminative_task"
+                else:
+                    decision.decision_gate_status = "not_ready"
+            if decision.action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
+                decision.agent_task_instructions = _normalize_agent_task_instructions(
+                    {decision.action: decision.task_instruction or ""}
+                )  # type: ignore[assignment]
             return decision, conflict_status, main_gap
 
-        if current_pair_key is not None and current_pair_key != completed_pair_key:
+        finalization_mode = self._finalization_mode_for_decision(decision)
+        if decision.verifier_supplement_status != "sufficient":
             decision = self._require_high_confidence_verifier(
                 decision=decision,
                 main_gap=main_gap,
             )
             return decision, conflict_status, main_gap
-
-        finalization_mode = self._finalization_mode_for_decision(decision)
-        if decision.action == "finalize":
-            if finalization_mode == "decisive":
-                decision.finalize = True
-                decision.finalization_mode = "decisive"
-                decision.decision_gate_status = "ready_to_finalize_decisive"
-                decision.task_instruction = None
-                decision.agent_task_instructions = {}  # type: ignore[assignment]
-                decision.final_hypothesis_rationale = _normalize_final_hypothesis_rationale(
-                    raw_rationale=decision.final_hypothesis_rationale,
-                    diagnosis=decision.diagnosis,
-                    finalize=True,
-                )
-            elif finalization_mode == "best_available":
-                decision.finalize = True
-                decision.finalization_mode = "best_available"
-                decision.decision_gate_status = "ready_to_finalize_best_available"
-                decision.task_instruction = None
-                decision.agent_task_instructions = {}  # type: ignore[assignment]
-                trailing_rationale = (decision.final_hypothesis_rationale or "").strip()
-                decision.final_hypothesis_rationale = (
-                    f"Best-available closure keeps '{decision.current_hypothesis}' ahead of "
-                    f"'{decision.runner_up_hypothesis or 'unknown'}', but the key discriminator remains unresolved: {main_gap}"
-                )
-                if trailing_rationale:
-                    decision.final_hypothesis_rationale += f" {trailing_rationale}"
-            else:
-                decision.finalize = False
-                decision.finalization_mode = "none"
+        if finalization_mode == "none":
+            decision = self._require_closure_justification_task(
+                decision=decision,
+                main_gap=main_gap,
+            )
+            if decision.action == "finalize":
                 decision.decision_gate_status = "blocked_by_missing_decisive_evidence"
-                decision.task_instruction = None
-                decision.agent_task_instructions = {}  # type: ignore[assignment]
-                decision.final_hypothesis_rationale = None
-                decision.planned_agents = []
+            return decision, conflict_status, main_gap
+        decision.finalize = True
+        decision.task_instruction = None
+        decision.agent_task_instructions = {}  # type: ignore[assignment]
+        decision.planned_agents = []
+        if finalization_mode == "decisive":
+            decision.finalization_mode = "decisive"
+            decision.decision_gate_status = "ready_to_finalize_decisive"
+            decision.final_hypothesis_rationale = _normalize_final_hypothesis_rationale(
+                raw_rationale=decision.final_hypothesis_rationale,
+                diagnosis=decision.diagnosis,
+                finalize=True,
+            )
         else:
-            decision.finalize = False
-            decision.final_hypothesis_rationale = None
-            decision.finalization_mode = finalization_mode
-            if finalization_mode == "decisive":
-                decision.decision_gate_status = "ready_to_finalize_decisive"
-            elif finalization_mode == "best_available":
-                decision.decision_gate_status = "ready_to_finalize_best_available"
-            else:
-                decision.decision_gate_status = "blocked_by_missing_decisive_evidence"
-            if not decision.task_instruction and decision.action in {"macro", "microscopic", "verifier"}:
-                decision.task_instruction = _default_follow_up_task_instruction(
-                    decision.action,
-                    decision.current_hypothesis,
-                    {
-                        "main_gap": main_gap,
-                        "challenger_hypothesis": decision.runner_up_hypothesis,
-                        "capability_assessment": decision.capability_assessment,
-                        "contraction_reason": decision.contraction_reason,
-                    },
-                )
-            if decision.action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
-                decision.agent_task_instructions = _normalize_agent_task_instructions(
-                    {decision.action: decision.task_instruction or ""}
-                )  # type: ignore[assignment]
+            decision.finalization_mode = "best_available"
+            decision.decision_gate_status = "ready_to_finalize_best_available"
+            trailing_rationale = (decision.final_hypothesis_rationale or "").strip()
+            decision.final_hypothesis_rationale = (
+                f"Best-available closure keeps '{decision.current_hypothesis}' ahead of "
+                f"'{decision.runner_up_hypothesis or 'unknown'}', but the main unresolved gap remains: {main_gap}"
+            )
+            if trailing_rationale:
+                decision.final_hypothesis_rationale += f" {trailing_rationale}"
         return decision, conflict_status, main_gap
 
     def _apply_pre_decision_gate(
@@ -871,91 +933,224 @@ class OpenAIPlannerBackend:
         main_gap: str,
         latest_microscopic_report: Any,
     ) -> PlannerDecision:
-        current_pair_key = _decision_pair_key(decision.decision_pair)
-        near_conclusion = (
-            len(decision.decision_pair) == 2
-            and (
-                decision.confidence >= self._verifier_threshold
-                or decision.action in {"verifier", "finalize"}
-            )
+        del latest_microscopic_report
+        decision = self._hydrate_verifier_and_closure_state(
+            decision=decision,
+            latest_verifier_report=None,
+            main_gap=main_gap,
         )
-        if not near_conclusion:
-            decision.decision_gate_status = "not_ready"
+        if decision.action in {"macro", "microscopic"}:
+            decision.needs_verifier = False
+            decision.finalize = False
+            decision.final_hypothesis_rationale = None
             decision.finalization_mode = "none"
+            if decision.closure_justification_status in {"collecting", "blocked"}:
+                decision.decision_gate_status = "needs_pairwise_discriminative_task"
+            else:
+                decision.decision_gate_status = "not_ready"
             return decision
-        if current_pair_key is None or decision.pairwise_task_completed_for_pair != current_pair_key:
-            if decision.action == "verifier" and self._latest_microscopic_blocks_internal_pairwise_verifier_handshake(
-                latest_microscopic_report
-            ):
-                return self._require_high_confidence_verifier(
-                    decision=decision,
-                    main_gap=main_gap,
+        if decision.action == "verifier":
+            decision.needs_verifier = True
+            decision.finalize = False
+            decision.finalization_mode = "none"
+            decision.decision_gate_status = "needs_high_confidence_verifier"
+            if not decision.task_instruction:
+                decision.task_instruction = _default_follow_up_task_instruction(
+                    "verifier",
+                    decision.current_hypothesis,
+                    {
+                        "main_gap": main_gap,
+                        "challenger_hypothesis": decision.runner_up_hypothesis,
+                        "pairwise_decision_question": _pairwise_decision_question(
+                            decision.current_hypothesis,
+                            decision.runner_up_hypothesis or "unknown",
+                            main_gap,
+                        ),
+                        "capability_assessment": decision.capability_assessment,
+                        "contraction_reason": decision.contraction_reason,
+                    },
                 )
-            return self._require_pairwise_discriminative_task(
+            decision.agent_task_instructions = _normalize_agent_task_instructions(
+                {"verifier": decision.task_instruction or ""}
+            )  # type: ignore[assignment]
+            return decision
+        if decision.action != "finalize":
+            return decision
+        if decision.verifier_supplement_status != "sufficient":
+            return self._require_high_confidence_verifier(
                 decision=decision,
                 main_gap=main_gap,
             )
-        return self._require_high_confidence_verifier(
-            decision=decision,
-            main_gap=main_gap,
+        finalization_mode = self._finalization_mode_for_decision(decision)
+        if finalization_mode == "none":
+            return self._require_closure_justification_task(
+                decision=decision,
+                main_gap=main_gap,
+            )
+        decision.finalize = True
+        decision.finalization_mode = finalization_mode
+        decision.decision_gate_status = (
+            "ready_to_finalize_decisive" if finalization_mode == "decisive" else "ready_to_finalize_best_available"
         )
+        decision.planned_agents = []
+        decision.task_instruction = None
+        decision.agent_task_instructions = {}  # type: ignore[assignment]
+        return decision
 
     def _decision_margin(self, decision: PlannerDecision) -> float:
         runner_up = decision.runner_up_confidence or 0.0
         return round((decision.confidence or 0.0) - runner_up, 6)
 
-    def _latest_pairwise_verifier_state(
+    def _latest_verifier_supplement_state(
         self,
         latest_verifier_report: Any,
         decision_pair: list[str],
-    ) -> tuple[str | None, str | None]:
+    ) -> dict[str, str | None]:
+        default_state: dict[str, str | None] = {
+            "pair_key": None,
+            "status": "missing",
+            "information_gain": "none",
+            "evidence_relation": "no_new_info",
+            "summary": None,
+            "specificity": None,
+        }
+        current_pair_key = _decision_pair_key(decision_pair)
         if not isinstance(latest_verifier_report, dict):
-            return None, None
+            return default_state
         structured = latest_verifier_report.get("structured_results")
         if not isinstance(structured, dict):
-            return None, None
-        pair_key = structured.get("pairwise_verifier_completed_for_pair")
-        specificity = structured.get("pairwise_verifier_evidence_specificity")
-        if isinstance(pair_key, str) and pair_key and pair_key == _decision_pair_key(decision_pair):
-            return pair_key, str(specificity) if specificity else None
-        return None, str(specificity) if specificity else None
+            return default_state
+        pair_key = str(
+            structured.get("verifier_target_pair")
+            or structured.get("pairwise_verifier_completed_for_pair")
+            or current_pair_key
+            or ""
+        ).strip() or None
+        specificity = str(structured.get("pairwise_verifier_evidence_specificity") or "").strip() or None
+        status = _normalize_verifier_supplement_status(
+            str(structured.get("verifier_supplement_status") or "").strip() or None
+        )
+        if status == "missing":
+            tool_status = str(structured.get("status") or "").strip()
+            if tool_status == "partial":
+                status = "partial"
+            elif tool_status == "success" and pair_key == current_pair_key:
+                status = "sufficient"
+        if pair_key is None and status in {"partial", "sufficient"}:
+            pair_key = current_pair_key
+        info_gain = _normalize_verifier_information_gain(
+            str(structured.get("verifier_information_gain") or "").strip() or None
+        )
+        if info_gain == "none":
+            if status == "partial":
+                info_gain = "low"
+            elif specificity == "generic_review":
+                info_gain = "medium"
+            elif specificity in {"close_family", "exact_compound"}:
+                info_gain = "high"
+        evidence_relation = _normalize_verifier_evidence_relation(
+            str(structured.get("verifier_evidence_relation") or "").strip() or None
+        )
+        summary = str(
+            structured.get("verifier_supplement_summary")
+            or structured.get("retrieval_note")
+            or ""
+        ).strip() or None
+        return {
+            "pair_key": pair_key,
+            "status": status,
+            "information_gain": info_gain,
+            "evidence_relation": evidence_relation,
+            "summary": summary,
+            "specificity": specificity,
+        }
 
-    def _latest_microscopic_blocks_internal_pairwise_verifier_handshake(
+    def _hydrate_verifier_and_closure_state(
         self,
-        latest_microscopic_report: Any,
-    ) -> bool:
-        if not isinstance(latest_microscopic_report, dict):
-            return False
-        structured = latest_microscopic_report.get("structured_results")
-        if not isinstance(structured, dict):
-            return False
-        if structured.get("registry_infeasible_for_verifier_handshake") is True:
-            return True
-        completion_reason_code = str(structured.get("completion_reason_code") or "")
-        if completion_reason_code in {
-            "action_not_supported_by_registry",
-            "capability_unsupported",
-        }:
-            return True
-        route_summary = structured.get("route_summary")
-        if isinstance(route_summary, dict) and route_summary.get("ct_proxy_availability") == "not_available":
-            return True
-        missing_deliverables = [str(item).lower() for item in list(structured.get("missing_deliverables") or [])]
-        return any("ct/localization proxy" in item or "dominant transition" in item for item in missing_deliverables)
+        *,
+        decision: PlannerDecision,
+        latest_verifier_report: Any,
+        main_gap: str,
+    ) -> PlannerDecision:
+        current_pair_key = _decision_pair_key(decision.decision_pair)
+        verifier_state = self._latest_verifier_supplement_state(
+            latest_verifier_report,
+            decision.decision_pair,
+        )
+        decision.verifier_supplement_target_pair = (
+            decision.verifier_supplement_target_pair or current_pair_key
+        )
+        if verifier_state["pair_key"] == current_pair_key and verifier_state["status"] != "missing":
+            decision.verifier_supplement_target_pair = current_pair_key
+            decision.verifier_supplement_status = verifier_state["status"] or "missing"
+            decision.verifier_information_gain = verifier_state["information_gain"] or "none"
+            decision.verifier_evidence_relation = verifier_state["evidence_relation"] or "no_new_info"
+            decision.verifier_supplement_summary = (
+                decision.verifier_supplement_summary or verifier_state["summary"]
+            )
+            decision.pairwise_verifier_completed_for_pair = current_pair_key
+            decision.pairwise_verifier_evidence_specificity = verifier_state["specificity"]  # type: ignore[assignment]
+        else:
+            decision.pairwise_verifier_completed_for_pair = None
+            decision.pairwise_verifier_evidence_specificity = verifier_state["specificity"]  # type: ignore[assignment]
+
+        if not decision.closure_justification_target_pair:
+            decision.closure_justification_target_pair = current_pair_key
+        if current_pair_key is None:
+            decision.closure_justification_status = "missing"
+            decision.closure_justification_evidence_source = None
+            decision.closure_justification_basis = None
+            decision.closure_justification_summary = None
+            return decision
+
+        if decision.pairwise_task_completed_for_pair == current_pair_key:
+            if decision.pairwise_task_outcome == "decisive":
+                decision.closure_justification_status = "sufficient"
+                if decision.verifier_supplement_status == "sufficient":
+                    decision.closure_justification_evidence_source = "mixed"
+                else:
+                    decision.closure_justification_evidence_source = "internal"
+                decision.closure_justification_basis = "existing_evidence"
+                decision.closure_justification_summary = (
+                    decision.closure_justification_summary
+                    or decision.pairwise_task_rationale
+                    or f"Existing internal evidence already separates '{decision.current_hypothesis}' from '{decision.runner_up_hypothesis or 'unknown'}'."
+                )
+                return decision
+            if decision.pairwise_task_outcome == "inconclusive":
+                if decision.closure_justification_status == "missing":
+                    decision.closure_justification_status = "collecting"
+                decision.closure_justification_evidence_source = (
+                    decision.closure_justification_evidence_source or "internal"
+                )
+                decision.closure_justification_basis = decision.closure_justification_basis or "existing_evidence"
+                decision.closure_justification_summary = (
+                    decision.closure_justification_summary
+                    or decision.pairwise_task_rationale
+                    or f"Existing internal evidence narrowed '{decision.current_hypothesis}' versus '{decision.runner_up_hypothesis or 'unknown'}' but did not fully close the gap: {main_gap}"
+                )
+                return decision
+            if decision.pairwise_task_outcome == "failed":
+                decision.closure_justification_status = "blocked"
+                decision.closure_justification_evidence_source = "internal"
+                decision.closure_justification_basis = "new_targeted_task"
+                decision.closure_justification_summary = (
+                    decision.closure_justification_summary
+                    or decision.pairwise_task_rationale
+                    or f"The previous internal closure task failed on the unresolved gap: {main_gap}"
+                )
+                return decision
+
+        return decision
 
     def _finalization_mode_for_decision(self, decision: PlannerDecision) -> str:
-        current_pair_key = _decision_pair_key(decision.decision_pair)
-        if current_pair_key is None:
+        if decision.verifier_supplement_status != "sufficient":
             return "none"
-        if decision.pairwise_task_completed_for_pair != current_pair_key:
-            return "none"
-        if decision.pairwise_verifier_completed_for_pair != current_pair_key:
-            return "none"
-        if decision.pairwise_task_outcome == "decisive":
+        if decision.closure_justification_status == "sufficient":
             if self._decision_margin(decision) >= self._config.finalize_margin_threshold:
                 return "decisive"
-            return "none"
-        if decision.pairwise_task_outcome == "inconclusive":
+            return "best_available"
+        if decision.closure_justification_status in {"collecting", "blocked"}:
             return "best_available"
         return "none"
 
@@ -1002,6 +1197,32 @@ class OpenAIPlannerBackend:
         decision.final_hypothesis_rationale = None
         return decision
 
+    def _require_closure_justification_task(
+        self,
+        *,
+        decision: PlannerDecision,
+        main_gap: str,
+    ) -> PlannerDecision:
+        if decision.action not in {"macro", "microscopic"}:
+            decision = self._require_pairwise_discriminative_task(
+                decision=decision,
+                main_gap=main_gap,
+            )
+        else:
+            decision = self._require_pairwise_discriminative_task(
+                decision=decision,
+                main_gap=main_gap,
+            )
+        decision.closure_justification_target_pair = _decision_pair_key(decision.decision_pair)
+        decision.closure_justification_status = "collecting"
+        decision.closure_justification_evidence_source = None
+        decision.closure_justification_basis = "new_targeted_task"
+        decision.closure_justification_summary = (
+            f"A final closure-justification task is still needed to explain why '{decision.current_hypothesis}' "
+            f"stays ahead of '{decision.runner_up_hypothesis or 'unknown'}' on: {main_gap}"
+        )
+        return decision
+
     def _require_high_confidence_verifier(
         self,
         *,
@@ -1014,6 +1235,11 @@ class OpenAIPlannerBackend:
         decision.finalization_mode = "none"
         decision.planned_agents = ["verifier"]
         decision.decision_gate_status = "needs_high_confidence_verifier"
+        decision.verifier_supplement_target_pair = _decision_pair_key(decision.decision_pair)
+        decision.verifier_supplement_status = "missing"
+        decision.verifier_information_gain = "none"
+        decision.verifier_evidence_relation = "no_new_info"
+        decision.closure_justification_target_pair = _decision_pair_key(decision.decision_pair)
         decision.task_instruction = _default_follow_up_task_instruction(
             "verifier",
             decision.current_hypothesis,
@@ -1111,6 +1337,16 @@ class PlannerAgent:
             "runner_up_confidence": state.runner_up_confidence,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
+            "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
+            "verifier_supplement_status": state.verifier_supplement_status,
+            "verifier_information_gain": state.verifier_information_gain,
+            "verifier_evidence_relation": state.verifier_evidence_relation,
+            "verifier_supplement_summary": state.verifier_supplement_summary,
+            "closure_justification_target_pair": state.closure_justification_target_pair,
+            "closure_justification_status": state.closure_justification_status,
+            "closure_justification_evidence_source": state.closure_justification_evidence_source,
+            "closure_justification_basis": state.closure_justification_basis,
+            "closure_justification_summary": state.closure_justification_summary,
             "pairwise_task_agent": state.pairwise_task_agent,
             "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
             "pairwise_task_outcome": state.pairwise_task_outcome,
@@ -1150,6 +1386,16 @@ class PlannerAgent:
             "runner_up_confidence": state.runner_up_confidence,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
+            "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
+            "verifier_supplement_status": state.verifier_supplement_status,
+            "verifier_information_gain": state.verifier_information_gain,
+            "verifier_evidence_relation": state.verifier_evidence_relation,
+            "verifier_supplement_summary": state.verifier_supplement_summary,
+            "closure_justification_target_pair": state.closure_justification_target_pair,
+            "closure_justification_status": state.closure_justification_status,
+            "closure_justification_evidence_source": state.closure_justification_evidence_source,
+            "closure_justification_basis": state.closure_justification_basis,
+            "closure_justification_summary": state.closure_justification_summary,
             "pairwise_task_agent": state.pairwise_task_agent,
             "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
             "pairwise_task_outcome": state.pairwise_task_outcome,

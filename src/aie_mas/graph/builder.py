@@ -136,6 +136,16 @@ class AieMasWorkflow:
         state.runner_up_confidence = decision.runner_up_confidence
         state.decision_pair = list(decision.decision_pair)
         state.decision_gate_status = decision.decision_gate_status
+        state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair
+        state.verifier_supplement_status = decision.verifier_supplement_status
+        state.verifier_information_gain = decision.verifier_information_gain
+        state.verifier_evidence_relation = decision.verifier_evidence_relation
+        state.verifier_supplement_summary = decision.verifier_supplement_summary
+        state.closure_justification_target_pair = decision.closure_justification_target_pair
+        state.closure_justification_status = decision.closure_justification_status
+        state.closure_justification_evidence_source = decision.closure_justification_evidence_source
+        state.closure_justification_basis = decision.closure_justification_basis
+        state.closure_justification_summary = decision.closure_justification_summary
         state.pairwise_task_agent = decision.pairwise_task_agent
         state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair
         state.pairwise_task_outcome = decision.pairwise_task_outcome
@@ -312,6 +322,16 @@ class AieMasWorkflow:
             "runner_up_confidence": state.runner_up_confidence,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
+            "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
+            "verifier_supplement_status": state.verifier_supplement_status,
+            "verifier_information_gain": state.verifier_information_gain,
+            "verifier_evidence_relation": state.verifier_evidence_relation,
+            "verifier_supplement_summary": state.verifier_supplement_summary,
+            "closure_justification_target_pair": state.closure_justification_target_pair,
+            "closure_justification_status": state.closure_justification_status,
+            "closure_justification_evidence_source": state.closure_justification_evidence_source,
+            "closure_justification_basis": state.closure_justification_basis,
+            "closure_justification_summary": state.closure_justification_summary,
             "pairwise_task_agent": state.pairwise_task_agent,
             "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
             "pairwise_task_outcome": state.pairwise_task_outcome,
@@ -381,6 +401,18 @@ class AieMasWorkflow:
         state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
         state.decision_pair = list(decision.decision_pair)  # type: ignore[union-attr]
         state.decision_gate_status = decision.decision_gate_status  # type: ignore[union-attr]
+        state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair  # type: ignore[union-attr]
+        state.verifier_supplement_status = decision.verifier_supplement_status  # type: ignore[union-attr]
+        state.verifier_information_gain = decision.verifier_information_gain  # type: ignore[union-attr]
+        state.verifier_evidence_relation = decision.verifier_evidence_relation  # type: ignore[union-attr]
+        state.verifier_supplement_summary = decision.verifier_supplement_summary  # type: ignore[union-attr]
+        state.closure_justification_target_pair = decision.closure_justification_target_pair  # type: ignore[union-attr]
+        state.closure_justification_status = decision.closure_justification_status  # type: ignore[union-attr]
+        state.closure_justification_evidence_source = (
+            decision.closure_justification_evidence_source  # type: ignore[union-attr]
+        )
+        state.closure_justification_basis = decision.closure_justification_basis  # type: ignore[union-attr]
+        state.closure_justification_summary = decision.closure_justification_summary  # type: ignore[union-attr]
         state.pairwise_task_agent = decision.pairwise_task_agent  # type: ignore[union-attr]
         state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair  # type: ignore[union-attr]
         state.pairwise_task_outcome = decision.pairwise_task_outcome  # type: ignore[union-attr]

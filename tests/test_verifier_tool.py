@@ -83,6 +83,10 @@ def test_verifier_tool_normalizes_retrieved_cards() -> None:
         "pairwise_discriminator",
     ]
     assert result["query_groups_with_hits"] == ["exact_identity"]
+    assert result["verifier_target_pair"] == "Restriction of Intramolecular Rotation (RIR)__vs__unknown"
+    assert result["verifier_supplement_status"] == "sufficient"
+    assert result["verifier_information_gain"] == "high"
+    assert result["verifier_evidence_relation"] == "supports_top1"
     assert result["queries_executed"]
 
 
@@ -105,6 +109,9 @@ def test_verifier_tool_returns_failed_payload_on_client_error() -> None:
     assert result["status"] == "failed"
     assert result["source_count"] == 0
     assert result["evidence_cards"] == []
+    assert result["verifier_supplement_status"] == "missing"
+    assert result["verifier_information_gain"] == "none"
+    assert result["verifier_evidence_relation"] == "no_new_info"
     assert "network unavailable" in result["error"]
 
 
@@ -131,6 +138,9 @@ def test_verifier_tool_returns_partial_with_limitation_card_when_no_cards_are_re
 
     assert result["status"] == "partial"
     assert result["source_count"] == 1
+    assert result["verifier_supplement_status"] == "partial"
+    assert result["verifier_information_gain"] == "low"
+    assert result["verifier_evidence_relation"] == "no_new_info"
     card = result["evidence_cards"][0]
     assert card["query_group"] == "limitation"
     assert card["match_level"] == "retrieval_limitation"

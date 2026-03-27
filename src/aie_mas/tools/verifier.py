@@ -129,6 +129,7 @@ class OpenAIVerifierEvidenceTool:
                 schema_name="verifier_retrieval_response",
             )
         except Exception as exc:
+            pair_key = _pairwise_key(champion_hypothesis, challenger_hypothesis)
             return {
                 "status": "failed",
                 "error": str(exc),
@@ -141,10 +142,12 @@ class OpenAIVerifierEvidenceTool:
                 "queries_executed": query_bundle["queries_executed"],
                 "query_groups_attempted": query_bundle["query_groups_attempted"],
                 "query_groups_with_hits": [],
-                "pairwise_verifier_completed_for_pair": _pairwise_key(
-                    champion_hypothesis,
-                    challenger_hypothesis,
-                ),
+                "verifier_target_pair": pair_key,
+                "verifier_supplement_status": "missing",
+                "verifier_information_gain": "none",
+                "verifier_evidence_relation": "no_new_info",
+                "verifier_supplement_summary": "External verification failed before any usable evidence could be returned.",
+                "pairwise_verifier_completed_for_pair": pair_key,
                 "pairwise_verifier_evidence_specificity": "no_direct_hit",
             }
 
@@ -160,6 +163,18 @@ class OpenAIVerifierEvidenceTool:
         query_groups_with_hits = self._query_groups_with_hits(evidence_cards)
         retrieval_status = "success" if has_non_limitation else "partial"
         pairwise_specificity = self._pairwise_evidence_specificity(evidence_cards)
+        pair_key = _pairwise_key(champion_hypothesis, challenger_hypothesis)
+        supplement_status = self._verifier_supplement_status(retrieval_status, evidence_cards)
+        information_gain = self._verifier_information_gain(
+            supplement_status,
+            pairwise_specificity,
+            evidence_cards,
+        )
+        evidence_relation = self._verifier_evidence_relation(
+            champion_hypothesis,
+            challenger_hypothesis,
+            evidence_cards,
+        )
 
         return {
             "status": retrieval_status,
@@ -173,10 +188,12 @@ class OpenAIVerifierEvidenceTool:
             "queries_executed": query_bundle["queries_executed"],
             "query_groups_attempted": query_bundle["query_groups_attempted"],
             "query_groups_with_hits": query_groups_with_hits,
-            "pairwise_verifier_completed_for_pair": _pairwise_key(
-                champion_hypothesis,
-                challenger_hypothesis,
-            ),
+            "verifier_target_pair": pair_key,
+            "verifier_supplement_status": supplement_status,
+            "verifier_information_gain": information_gain,
+            "verifier_evidence_relation": evidence_relation,
+            "verifier_supplement_summary": response.retrieval_note,
+            "pairwise_verifier_completed_for_pair": pair_key,
             "pairwise_verifier_evidence_specificity": pairwise_specificity,
         }
 
@@ -295,9 +312,15 @@ class OpenAIVerifierEvidenceTool:
 
     def _normalize_evidence_specificity(self, specificity: str, match_level: str) -> str:
         normalized = specificity.strip().lower()
-        if normalized in {"exact_compound", "close_family", "generic_review", "no_direct_hit"}:
-            return normalized
         match_level_normalized = self._normalize_match_level(match_level)
+        if normalized == "exact_compound":
+            return "exact_compound"
+        if normalized == "close_family":
+            return "close_family"
+        if normalized == "no_direct_hit":
+            return "no_direct_hit"
+        if normalized == "generic_review" and match_level_normalized == "generic_mechanistic_context":
+            return "generic_review"
         if match_level_normalized == "exact_molecule":
             return "exact_compound"
         if match_level_normalized in {"same_family", "similar_structural_class"}:
@@ -350,6 +373,69 @@ class OpenAIVerifierEvidenceTool:
             if _EVIDENCE_SPECIFICITY_ORDER[card.evidence_specificity] > _EVIDENCE_SPECIFICITY_ORDER[best_specificity]:
                 best_specificity = card.evidence_specificity
         return best_specificity
+
+    def _verifier_supplement_status(
+        self,
+        retrieval_status: str,
+        cards: list[VerifierEvidenceCard],
+    ) -> str:
+        if retrieval_status == "failed" or not cards:
+            return "missing"
+        if all(card.comparison_bucket == "limitation" for card in cards):
+            return "partial"
+        return "sufficient"
+
+    def _verifier_information_gain(
+        self,
+        supplement_status: str,
+        pairwise_specificity: str,
+        cards: list[VerifierEvidenceCard],
+    ) -> str:
+        if supplement_status == "missing":
+            return "none"
+        if supplement_status == "partial":
+            return "low"
+        if any(card.comparison_bucket == "pairwise_discriminator" for card in cards):
+            if pairwise_specificity in {"close_family", "exact_compound"}:
+                return "high"
+            return "medium"
+        if pairwise_specificity in {"close_family", "exact_compound"}:
+            return "high"
+        return "medium"
+
+    def _verifier_evidence_relation(
+        self,
+        champion_hypothesis: str,
+        challenger_hypothesis: str,
+        cards: list[VerifierEvidenceCard],
+    ) -> str:
+        usable_cards = [card for card in cards if card.comparison_bucket != "limitation"]
+        if not usable_cards:
+            return "no_new_info"
+        champion_hits = False
+        challenger_hits = False
+        mixed_hits = False
+        for card in usable_cards:
+            relevant = set(card.relevant_hypotheses)
+            if card.comparison_bucket == "pairwise_discriminator":
+                mixed_hits = True
+            if champion_hypothesis in relevant:
+                champion_hits = True
+            if challenger_hypothesis in relevant:
+                challenger_hits = True
+            if card.comparison_bucket == "exact_identity":
+                champion_hits = True
+            if card.comparison_bucket == "champion_family":
+                champion_hits = True
+            if card.comparison_bucket == "challenger_family":
+                challenger_hits = True
+        if mixed_hits or (champion_hits and challenger_hits):
+            return "mixed"
+        if champion_hits:
+            return "supports_top1"
+        if challenger_hits:
+            return "challenges_top1"
+        return "no_new_info"
 
     def _build_query_bundle(
         self,

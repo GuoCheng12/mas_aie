@@ -19,11 +19,17 @@ You will receive:
 - `runner_up_confidence`
 - `decision_pair`
 - `decision_gate_status`
-- `pairwise_task_agent`
-- `pairwise_task_completed_for_pair`
-- `pairwise_task_outcome`
-- `pairwise_task_rationale`
-- `finalization_mode`
+- `verifier_supplement_target_pair`
+- `verifier_supplement_status`
+- `verifier_information_gain`
+- `verifier_evidence_relation`
+- `verifier_supplement_summary`
+- `closure_justification_target_pair`
+- `closure_justification_status`
+- `closure_justification_evidence_source`
+- `closure_justification_basis`
+- `closure_justification_summary`
+- compatibility fields: `pairwise_task_agent`, `pairwise_task_completed_for_pair`, `pairwise_task_outcome`, `pairwise_task_rationale`, `finalization_mode`
 - `working_memory_summary`
 - `recent_rounds_context`
 - `recent_capability_context`
@@ -58,17 +64,18 @@ Each non-Planner agent report may include:
 Your task is to:
 1. Reweight the full 5-label hypothesis pool using the latest evidence.
 2. Explain how the latest evidence changes top1, top2, and at least one additional candidate.
-3. Keep track of the current top1 and top2 pair.
+3. Keep track of the current closure pair, normally the current top1 and top2.
 4. Decide the single best next action.
-5. If the evidence now approaches a temporary conclusion, do not finalize directly; first request a bounded internal pairwise discriminative task for top1 vs top2.
-6. If a bounded internal pairwise task has already been completed for the current pair and the case is again near closure, request a high-confidence verifier supplement rather than finalizing directly.
-7. If the next action is Macro, Microscopic, or Verifier, write a local task instruction for that agent.
+5. You may call `Verifier` at any time if external evidence could add information, challenge the current internal picture, or suggest a more discriminative targeted task.
+6. Treat `Top-1 vs Top-2` pairwise work as closure justification near output, not as a hard prerequisite for calling `Verifier`.
+7. If the next action is `Macro`, `Microscopic`, or `Verifier`, write a local task instruction for that agent.
+8. Do not finalize directly in this stage unless verifier supplementation is already sufficient and closure justification is already sufficient for the current pair.
 
 Important rules:
 - Do not update only the current top1. Reweight all 5 labels every round.
-- If confidence is high enough for a temporary conclusion and no internal pairwise task has been completed for the current pair, the next action must be a bounded pairwise discriminative task handled by `Macro` or `Microscopic`.
-- If a bounded pairwise discriminative task has already been completed for the current pair and the case is again near closure, the next action must be `Verifier`, not direct finalize.
-- If action is `Verifier`, the task must explicitly distinguish top1 vs top2 and request external context or discriminator criteria rather than treating verifier as the final judge.
+- `Verifier` is an external evidence supplement, not the final judge.
+- If external evidence is the most informative next step, choose `action=verifier` and keep that choice.
+- If action is `Verifier`, the task must explicitly distinguish top1 vs top2 and ask for external discriminator criteria, precedents, or challenge signals.
 - If action is `Microscopic`, keep it low-cost and bounded.
 - Do not ask specialized agents to decide the global mechanism or the next system-level action.
 
@@ -96,10 +103,17 @@ Return:
 - `capability_lesson_candidates`
 - `hypothesis_reweight_explanation`
 - `decision_gate_status`
-- `pairwise_task_agent`
-- `pairwise_task_completed_for_pair`
-- `pairwise_task_outcome`
-- `pairwise_task_rationale`
+- `verifier_supplement_target_pair`
+- `verifier_supplement_status`
+- `verifier_information_gain`
+- `verifier_evidence_relation`
+- `verifier_supplement_summary`
+- `closure_justification_target_pair`
+- `closure_justification_status`
+- `closure_justification_evidence_source`
+- `closure_justification_basis`
+- `closure_justification_summary`
+- compatibility fields: `pairwise_task_agent`, `pairwise_task_completed_for_pair`, `pairwise_task_outcome`, `pairwise_task_rationale`
 - `finalization_mode`
 
 Rules for these fields:
@@ -107,15 +121,39 @@ Rules for these fields:
 - `current_hypothesis` must be the top1 label from that pool.
 - `confidence` must equal the top1 confidence.
 - `decision_gate_status` should be:
-  - `not_ready` while the case still needs more internal evidence
-  - `needs_pairwise_discriminative_task` once the case is ready for a bounded internal top1-vs-top2 discriminative task
-  - `needs_high_confidence_verifier` once the bounded internal pairwise task has been completed and the case is ready for high-confidence external supplementation
-- If `decision_gate_status` is `needs_pairwise_discriminative_task` or `needs_high_confidence_verifier`, do not finalize in this stage.
-- `pairwise_task_agent` must be `macro` or `microscopic` only when an internal pairwise task is actually being requested or tracked for the current pair.
-- `pairwise_task_outcome` should be:
-  - `not_run` if no internal pairwise discriminative task has been completed for the current pair
-  - `decisive`, `inconclusive`, or `failed` only when the Planner is explicitly evaluating a completed pairwise internal task
-- `finalization_mode` must remain `none` in this stage.
+  - `not_ready` while more evidence is still needed
+  - `needs_high_confidence_verifier` when the next step should be verifier supplementation
+  - `needs_pairwise_discriminative_task` when the next step should be a closure-justification task
+  - `ready_to_finalize_decisive` only if decisive finalize conditions are already met
+  - `ready_to_finalize_best_available` only if best-available finalize conditions are already met
+- `verifier_supplement_status` must be one of:
+  - `missing`
+  - `partial`
+  - `sufficient`
+- `verifier_information_gain` must be one of:
+  - `none`
+  - `low`
+  - `medium`
+  - `high`
+- `verifier_evidence_relation` must be one of:
+  - `supports_top1`
+  - `challenges_top1`
+  - `mixed`
+  - `no_new_info`
+- `closure_justification_status` must be one of:
+  - `missing`
+  - `collecting`
+  - `sufficient`
+  - `blocked`
+- `closure_justification_evidence_source` must be one of:
+  - `internal`
+  - `external`
+  - `mixed`
+- `closure_justification_basis` must be one of:
+  - `existing_evidence`
+  - `new_targeted_task`
+- In this stage, `finalization_mode` should normally remain `none`.
+- Keep compatibility fields populated conservatively, but do not let them override the new verifier/closure interpretation.
 - `hypothesis_reweight_explanation` must provide one short explanation for each label.
 
 The diagnosis must explicitly include:
@@ -123,5 +161,6 @@ The diagnosis must explicitly include:
 - whether the latest evidence strengthens, weakens, or leaves unresolved the current top1
 - how the latest evidence affects the top2 challenger
 - the key remaining discriminator between top1 and top2
-- whether an internal pairwise discriminative task has already been completed for the current pair
+- whether verifier supplementation is still missing, partial, or sufficient
+- whether closure justification is still missing, collecting, sufficient, or blocked
 - why the chosen next action is best now
