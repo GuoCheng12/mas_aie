@@ -163,6 +163,15 @@ class _SuccessfulAmespTool:
         )()
 
 
+class _CountingAmespTool(_SuccessfulAmespTool):
+    def __init__(self) -> None:
+        self.execute_calls = 0
+
+    def execute(self, **kwargs):
+        self.execute_calls += 1
+        return super().execute(**kwargs)
+
+
 def _shared_structure_context(tmp_path: Path) -> SharedStructureContext:
     return SharedStructureContext(
         input_smiles="C1=CCCCC1",
@@ -189,7 +198,12 @@ def _shared_structure_context(tmp_path: Path) -> SharedStructureContext:
     )
 
 
-def _build_agent(tmp_path: Path, responses: list[str]) -> tuple[MicroscopicAgent, _FakeClient]:
+def _build_agent(
+    tmp_path: Path,
+    responses: list[str],
+    *,
+    amesp_tool=None,
+) -> tuple[MicroscopicAgent, _FakeClient]:
     fake_client = _FakeClient(responses)
     config = AieMasConfig(
         project_root=tmp_path,
@@ -203,7 +217,7 @@ def _build_agent(tmp_path: Path, responses: list[str]) -> tuple[MicroscopicAgent
         prompts_dir=PROMPTS_DIR,
     )
     agent = MicroscopicAgent(
-        amesp_tool=_SuccessfulAmespTool(),
+        amesp_tool=amesp_tool or _SuccessfulAmespTool(),
         tools_work_dir=tmp_path / "tools",
         config=config,
         prompts=PromptRepository(PROMPTS_DIR),
@@ -826,6 +840,72 @@ def test_semantic_contract_placeholder_target_returns_local_failed_report(tmp_pa
     assert report.structured_results["reasoning_contract_mode"] == "failed"
     assert report.structured_results["registry_infeasible_for_verifier_handshake"] is True
     assert any("Placeholder target values are not allowed" in item for item in report.structured_results["reasoning_contract_errors"])
+
+
+def test_registry_blocked_raw_artifact_inspection_fails_fast_without_tool_execution(tmp_path: Path) -> None:
+    counting_tool = _CountingAmespTool()
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner asked to inspect baseline evidence for CT-sensitive follow-up.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse a canonical artifact bundle and parse it without new calculations.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed parse-only reuse.
+            </capability_limit_note>
+            <expected_outputs>
+            parsed snapshot summaries
+            </expected_outputs>
+            <failure_policy>
+            If parsing is not possible, return a local failed report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=2
+            local_goal=Reuse baseline artifacts for local inspection.
+            execution_action=parse_snapshot_outputs
+            discovery_actions=list_artifact_bundles
+            requested_route_summary=Reuse a discovered baseline artifact bundle without new calculations.
+            requested_deliverables=state-ordering summaries | CT/localization proxy
+            unsupported_requests=
+            param.perform_new_calculation=false
+            param.reuse_existing_artifacts_only=true
+            param.state_window=1,2,3
+            param.artifact_kind=baseline_bundle
+            param.source_round_selector=latest_available
+            </microscopic_semantic_contract>
+            """
+        ],
+        amesp_tool=counting_tool,
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Do not call parse_snapshot_outputs. Directly inspect the raw baseline output files and raw AOP/MO files "
+            "to extract any CT-sensitive observables."
+        ),
+        current_hypothesis="ICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="raw-artifact-inspection",
+            objective="Request direct raw artifact inspection rather than registry-backed parsing.",
+        ),
+        case_id="case123",
+        round_index=3,
+    )
+
+    assert report.status == "failed"
+    assert report.completion_reason_code == "action_not_supported_by_registry"
+    assert report.structured_results["registry_infeasible_for_verifier_handshake"] is True
+    assert report.structured_results["registry_validation_errors"] == [
+        "Planner requested unsupported registry-blocked microscopic task(s): raw artifact inspection."
+    ]
+    assert report.structured_results["executed_capability"] is None
+    assert counting_tool.execute_calls == 0
 
 
 def test_tagged_semantic_contract_parser_rejects_unknown_key() -> None:

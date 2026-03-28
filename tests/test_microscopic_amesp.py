@@ -659,6 +659,82 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
     assert "CT/localization proxy" in parsed_result.missing_deliverables
 
 
+def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_new_calculations(
+    tmp_path: Path,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    baseline_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate the baseline bundle for later parse-only reuse.",
+            requested_deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+            capability_route="baseline_bundle",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                optimize_ground_state=True,
+                state_window=[1, 2],
+                deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+                requested_route_summary="Run the default baseline bundle.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="baseline_parse_source",
+        workdir=tmp_path / "baseline_parse_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    parsed_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Parse the reusable baseline bundle without new calculations.",
+            requested_deliverables=[
+                "vertical excited-state manifold",
+                "CT/localization proxy",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="parse_snapshot_outputs",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_02_baseline_bundle",
+                artifact_source_round=2,
+                artifact_scope="baseline_bundle",
+                state_window=[1, 2],
+                deliverables=[
+                    "vertical excited-state manifold",
+                    "CT/localization proxy",
+                ],
+                requested_route_summary="Reuse the existing baseline bundle without new calculations.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if parsing fails.",
+        ),
+        smiles="N",
+        label="baseline_parse_only",
+        workdir=tmp_path / "baseline_parse_only_workdir",
+        available_artifacts={**baseline_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert parsed_result.executed_capability == "parse_snapshot_outputs"
+    assert parsed_result.route == "artifact_parse_only"
+    assert parsed_result.performed_new_calculations is False
+    assert parsed_result.reused_existing_artifacts is True
+    assert len(parsed_result.parsed_snapshot_records) == 1
+    assert parsed_result.route_summary["artifact_scope"] == "baseline_bundle"
+    assert parsed_result.generated_artifacts["artifact_bundle_id"] == "round_02_baseline_bundle"
+    assert "CT/localization proxy" in parsed_result.missing_deliverables
+
+
 def test_amesp_parse_snapshot_outputs_rejects_noncanonical_artifact_bundle_id(
     tmp_path: Path, monkeypatch
 ) -> None:

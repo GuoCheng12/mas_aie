@@ -2564,6 +2564,15 @@ class MicroscopicAgent:
             status="end",
             details=plan.model_dump(mode="json"),
         )
+        registry_blocked_requests = self._registry_blocked_requests(task_received)
+        if registry_blocked_requests:
+            return self._registry_blocked_request_report(
+                task_received=task_received,
+                task_spec=task_spec,
+                current_hypothesis=current_hypothesis,
+                outcome=outcome,
+                registry_blocked_requests=registry_blocked_requests,
+            )
 
         if (
             self._amesp_tool is not None
@@ -3102,6 +3111,137 @@ class MicroscopicAgent:
             planner_readable_report=rendered["planner_readable_report"],
         )
 
+    def _registry_blocked_request_report(
+        self,
+        *,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+        current_hypothesis: str,
+        outcome: MicroscopicReasoningOutcome,
+        registry_blocked_requests: list[str],
+    ) -> AgentReport:
+        reasoning = outcome.reasoning_response
+        plan = outcome.compiled_execution_plan
+        reasoning_parse_mode = outcome.reasoning_parse_mode
+        reasoning_contract_mode = outcome.reasoning_contract_mode
+        reasoning_contract_errors = list(outcome.reasoning_contract_errors)
+        blocked_note = "; ".join(registry_blocked_requests)
+        unsupported_requests = list(dict.fromkeys(list(plan.unsupported_requests) + list(registry_blocked_requests)))
+        registry_validation_errors = [
+            "Planner requested unsupported registry-blocked microscopic task(s): "
+            + blocked_note
+            + "."
+        ]
+        task_completion_text = (
+            "Task could not be completed. The Planner requested a microscopic action that is not represented in the "
+            f"current Amesp action registry: {blocked_note}."
+        )
+        result_summary_text = (
+            "Microscopic execution did not start because the Planner explicitly requested a registry-unsupported local task. "
+            f"Blocked request(s): {blocked_note}. "
+            f"The closest compiled registry action `{plan.microscopic_tool_request.capability_name}` was intentionally not executed."
+        )
+        render_payload = {
+            "task_received": task_received,
+            "current_hypothesis": current_hypothesis,
+            "requested_focus": ", ".join(plan.requested_deliverables),
+            "capability_route": plan.capability_route,
+            "requested_capability": "registry-blocked request",
+            "executed_capability": "not_executed",
+            "performed_new_calculations": "false",
+            "reused_existing_artifacts": "false",
+            "resolved_target_ids_text": "No target IDs were resolved because execution did not start.",
+            "honored_constraints_text": "No honored constraints were recorded because execution did not start.",
+            "unmet_constraints_text": (
+                "Execution was blocked before tool runtime because the Planner explicitly requested a microscopic action "
+                "that is not represented in the current Amesp action registry: "
+                + blocked_note
+                + "."
+            ),
+            "missing_deliverables_text": (
+                "; ".join(plan.requested_deliverables)
+                if plan.requested_deliverables
+                else "No deliverables were requested."
+            ),
+            "requested_route_summary": plan.requested_route_summary,
+            "task_completion_text": task_completion_text,
+            "recent_context_note": "No additional microscopic runtime step was executed.",
+            "capability_scope": self._capability_scope_text(),
+            "structure_source_note": (
+                "Execution was intentionally blocked before tool runtime because no registry-backed microscopic action "
+                "matched the Planner request exactly."
+            ),
+            "unsupported_requests_note": self._unsupported_requests_note(unsupported_requests),
+            "reasoning_summary_text": reasoning.reasoning_summary,
+            "capability_limit_note": reasoning.capability_limit_note,
+            "failure_policy": reasoning.failure_policy,
+            "plan_steps": (
+                "No execution steps were run because the Planner explicitly requested registry-unsupported microscopic "
+                f"task(s): {blocked_note}."
+            ),
+            "expected_outputs_text": "No outputs were produced because tool execution did not start.",
+            "result_summary_text": result_summary_text,
+            "local_uncertainty_detail": (
+                "the current Amesp registry does not expose the requested microscopic action, so no new local evidence "
+                "was collected in this round"
+            ),
+        }
+        rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
+        return AgentReport(
+            agent_name="microscopic",
+            task_received=task_received,
+            task_completion_status="failed",
+            completion_reason_code="action_not_supported_by_registry",
+            task_completion=rendered["task_completion"],
+            task_understanding=reasoning.task_understanding,
+            reasoning_summary=rendered["reasoning_summary"],
+            execution_plan=rendered["execution_plan"],
+            result_summary=rendered["result_summary"],
+            remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
+            tool_calls=["microscopic_reasoning(task_instruction_to_execution_plan)"],
+            raw_results={
+                "reasoning_output": reasoning.model_dump(mode="json"),
+                "execution_plan_not_executed": plan.model_dump(mode="json"),
+                "registry_blocked_requests": list(registry_blocked_requests),
+            },
+            structured_results={
+                "backend": "amesp",
+                "reasoning_backend": self._config.microscopic_backend,
+                "task_mode": task_spec.mode,
+                "task_label": task_spec.task_label,
+                "task_objective": task_spec.objective,
+                "task_completion_status": "failed",
+                "completion_reason_code": "action_not_supported_by_registry",
+                "task_completion": rendered["task_completion"],
+                "reasoning": reasoning.model_dump(mode="json"),
+                "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
+                "registry_action_name": None,
+                "registry_validation_errors": registry_validation_errors,
+                "registry_infeasible_for_verifier_handshake": True,
+                "registry_infeasible_reason": "action_not_supported_by_registry",
+                "execution_plan": plan.model_dump(mode="json"),
+                "requested_capability": None,
+                "executed_capability": None,
+                "performed_new_calculations": False,
+                "reused_existing_artifacts": False,
+                "resolved_target_ids": {},
+                "honored_constraints": [],
+                "unmet_constraints": registry_validation_errors + list(plan.planning_unmet_constraints),
+                "missing_deliverables": list(plan.requested_deliverables),
+                "error": {
+                    "code": "action_not_supported_by_registry",
+                    "message": result_summary_text,
+                },
+                "supported_scope": plan.supported_scope,
+                "unsupported_requests": unsupported_requests,
+            },
+            generated_artifacts={},
+            status="failed",
+            planner_readable_report=rendered["planner_readable_report"],
+        )
+
     def _emit_probe(
         self,
         *,
@@ -3333,7 +3473,30 @@ class MicroscopicAgent:
         for label, patterns in keyword_mapping.items():
             if any(pattern.search(lower_instruction) for pattern in patterns):
                 unsupported.append(label)
-        return unsupported
+        unsupported.extend(self._registry_blocked_requests(task_received))
+        return list(dict.fromkeys(unsupported))
+
+    def _registry_blocked_requests(
+        self,
+        task_received: str,
+    ) -> list[str]:
+        lower_instruction = task_received.lower()
+        registry_blocked: list[str] = []
+        bypass_parse_patterns = (
+            re.compile(r"\bdo not call parse_snapshot_outputs\b"),
+            re.compile(r"\bdo not use parse_snapshot_outputs\b"),
+            re.compile(r"\bwithout (?:calling|using) parse_snapshot_outputs\b"),
+            re.compile(r"\binstead of parse_snapshot_outputs\b"),
+        )
+        direct_raw_patterns = (
+            re.compile(r"\bdirect(?:ly)?\s+(?:inspect|read|check|review|parse)\b.*\b(raw|aop|mo|stdout|output files?)\b"),
+            re.compile(r"\binspect\b.*\braw (?:artifact|artifacts|file|files|output|outputs)\b"),
+            re.compile(r"\braw artifact inspection\b"),
+            re.compile(r"\braw baseline output files?\b"),
+        )
+        if any(pattern.search(lower_instruction) for pattern in bypass_parse_patterns + direct_raw_patterns):
+            registry_blocked.append("raw artifact inspection")
+        return registry_blocked
 
     def _has_reusable_structure(self, available_artifacts: dict[str, Any]) -> bool:
         summary_path = available_artifacts.get("prepared_summary_path")

@@ -1565,10 +1565,21 @@ class AmespMicroscopicTool:
         artifact_records: list[dict[str, Any]] = []
         if artifact_scope == "conformer_bundle":
             artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
+        elif artifact_scope == "baseline_bundle":
+            baseline_record = _baseline_artifact_record(selected_artifacts)
+            if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
+                artifact_records = [baseline_record]
         else:
             artifact_records = list(selected_artifacts.get("snapshot_artifacts") or [])
             if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
                 artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
+                if artifact_records:
+                    artifact_scope = "conformer_bundle"
+            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
+                baseline_record = _baseline_artifact_record(selected_artifacts)
+                if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
+                    artifact_scope = "baseline_bundle"
+                    artifact_records = [baseline_record]
         if not artifact_records:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -2814,6 +2825,18 @@ def _collect_scalar_artifact_files(
         "s1_mo_path",
     ]
     return sorted(key for key in candidate_keys if available_artifacts.get(key))
+
+
+def _baseline_artifact_record(
+    available_artifacts: dict[str, Any] | None,
+) -> dict[str, Any]:
+    available_artifacts = available_artifacts or {}
+    record: dict[str, Any] = {"member_label": "baseline_bundle"}
+    for key in _collect_scalar_artifact_files(available_artifacts):
+        value = available_artifacts.get(key)
+        if value:
+            record[key] = value
+    return record
 
 
 def _list_rotatable_dihedral_descriptors(prepared: PreparedStructure) -> list[DihedralDescriptor]:
