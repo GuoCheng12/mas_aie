@@ -321,6 +321,21 @@ class ArtifactBundleDescriptor(BaseModel):
     available_deliverables: list[str] = Field(default_factory=list)
 
 
+class ArtifactBundle(BaseModel):
+    bundle_id: str
+    bundle_kind: ArtifactBundleKind
+    source_round: int
+    source_capability: str
+    available_files: list[str] = Field(default_factory=list)
+    available_deliverables: list[str] = Field(default_factory=list)
+    parse_capabilities_supported: list[MicroscopicCapabilityName] = Field(default_factory=list)
+
+
+class ArtifactBundleRegistryEntry(BaseModel):
+    artifact_bundle: ArtifactBundle
+    generated_artifacts: dict[str, Any] = Field(default_factory=dict)
+
+
 class SelectionPolicy(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
     prefer_adjacent_to_nsnc_core: bool = False

@@ -692,6 +692,9 @@ def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_n
         available_artifacts={},
         round_index=2,
     )
+    baseline_registry_entries = list(baseline_result.generated_artifacts.get("artifact_bundle_registry_entries") or [])
+    assert len(baseline_registry_entries) == 1
+    assert baseline_registry_entries[0]["artifact_bundle"]["bundle_id"] == "round_02_baseline_bundle"
 
     parsed_result = tool.execute(
         plan=MicroscopicExecutionPlan(
@@ -732,6 +735,7 @@ def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_n
     assert len(parsed_result.parsed_snapshot_records) == 1
     assert parsed_result.route_summary["artifact_scope"] == "baseline_bundle"
     assert parsed_result.generated_artifacts["artifact_bundle_id"] == "round_02_baseline_bundle"
+    assert parsed_result.generated_artifacts["artifact_bundle_kind"] == "baseline_bundle"
     assert "CT/localization proxy" in parsed_result.missing_deliverables
 
 

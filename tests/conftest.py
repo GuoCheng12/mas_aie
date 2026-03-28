@@ -9,6 +9,7 @@ import pytest
 from aie_mas.config import AieMasConfig
 from aie_mas.agents.macro import MacroReasoningPlanDraft, MacroReasoningResponse
 from aie_mas.agents.microscopic import (
+    MicroscopicActionDecision,
     MicroscopicReasoningOutcome,
     MicroscopicReasoningPlanDraft,
     MicroscopicReasoningResponse,
@@ -184,7 +185,22 @@ class TestMicroscopicReasoningBackend:
             payload=payload,
             config=AieMasConfig(),
         )
+        tool_request = compiled_plan.microscopic_tool_request
+        assert tool_request is not None
+        action_decision = MicroscopicActionDecision(
+            status="supported",
+            execution_action=tool_request.capability_name,
+            discovery_actions=[
+                call.request.capability_name
+                for call in compiled_plan.microscopic_tool_plan.calls
+                if call.call_kind == "discovery"
+            ],
+            params={},
+            unsupported_parts=list(compiled_plan.unsupported_requests),
+            local_execution_rationale=response.reasoning_summary,
+        )
         return MicroscopicReasoningOutcome(
+            action_decision=action_decision,
             reasoning_response=response,
             compiled_execution_plan=compiled_plan,
             reasoning_parse_mode="legacy_json_fallback",

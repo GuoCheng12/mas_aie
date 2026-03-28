@@ -232,44 +232,15 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         [
             """
             {
-              "task_understanding": "Collect bounded local microscopic evidence using the baseline route only.",
-              "reasoning_summary": "Reuse or prepare a structure, run S0 optimization, then run S1 vertical excitation.",
-              "execution_plan": {
-                "local_goal": "Collect bounded microscopic evidence with Amesp baseline execution.",
-                "requested_deliverables": [
-                  "S0 geometry optimization",
-                  "S1 vertical excitation characterization"
-                ],
-                "capability_route": "baseline_bundle",
-                "requested_route_summary": "Use the default low-cost baseline bundle.",
-                "microscopic_tool_request": {
-                  "capability_name": "run_baseline_bundle",
-                  "perform_new_calculation": true,
-                  "reuse_existing_artifacts_only": false,
-                  "state_window": [1, 2],
-                  "deliverables": [
-                    "S0 geometry optimization",
-                    "S1 vertical excitation characterization"
-                  ],
-                  "budget_profile": "balanced",
-                  "requested_route_summary": "Use the default low-cost baseline bundle."
-                },
-                "structure_strategy": "prepare_from_smiles",
-                "step_sequence": [
-                  "structure_prep",
-                  "s0_optimization",
-                  "s1_vertical_excitation"
-                ],
-                "unsupported_requests": [
-                  "torsion scan"
-                ]
+              "status": "supported",
+              "execution_action": "run_baseline_bundle",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": true,
+                "optimize_ground_state": true
               },
-              "capability_limit_note": "Current capability is restricted to baseline S0 and S1 tasks only.",
-              "expected_outputs": [
-                "S0 optimized geometry",
-                "S1 first oscillator strength"
-              ],
-              "failure_policy": "Return a local failed or partial report if Amesp fails."
+              "unsupported_parts": ["torsion scan"],
+              "local_execution_rationale": "Reuse or prepare a structure, run S0 optimization, then run S1 vertical excitation."
             }
             """
         ],
@@ -290,12 +261,12 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         round_index=1,
     )
 
-    assert report.structured_results["reasoning_parse_mode"] == "legacy_json_fallback"
+    assert report.structured_results["reasoning_parse_mode"] == "structured_action_decision"
     assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
     assert report.structured_results["unsupported_requests"] == ["torsion scan"]
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
-    assert "response_format" not in fake_client.chat.completions.calls[0]
+    assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "action_registry" in prompt_payload
     assert "baseline_action_card_example" in prompt_payload
@@ -307,32 +278,17 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
         tmp_path,
         [
             """
-            <task_understanding>
-            Collect first-round low-cost microscopic baseline evidence only.
-            </task_understanding>
-            <reasoning_summary>
-            Use the bounded baseline Amesp route and avoid unsupported heavy follow-up tasks.
-            </reasoning_summary>
-            <capability_limit_note>
-            Current Amesp capability is bounded to low-cost baseline and follow-up routes only.
-            </capability_limit_note>
-            <expected_outputs>
-            low-cost aTB S0 optimized geometry
-            vertical excited-state manifold characterization
-            </expected_outputs>
-            <failure_policy>
-            If local execution fails, return a bounded failed report without making any mechanism judgment.
-            </failure_policy>
-            <microscopic_semantic_contract>
-            contract_version=2
-            local_goal=Collect first-round low-cost S0 and vertical excited-state evidence.
-            execution_action=run_baseline_bundle
-            requested_route_summary=Run the default low-cost baseline bundle.
-            requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
-            unsupported_requests=
-            param.perform_new_calculation=true
-            param.optimize_ground_state=true
-            </microscopic_semantic_contract>
+            {
+              "status": "supported",
+              "execution_action": "run_baseline_bundle",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": true,
+                "optimize_ground_state": true
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Run the default low-cost baseline bundle."
+            }
             """
         ],
     )
@@ -352,8 +308,8 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
     )
 
     plan = report.structured_results["execution_plan"]
-    assert report.structured_results["reasoning_parse_mode"] == "semantic_contract"
-    assert report.structured_results["reasoning_contract_mode"] == "semantic_contract"
+    assert report.structured_results["reasoning_parse_mode"] == "structured_action_decision"
+    assert report.structured_results["reasoning_contract_mode"] == "structured_action_decision"
     assert report.structured_results["reasoning_contract_errors"] == []
     assert report.structured_results["registry_action_name"] == "run_baseline_bundle"
     assert report.structured_results["registry_validation_errors"] == []
@@ -361,7 +317,7 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
     assert plan["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
     assert len(plan["microscopic_tool_plan"]["calls"]) == 1
     assert plan["microscopic_tool_plan"]["calls"][0]["call_kind"] == "execution"
-    assert "response_format" not in fake_client.chat.completions.calls[0]
+    assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
 
 
 def test_openai_microscopic_recovers_unclosed_expected_outputs_section(tmp_path: Path) -> None:

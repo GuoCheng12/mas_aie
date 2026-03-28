@@ -19,8 +19,10 @@ from aie_mas.chem.structure_prep import (
     prepare_structure_from_smiles,
 )
 from aie_mas.graph.state import (
+    ArtifactBundle,
     ArtifactBundleDescriptor,
     ArtifactBundleKind,
+    ArtifactBundleRegistryEntry,
     ConformerDescriptor,
     DihedralBondType,
     DihedralDescriptor,
@@ -622,45 +624,48 @@ def render_amesp_action_registry() -> str:
 
 def render_registry_backed_microscopic_examples() -> dict[str, str]:
     return {
-        "baseline": "\n".join(
-            [
-                "<microscopic_semantic_contract>",
-                "contract_version=2",
-                "local_goal=Collect first-round low-cost S0 and vertical excited-state evidence.",
-                "execution_action=run_baseline_bundle",
-                "requested_route_summary=Run the default low-cost baseline bundle.",
-                "requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization",
-                "unsupported_requests=",
-                "param.perform_new_calculation=true",
-                "param.optimize_ground_state=true",
-                "</microscopic_semantic_contract>",
-            ]
+        "baseline": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_baseline_bundle",
+                "discovery_actions": [],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": True,
+                },
+                "unsupported_parts": [],
+                "local_execution_rationale": "Run the default low-cost baseline bundle.",
+            },
+            ensure_ascii=False,
+            indent=2,
         ),
-        "torsion": "\n".join(
-            [
-                "<microscopic_semantic_contract>",
-                "contract_version=2",
-                "local_goal=Collect bounded torsion-dependent vertical-state evidence near the NSNC core.",
-                "execution_action=run_torsion_snapshots",
-                "discovery_actions=list_rotatable_dihedrals",
-                "requested_route_summary=Run a bounded torsion snapshot screen on one high-relevance dihedral near the NSNC core.",
-                "requested_deliverables=per-snapshot vertical-state records | torsion sensitivity summary",
-                "unsupported_requests=excited-state relaxation | solvent response",
-                "param.perform_new_calculation=true",
-                "param.optimize_ground_state=false",
-                "param.snapshot_count=2",
-                "param.angle_offsets_deg=35,70",
-                "param.state_window=1,2,3",
-                "param.honor_exact_target=true",
-                "param.allow_fallback=false",
-                "param.exclude_dihedral_ids=dih_0_1_2_3",
-                "param.prefer_adjacent_to_nsnc_core=true",
-                "param.min_relevance=high",
-                "param.include_peripheral=false",
-                "param.preferred_bond_types=aryl-vinyl | heteroaryl-linkage",
-                "param.source_round_selector=latest_available",
-                "</microscopic_semantic_contract>",
-            ]
+        "torsion": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_torsion_snapshots",
+                "discovery_actions": ["list_rotatable_dihedrals"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "snapshot_count": 2,
+                    "angle_offsets_deg": [35, 70],
+                    "state_window": [1, 2, 3],
+                    "honor_exact_target": True,
+                    "allow_fallback": False,
+                    "exclude_dihedral_ids": ["dih_0_1_2_3"],
+                    "prefer_adjacent_to_nsnc_core": True,
+                    "min_relevance": "high",
+                    "include_peripheral": False,
+                    "preferred_bond_types": ["aryl-vinyl", "heteroaryl-linkage"],
+                    "source_round_selector": "latest_available",
+                },
+                "unsupported_parts": ["excited-state relaxation", "solvent response"],
+                "local_execution_rationale": (
+                    "Run a bounded torsion snapshot screen on one high-relevance dihedral near the NSNC core."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
         ),
     }
 
@@ -758,6 +763,18 @@ class AmespMicroscopicTool:
         result.honored_constraints = list(resolution_payload.get("honored_constraints", []))
         result.unmet_constraints = list(resolution_payload.get("unmet_constraints", []))
         result.generated_artifacts["resolved_target_ids"] = dict(result.resolved_target_ids)
+        result.generated_artifacts["source_round"] = round_index
+        artifact_bundle_entry = _artifact_bundle_entry_from_generated_artifacts(
+            source_capability=result.executed_capability,
+            source_round=round_index,
+            generated_artifacts=result.generated_artifacts,
+        )
+        if artifact_bundle_entry is not None:
+            result.generated_artifacts["artifact_bundle_id"] = artifact_bundle_entry.artifact_bundle.bundle_id
+            result.generated_artifacts["artifact_bundle_kind"] = artifact_bundle_entry.artifact_bundle.bundle_kind
+            result.generated_artifacts["artifact_bundle_registry_entries"] = [
+                artifact_bundle_entry.model_dump(mode="json")
+            ]
         return result
 
     def _tool_plan_from_execution_plan(self, plan: MicroscopicExecutionPlan) -> MicroscopicToolPlan:
@@ -1150,6 +1167,23 @@ class AmespMicroscopicTool:
     ) -> list[ArtifactBundleDescriptor]:
         available_artifacts = available_artifacts or {}
         descriptors_by_id: dict[str, ArtifactBundleDescriptor] = {}
+        registry_entries = list(available_artifacts.get("artifact_bundle_registry_entries") or [])
+        if registry_entries:
+            for item in registry_entries:
+                entry = ArtifactBundleRegistryEntry.model_validate(item)
+                bundle = entry.artifact_bundle
+                snapshot_count = 1 if bundle.bundle_kind == "baseline_bundle" else len(
+                    list(entry.generated_artifacts.get("snapshot_artifacts") or entry.generated_artifacts.get("conformer_artifacts") or [])
+                )
+                descriptors_by_id[bundle.bundle_id] = ArtifactBundleDescriptor(
+                    artifact_bundle_id=bundle.bundle_id,
+                    source_round=bundle.source_round,
+                    source_capability=bundle.source_capability,
+                    artifact_kind=bundle.bundle_kind,
+                    snapshot_count=snapshot_count,
+                    available_files=list(bundle.available_files),
+                    available_deliverables=list(bundle.available_deliverables),
+                )
         registry_sources = list(available_artifacts.get("artifact_bundle_registry_sources") or [])
         if registry_sources:
             for source in registry_sources:
@@ -1236,6 +1270,28 @@ class AmespMicroscopicTool:
         available_artifacts: dict[str, Any] | None,
     ) -> Optional[tuple[ArtifactBundleDescriptor, dict[str, Any]]]:
         available_artifacts = available_artifacts or {}
+        registry_entries = list(available_artifacts.get("artifact_bundle_registry_entries") or [])
+        if registry_entries:
+            for item in registry_entries:
+                entry = ArtifactBundleRegistryEntry.model_validate(item)
+                bundle = entry.artifact_bundle
+                if bundle.bundle_id != artifact_bundle_id:
+                    continue
+                snapshot_count = 1 if bundle.bundle_kind == "baseline_bundle" else len(
+                    list(entry.generated_artifacts.get("snapshot_artifacts") or entry.generated_artifacts.get("conformer_artifacts") or [])
+                )
+                return (
+                    ArtifactBundleDescriptor(
+                        artifact_bundle_id=bundle.bundle_id,
+                        source_round=bundle.source_round,
+                        source_capability=bundle.source_capability,
+                        artifact_kind=bundle.bundle_kind,
+                        snapshot_count=snapshot_count,
+                        available_files=list(bundle.available_files),
+                        available_deliverables=list(bundle.available_deliverables),
+                    ),
+                    dict(entry.generated_artifacts),
+                )
         registry_sources = list(available_artifacts.get("artifact_bundle_registry_sources") or [])
         if registry_sources:
             for source in registry_sources:
@@ -1684,6 +1740,7 @@ class AmespMicroscopicTool:
                 "prepared_summary_path": str(primary_structure.summary_path),
                 "source_round": source_round,
                 "artifact_bundle_id": request.artifact_bundle_id,
+                "artifact_bundle_kind": artifact_scope,
                 "parsed_snapshot_record_count": len(parsed_records),
                 "reused_snapshot_artifacts": artifact_records,
             },
@@ -2837,6 +2894,67 @@ def _baseline_artifact_record(
         if value:
             record[key] = value
     return record
+
+
+def _artifact_bundle_entry_from_generated_artifacts(
+    *,
+    source_capability: MicroscopicCapabilityName,
+    source_round: int,
+    generated_artifacts: dict[str, Any],
+) -> Optional[ArtifactBundleRegistryEntry]:
+    bundle_kind: ArtifactBundleKind | None = None
+    snapshot_count = 0
+    available_deliverables: list[str] = []
+    parse_capabilities_supported = ["parse_snapshot_outputs"]
+
+    if source_capability == "run_baseline_bundle" and (
+        generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s1_aop_path")
+    ):
+        bundle_kind = "baseline_bundle"
+        snapshot_count = 1
+        available_deliverables = [
+            "S0 optimized geometry",
+            "vertical excited-state manifold",
+        ]
+    elif source_capability == "run_torsion_snapshots" and generated_artifacts.get("snapshot_artifacts"):
+        bundle_kind = "torsion_snapshots"
+        snapshot_count = len(list(generated_artifacts.get("snapshot_artifacts") or []))
+        available_deliverables = [
+            "per-snapshot excitation energies",
+            "per-snapshot oscillator strengths",
+            "state-ordering summaries",
+        ]
+    elif source_capability == "run_conformer_bundle" and generated_artifacts.get("conformer_artifacts"):
+        bundle_kind = "conformer_bundle"
+        snapshot_count = len(list(generated_artifacts.get("conformer_artifacts") or []))
+        available_deliverables = [
+            "bounded conformer vertical-state records",
+            "excitation spread",
+            "bright-state sensitivity",
+        ]
+
+    if bundle_kind is None:
+        return None
+
+    if bundle_kind == "baseline_bundle":
+        available_files = _collect_scalar_artifact_files(generated_artifacts)
+    elif bundle_kind == "torsion_snapshots":
+        available_files = _collect_available_file_keys(generated_artifacts, "snapshot_artifacts")
+    else:
+        available_files = _collect_available_file_keys(generated_artifacts, "conformer_artifacts")
+
+    return ArtifactBundleRegistryEntry(
+        artifact_bundle=ArtifactBundle(
+            bundle_id=f"round_{source_round:02d}_{bundle_kind}",
+            bundle_kind=bundle_kind,
+            source_round=source_round,
+            source_capability=source_capability,
+            available_files=available_files,
+            available_deliverables=available_deliverables,
+            parse_capabilities_supported=parse_capabilities_supported,
+        ),
+        generated_artifacts=dict(generated_artifacts),
+    )
 
 
 def _list_rotatable_dihedral_descriptors(prepared: PreparedStructure) -> list[DihedralDescriptor]:

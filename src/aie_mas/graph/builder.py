@@ -674,6 +674,7 @@ class AieMasWorkflow:
             **(dict(state.microscopic_reports[-1].generated_artifacts) if state.microscopic_reports else {}),
             **self._shared_structure_artifacts(state),
         }
+        artifact_bundle_registry_entries: list[dict[str, Any]] = []
         artifact_bundle_registry_sources: list[dict[str, Any]] = []
         for index, report in enumerate(state.microscopic_reports, start=1):
             generated_artifacts = dict(report.generated_artifacts)
@@ -681,6 +682,12 @@ class AieMasWorkflow:
                 continue
             source_round = int(generated_artifacts.get("source_round") or index)
             generated_artifacts["source_round"] = source_round
+            for entry in list(generated_artifacts.get("artifact_bundle_registry_entries") or []):
+                payload = dict(entry)
+                payload_artifacts = dict(payload.get("generated_artifacts") or {})
+                payload_artifacts.setdefault("source_round", source_round)
+                payload["generated_artifacts"] = payload_artifacts
+                artifact_bundle_registry_entries.append(payload)
             artifact_bundle_registry_sources.append(
                 {
                     "source_round": source_round,
@@ -688,6 +695,7 @@ class AieMasWorkflow:
                     "generated_artifacts": generated_artifacts,
                 }
             )
+        available_artifacts["artifact_bundle_registry_entries"] = artifact_bundle_registry_entries
         available_artifacts["artifact_bundle_registry_sources"] = artifact_bundle_registry_sources
         return available_artifacts
 
