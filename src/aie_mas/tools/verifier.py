@@ -20,6 +20,28 @@ _EVIDENCE_SPECIFICITY_ORDER = {
 }
 
 
+def _as_dict(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return default
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        if value is None:
+            return default
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _default_prompt_repository() -> PromptRepository:
     return PromptRepository(Path(__file__).resolve().parents[1] / "prompts")
 
@@ -532,18 +554,21 @@ class OpenAIVerifierEvidenceTool:
     ) -> list[str]:
         descriptors: list[str] = []
         if latest_macro_report is not None:
-            macro_structured = latest_macro_report.structured_results
-            if int(macro_structured.get("rotor_topology", {}).get("rotatable_bond_count", 0)) >= 6:
+            macro_structured = _as_dict(latest_macro_report.structured_results)
+            rotor_topology = _as_dict(macro_structured.get("rotor_topology"))
+            planarity_summary = _as_dict(macro_structured.get("planarity_and_torsion_summary"))
+            if _safe_int(rotor_topology.get("rotatable_bond_count")) >= 6:
                 descriptors.append("multi-rotor aromatic luminogen")
-            if int(macro_structured.get("hetero_atom_count", 0)) >= 2:
+            if _safe_int(macro_structured.get("hetero_atom_count")) >= 2:
                 descriptors.append("heteroatom-rich conjugated emitter")
-            if float(macro_structured.get("planarity_and_torsion_summary", {}).get("planarity_proxy", 0.0)) >= 0.8:
+            if _safe_float(planarity_summary.get("planarity_proxy")) >= 0.8:
                 descriptors.append("high-planarity conjugated system")
         if not descriptors:
             descriptors.append("conjugated AIE-active aromatic system")
         if latest_microscopic_report is not None:
-            s1 = latest_microscopic_report.structured_results.get("s1", {})
-            if float(s1.get("first_oscillator_strength", 0.0)) >= 0.5:
+            microscopic_structured = _as_dict(latest_microscopic_report.structured_results)
+            s1 = _as_dict(microscopic_structured.get("s1"))
+            if _safe_float(s1.get("first_oscillator_strength")) >= 0.5:
                 descriptors.append("bright emissive excited state")
         descriptor_text = ", ".join(dict.fromkeys(descriptors))
         return [

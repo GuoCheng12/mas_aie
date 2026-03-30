@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import MoleculeIdentityContext
+from aie_mas.graph.state import AgentReport, MoleculeIdentityContext
 from aie_mas.tools.verifier import (
     OpenAIVerifierEvidenceTool,
     VerifierRetrievedCardDraft,
@@ -144,3 +144,35 @@ def test_verifier_tool_returns_partial_with_limitation_card_when_no_cards_are_re
     card = result["evidence_cards"][0]
     assert card["query_group"] == "limitation"
     assert card["match_level"] == "retrieval_limitation"
+
+
+def test_verifier_family_queries_tolerate_missing_microscopic_s1_payload() -> None:
+    tool = OpenAIVerifierEvidenceTool(
+        config=AieMasConfig(verifier_api_key="test-key"),
+        client=_FakeVerifierClient(
+            VerifierRetrievalResponse(
+                retrieval_note="Search completed but did not find specific sources.",
+                evidence_cards=[],
+            )
+        ),
+    )
+
+    latest_microscopic_report = AgentReport(
+        agent_name="microscopic",
+        task_received="Return local microscopic evidence only.",
+        structured_results={"s1": None},
+        planner_readable_report="Microscopic report returned no usable S1 payload.",
+    )
+
+    result = tool.invoke(
+        smiles="C1=CC=CC=C1",
+        current_hypothesis="Restriction of Intramolecular Rotation (RIR)",
+        task_received="Retrieve external supervision evidence for the current hypothesis.",
+        main_gap="Clarify the remaining external evidence gap.",
+        molecule_identity_context=None,
+        latest_macro_report=None,
+        latest_microscopic_report=latest_microscopic_report,
+    )
+
+    assert result["status"] == "partial"
+    assert result["source_count"] == 1
