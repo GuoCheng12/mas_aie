@@ -1,0 +1,14 @@
+{
+  "input_smiles": "C[Si]1(C)C(C2=CC(C=CS3)=C3C=C2)=C(C4=CC=CC=C4)C(C5=CC=CC=C5)=C1C6=CC=C(C=CS7)C7=C6",
+  "canonical_smiles": "C[Si]1(C)C(c2ccc3sccc3c2)=C(c2ccccc2)C(c2ccccc2)=C1c1ccc2ccsc2c1",
+  "charge": 0,
+  "multiplicity": 1,
+  "heavy_atom_count": 37,
+  "atom_count": 63,
+  "conformer_count": 10,
+  "selected_conformer_id": 0,
+  "force_field": "MMFF94",
+  "xyz_path": "/datasets/workspace/mas_aie/var/runtime/tools/microscopic/6b78cd78323e/round_03/torsion_snapshots/torsion_03/prepared_structure.xyz",
+  "sdf_path": "/datasets/workspace/mas_aie/var/runtime/tools/microscopic/6b78cd78323e/round_03/torsion_snapshots/torsion_03/prepared_structure.sdf",
+  "summary_path": "/datasets/workspace/mas_aie/var/runtime/tools/microscopic/6b78cd78323e/round_03/torsion_snapshots/torsion_03/structure_prep_summary.json"
+}
