@@ -23,6 +23,7 @@ System rules:
 - Do not finalize in the initial stage.
 - Do not call Verifier as the only initial action.
 - Keep the first-round microscopic task low-cost and bounded.
+- The first-round microscopic task must be baseline-only: request exactly one bounded baseline S0/S1 action, not conformer sensitivity, torsion sensitivity, multi-step workflows, or multiple sequential Amesp actions.
 - Do not ask specialized agents to make global mechanism judgments or next-step decisions.
 
 You will be given:

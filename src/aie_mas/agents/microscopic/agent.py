@@ -88,7 +88,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         shared_structure_context: Optional[SharedStructureContext],
         round_index: int,
     ) -> dict[str, Any]:
-        requested_deliverables = self._requested_deliverables(task_instruction)
+        requested_deliverables = self._requested_deliverables(task_instruction, task_spec)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
         registry_examples = render_registry_backed_microscopic_examples()
         reasoned_examples = render_reasoned_microscopic_examples()
@@ -206,8 +206,37 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         base_dir = self._tools_work_dir or (Path.cwd() / "var" / "runtime" / "tools")
         return base_dir / "microscopic" / case_id / f"round_{round_index:02d}"
 
-    def _requested_deliverables(self, task_received: str) -> list[str]:
+    def _requested_deliverables(
+        self,
+        task_received: str,
+        task_spec: MicroscopicTaskSpec,
+    ) -> list[str]:
         lower_instruction = task_received.lower()
+        if task_spec.mode == "baseline_s0_s1":
+            deliverables = [
+                "low-cost aTB S0 geometry optimization",
+                "vertical excited-state manifold characterization",
+            ]
+            if "dipole" in lower_instruction:
+                deliverables.append("dipole summary")
+            if "charge" in lower_instruction:
+                deliverables.append("Mulliken charge summary")
+            if any(token in lower_instruction for token in ("homo-lumo", "homo lumo", "gap")):
+                deliverables.append("HOMO-LUMO gap summary")
+            if any(
+                token in lower_instruction
+                for token in (
+                    "ct descriptor",
+                    "ct descriptors",
+                    "charge-transfer",
+                    "charge transfer",
+                    "electron-hole",
+                    "electron hole",
+                    "ct distance",
+                )
+            ):
+                deliverables.append("CT descriptor availability note")
+            return list(dict.fromkeys(deliverables))
         deliverables: list[str] = []
         torsion_like = any(
             token in lower_instruction

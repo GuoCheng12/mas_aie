@@ -1358,11 +1358,14 @@ class PlannerAgent:
             "runtime_context": {
                 **self._config.runtime_context(),
                 "microscopic_baseline_policy": (
-                    "first-round microscopic work must stay low-cost and bounded; do not default to heavy exhaustive "
-                    "DFT geometry optimization for large systems"
+                    "first-round microscopic work must stay low-cost and bounded; request exactly one baseline-only "
+                    "S0/S1 action on the shared prepared structure and do not bundle conformer sensitivity, torsion "
+                    "sensitivity, or multi-step follow-ups into the initial microscopic task"
                 ),
                 "microscopic_supported_scope": (
-                    "SMILES-to-3D preparation, low-cost Amesp aTB S0 optimization, bounded S1 vertical excitation"
+                    "first-round scope is a single run_baseline_bundle-style route: shared-structure reuse, low-cost "
+                    "Amesp aTB S0 optimization, and a bounded S1 vertical excitation; conformer/torsion follow-ups "
+                    "must be separate later actions"
                 ),
             },
         }

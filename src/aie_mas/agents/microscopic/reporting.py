@@ -28,7 +28,7 @@ class MicroscopicReportingMixin:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
-            "requested_focus": ", ".join(self._requested_deliverables(task_received)),
+            "requested_focus": ", ".join(self._requested_deliverables(task_received, task_spec)),
             "capability_route": "baseline_bundle",
             "requested_capability": "unknown",
             "executed_capability": "unknown",
@@ -91,7 +91,7 @@ class MicroscopicReportingMixin:
             "resolved_target_ids": {},
             "honored_constraints": [],
             "unmet_constraints": list(contract_errors),
-            "missing_deliverables": self._requested_deliverables(task_received),
+                "missing_deliverables": self._requested_deliverables(task_received, task_spec),
             "error": {
                 "code": completion_reason_code,
                 "message": str(parse_error),

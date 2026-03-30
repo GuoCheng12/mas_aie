@@ -395,6 +395,33 @@ def test_openai_microscopic_supports_reasoned_action_text_baseline(tmp_path: Pat
     assert "response_format" not in fake_client.chat.completions.calls[0]
 
 
+def test_microscopic_baseline_requested_deliverables_ignore_conformer_and_torsion_hints(tmp_path: Path) -> None:
+    agent, _ = _build_agent(tmp_path, [])
+
+    deliverables = agent._requested_deliverables(  # type: ignore[attr-defined]
+        (
+            "Run the first-round low-cost S0/S1 microscopic baseline task. "
+            "Microscopic (supported scope: SMILES-to-3D, low-cost aTB S0 optimization, bounded S1 vertical "
+            "excitation on a few conformers) can supply fast indicators of LE vs CT and rotor-driven relaxation "
+            "propensity, but do not attempt conformer bundle or torsion snapshots in this run. "
+            "Report S0 dipole, HOMO-LUMO gap, and any CT descriptors available from the baseline bundle."
+        ),
+        MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Collect first-round microscopic baseline evidence.",
+        ),
+    )
+
+    assert deliverables == [
+        "low-cost aTB S0 geometry optimization",
+        "vertical excited-state manifold characterization",
+        "dipole summary",
+        "HOMO-LUMO gap summary",
+        "CT descriptor availability note",
+    ]
+
+
 def test_openai_microscopic_accepts_plain_json_action_decision_fallback(tmp_path: Path) -> None:
     agent, fake_client = _build_agent(
         tmp_path,
