@@ -59,8 +59,11 @@ Normal termination of Amesp!
 S1_AOP_TEXT = """
 ========= Excitation energies and oscillator strengths =========
 State    1 : E =    3.8474 eV     322.276 nm      31032.13 cm-1
+       4 -->  5      0.8123400
 E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.1234
 State    2 : E =    4.6637 eV     265.850 nm      37615.42 cm-1
+       3 -->  5     -0.4012300
+       4 -->  6      0.5223400
 E(TD) =   -55.620000000      <S**2>= 0.000     f=  0.0100
 
 Final Geometry(angstroms):
@@ -301,6 +304,9 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
     assert result.s1.first_excitation_energy_ev == 3.8474
     assert result.s1.first_oscillator_strength == 0.1234
     assert result.s1.state_count == 2
+    assert result.s1.excited_states[0].dominant_transitions == [
+        {"occupied_orbital": 4, "virtual_orbital": 5, "coefficient": 0.81234}
+    ]
     assert result.route == "baseline_bundle"
     assert result.executed_capability == "run_baseline_bundle"
     assert result.performed_new_calculations is True
@@ -676,6 +682,9 @@ def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calc
     assert len(parsed_result.parsed_snapshot_records) == 2
     assert len(captured_inputs) == input_count_before_parse
     assert "CT/localization proxy" in parsed_result.missing_deliverables
+    assert parsed_result.route_summary["ct_proxy_availability"] == "partial_observable_only"
+    assert "dominant_transitions" in parsed_result.route_summary["available_ct_surrogates"]
+    assert parsed_result.parsed_snapshot_records[0]["dominant_transitions"] != "not_available"
 
 
 def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_new_calculations(
@@ -753,6 +762,8 @@ def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_n
     assert parsed_result.reused_existing_artifacts is True
     assert len(parsed_result.parsed_snapshot_records) == 1
     assert parsed_result.route_summary["artifact_scope"] == "baseline_bundle"
+    assert parsed_result.route_summary["ct_proxy_availability"] == "partial_observable_only"
+    assert "dominant_transitions" in parsed_result.route_summary["available_ct_surrogates"]
     assert parsed_result.generated_artifacts["artifact_bundle_id"] == "round_02_baseline_bundle"
     assert parsed_result.generated_artifacts["artifact_bundle_kind"] == "baseline_bundle"
     assert "CT/localization proxy" in parsed_result.missing_deliverables
@@ -832,8 +843,10 @@ def test_amesp_extract_ct_descriptors_from_bundle_reuses_baseline_bundle_artifac
     assert ct_result.route_summary["artifact_scope"] == "baseline_bundle"
     assert ct_result.route_summary["ct_proxy_availability"] == "partial_observable_only"
     assert "ground_state_dipole" in ct_result.route_summary["available_ct_surrogates"]
-    assert "dominant transitions" in ct_result.missing_deliverables
+    assert "dominant_transitions" in ct_result.route_summary["available_ct_surrogates"]
     assert "CT/localization proxy" in ct_result.missing_deliverables
+    assert "dominant transitions" not in ct_result.missing_deliverables
+    assert ct_result.parsed_snapshot_records[0]["dominant_transitions"] != "not_available"
     assert len(ct_result.parsed_snapshot_records) == 1
 
 
@@ -914,6 +927,7 @@ def test_amesp_inspect_raw_artifact_bundle_reuses_baseline_bundle_artifacts(
     assert "s1_aop_path" in inspect_result.route_summary["available_raw_files"]
     assert "ground_state_dipole" in inspect_result.route_summary["extractable_observables"]
     assert "vertical_excitation_energies" in inspect_result.route_summary["extractable_observables"]
+    assert "dominant_transitions" in inspect_result.route_summary["extractable_observables"]
     assert inspect_result.missing_deliverables == []
 
 

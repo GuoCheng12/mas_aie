@@ -87,6 +87,7 @@ class AmespExcitedState(BaseModel):
     oscillator_strength: float
     spin_square: Optional[float] = None
     excitation_energy_ev: Optional[float] = None
+    dominant_transitions: list[dict[str, Any]] = Field(default_factory=list)
 
 
 class AmespGroundStateResult(BaseModel):
@@ -1919,6 +1920,7 @@ class AmespMicroscopicTool:
                 state_window=request.state_window,
             )
             manifold = _build_vertical_state_manifold_summary(s1_result)
+            dominant_transitions = _summarize_dominant_transitions(s1_result)
             parsed_records.append(
                 {
                     "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
@@ -1931,7 +1933,7 @@ class AmespMicroscopicTool:
                     "first_oscillator_strength": s1_result.first_oscillator_strength,
                     "state_count": s1_result.state_count,
                     "state_ordering": manifold,
-                    "dominant_transitions": "not_available",
+                    "dominant_transitions": dominant_transitions or "not_available",
                     "ct_localization_proxy": "not_available",
                 }
             )
@@ -1958,20 +1960,25 @@ class AmespMicroscopicTool:
 
         missing_deliverables = []
         requested_lower = [item.lower() for item in request.deliverables]
-        if any("dominant transition" in item for item in requested_lower):
+        dominant_transitions_available = any(
+            _record_has_dominant_transitions(record) for record in parsed_records
+        )
+        if any("dominant transition" in item for item in requested_lower) and not dominant_transitions_available:
             missing_deliverables.append("dominant transitions")
         if any(
             any(token in item for token in ("ct proxy", "charge-transfer", "charge transfer", "ct/localization"))
             for item in requested_lower
         ):
             missing_deliverables.append("CT/localization proxy")
+        available_ct_surrogates = ["dominant_transitions"] if dominant_transitions_available else []
         route_summary = {
             "snapshot_count": len(parsed_records),
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
             "source_bundle_completion_status": source_bundle_completion_status,
             "artifact_reuse_note": "Parsed existing microscopic snapshot artifacts without generating new Amesp inputs.",
-            "ct_proxy_availability": "not_available",
+            "ct_proxy_availability": "partial_observable_only" if dominant_transitions_available else "not_available",
+            "available_ct_surrogates": available_ct_surrogates,
             "state_window": list(request.state_window),
         }
         return AmespBaselineRunResult(
@@ -2037,6 +2044,7 @@ class AmespMicroscopicTool:
             source_file_availability = _artifact_record_file_availability(artifact)
             s0_result: AmespGroundStateResult | None = None
             s1_result: AmespExcitedStateResult | None = None
+            dominant_transitions: list[dict[str, Any]] = []
             parse_notes: list[str] = []
             if source_file_availability.get("s0_aop_path"):
                 try:
@@ -2050,9 +2058,12 @@ class AmespMicroscopicTool:
                         reference_energy=s0_result.final_energy_hartree,
                         state_window=request.state_window,
                     )
+                    dominant_transitions = _summarize_dominant_transitions(s1_result)
                 except AmespExecutionError as exc:
                     parse_notes.append(f"s1_parse_unavailable: {exc.message}")
             record_surrogates = _ct_surrogate_observables_from_artifact(artifact)
+            if dominant_transitions:
+                record_surrogates = sorted({*record_surrogates, "dominant_transitions"})
             available_ct_surrogates.update(record_surrogates)
             parsed_records.append(
                 {
@@ -2072,7 +2083,7 @@ class AmespMicroscopicTool:
                         if s0_result is not None
                         else 0
                     ),
-                    "dominant_transitions": "not_available",
+                    "dominant_transitions": dominant_transitions or "not_available",
                     "ct_localization_proxy": "not_available",
                     "source_file_availability": source_file_availability,
                     "available_ct_surrogates": record_surrogates,
@@ -2096,7 +2107,16 @@ class AmespMicroscopicTool:
                 },
             )
 
-        missing_ct_descriptors = list(dict.fromkeys(descriptor_scope))
+        missing_ct_descriptors = []
+        dominant_transitions_available = any(
+            _record_has_dominant_transitions(record) for record in parsed_records
+        )
+        for descriptor in descriptor_scope:
+            normalized = descriptor.strip().lower().replace("-", "_").replace(" ", "_")
+            if normalized == "dominant_transitions" and dominant_transitions_available:
+                continue
+            missing_ct_descriptors.append(descriptor)
+        missing_ct_descriptors = list(dict.fromkeys(missing_ct_descriptors))
         missing_deliverables = [_humanize_descriptor_name(item) for item in missing_ct_descriptors]
         route_summary = {
             "artifact_scope": artifact_scope,
@@ -3196,6 +3216,7 @@ def _parse_excited_states(
     *,
     reference_energy_hartree: float,
 ) -> list[AmespExcitedState]:
+    dominant_transition_map = _parse_dominant_transitions_by_state(text)
     state_matches = re.findall(
         r"State\s+(\d+)\s*:\s*E\s*=\s*([-+]?\d+\.\d+)\s+eV",
         text,
@@ -3225,6 +3246,7 @@ def _parse_excited_states(
                     oscillator_strength=parsed_oscillator,
                     spin_square=parsed_spin_square,
                     excitation_energy_ev=round(float(excitation_energy_ev), 6),
+                    dominant_transitions=dominant_transition_map.get(int(state_index), []),
                 )
             )
         return states
@@ -3239,9 +3261,60 @@ def _parse_excited_states(
                 oscillator_strength=float(oscillator),
                 spin_square=float(spin_square),
                 excitation_energy_ev=round(excitation_energy_ev, 6),
+                dominant_transitions=dominant_transition_map.get(index, []),
             )
         )
     return states
+
+
+def _parse_dominant_transitions_by_state(text: str) -> dict[int, list[dict[str, Any]]]:
+    state_pattern = re.compile(
+        r"State\s+(\d+)\s*:\s*E\s*=\s*[-+]?\d+\.\d+\s+eV(?P<body>.*?)(?=^\s*State\s+\d+\s*:|^\s*Time of TDDFT|^\s*=+\s*$|\Z)",
+        re.MULTILINE | re.DOTALL,
+    )
+    transition_pattern = re.compile(
+        r"^\s*(\d+)\s*-->\s*(\d+)\s*([-+]?\d+\.\d+)",
+        re.MULTILINE,
+    )
+
+    transitions_by_state: dict[int, list[dict[str, Any]]] = {}
+    for match in state_pattern.finditer(text):
+        state_index = int(match.group(1))
+        transitions: list[dict[str, Any]] = []
+        for occupied, virtual, coefficient in transition_pattern.findall(match.group("body")):
+            transitions.append(
+                {
+                    "occupied_orbital": int(occupied),
+                    "virtual_orbital": int(virtual),
+                    "coefficient": round(float(coefficient), 7),
+                }
+            )
+        if transitions:
+            transitions_by_state[state_index] = transitions
+    return transitions_by_state
+
+
+def _summarize_dominant_transitions(
+    s1_result: AmespExcitedStateResult,
+) -> list[dict[str, Any]]:
+    summaries: list[dict[str, Any]] = []
+    for state in s1_result.excited_states:
+        if not state.dominant_transitions:
+            continue
+        summaries.append(
+            {
+                "state_index": state.state_index,
+                "excitation_energy_ev": state.excitation_energy_ev,
+                "oscillator_strength": state.oscillator_strength,
+                "transitions": state.dominant_transitions,
+            }
+        )
+    return summaries
+
+
+def _record_has_dominant_transitions(record: dict[str, Any]) -> bool:
+    value = record.get("dominant_transitions")
+    return bool(value and value != "not_available")
 
 
 def _compute_rmsd(
@@ -3388,6 +3461,7 @@ def _extractable_observables_from_artifact(artifact_record: dict[str, Any]) -> l
                 "vertical_excitation_energies",
                 "oscillator_strengths",
                 "state_ordering",
+                "dominant_transitions",
             }
         )
     if availability.get("s0_mo_path") or availability.get("s1_mo_path"):
@@ -3410,6 +3484,8 @@ def _ct_surrogate_observables_from_artifact(artifact_record: dict[str, Any]) -> 
         surrogates.add("oscillator_strengths")
     if "state_ordering" in observables:
         surrogates.add("state_ordering")
+    if "dominant_transitions" in observables:
+        surrogates.add("dominant_transitions")
     return sorted(surrogates)
 
 
