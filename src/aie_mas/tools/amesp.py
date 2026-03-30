@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from aie_mas.chem.structure_prep import (
     PreparedConformerBundleMember,
     PreparedStructure,
+    StructurePrepError,
     StructurePrepRequest,
     prepare_conformer_bundle_from_smiles,
     prepare_structure_from_smiles,
@@ -2652,13 +2653,41 @@ class AmespMicroscopicTool:
             )
             return reusable
         structure_dir = workdir / "structure_prep"
-        atoms, prepared = self._structure_preparer(
-            StructurePrepRequest(
-                smiles=smiles,
-                label=label,
-                workdir=structure_dir,
+        try:
+            atoms, prepared = self._structure_preparer(
+                StructurePrepRequest(
+                    smiles=smiles,
+                    label=label,
+                    workdir=structure_dir,
+                )
             )
-        )
+        except StructurePrepError as exc:
+            error_payload = exc.to_payload()
+            self._emit_probe(
+                progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+                stage="structure_prep",
+                status="failed",
+                details={
+                    "source": "smiles_to_3d",
+                    "workdir": str(structure_dir),
+                    "error": error_payload,
+                },
+            )
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Structure preparation failed: {exc.message}",
+                raw_results={"structure_prep_error": error_payload},
+                structured_results={
+                    "structure_prep_error": error_payload,
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": False,
+                    "missing_deliverables": ["prepared_structure"],
+                },
+                status="failed",
+            ) from exc
         self._emit_probe(
             progress_callback,
             round_index=round_index,

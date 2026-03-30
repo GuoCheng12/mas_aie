@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from aie_mas.agents.result_agents import MicroscopicAgent
-from aie_mas.chem.structure_prep import PreparedStructure
+from aie_mas.chem.structure_prep import PreparedStructure, StructurePrepError
 from aie_mas.cli.run_case import run_case_workflow
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import MicroscopicTaskSpec
@@ -355,6 +355,63 @@ E(TD) =  -2708.578180955      <S**2>= 0.000     f=  1.0346
     assert states[0].oscillator_strength == 1.0346
     assert states[0].spin_square == 0.0
     assert states[0].excitation_energy_ev == 3.0587
+
+
+def test_amesp_execute_wraps_structure_prep_error_as_precondition_failure(tmp_path: Path) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    def _charged_structure_preparer(request):
+        raise StructurePrepError(
+            "unsupported_formal_charge",
+            "Only neutral closed-shell molecules are supported in the first version; got formal_charge=1.",
+        )
+
+    progress_events: list[dict[str, object]] = []
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_charged_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Attempt baseline execution for a charged molecule.",
+                requested_deliverables=["S0 geometry optimization"],
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="run_baseline_bundle",
+                    perform_new_calculation=True,
+                    deliverables=["S0 geometry optimization"],
+                    requested_route_summary="Test structure-prep precondition handling.",
+                ),
+                structure_source="prepared_from_smiles",
+                failure_reporting="Return failed if structure preparation cannot produce a supported molecule.",
+            ),
+            smiles="[NH4+]",
+            label="charged_case",
+            workdir=tmp_path / "charged_case_workdir",
+            available_artifacts={},
+            progress_callback=lambda event: progress_events.append(event),
+            round_index=1,
+            case_id="charged_case",
+            current_hypothesis="neutral aromatic",
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "precondition_missing"
+        assert "Structure preparation failed" in exc.message
+        assert exc.raw_results["structure_prep_error"]["code"] == "unsupported_formal_charge"
+        assert exc.structured_results["structure_prep_error"]["message"].endswith("formal_charge=1.")
+    else:  # pragma: no cover
+        raise AssertionError("Expected structure preparation failure to be wrapped as a precondition error.")
+
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "structure_prep"
+        and event["details"].get("probe_status") == "failed"
+        and event["details"].get("error", {}).get("code") == "unsupported_formal_charge"
+        for event in progress_events
+    )
 
 
 def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_path: Path) -> None:
