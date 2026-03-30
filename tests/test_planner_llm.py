@@ -686,6 +686,58 @@ def test_planner_diagnosis_preserves_verifier_when_microscopic_is_registry_block
     assert result["decision"].needs_verifier is True
 
 
+def test_planner_diagnosis_normalizes_request_verifier_supplement_alias(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "unknown", "confidence": 0.50},
+                {"name": "neutral aromatic", "confidence": 0.45},
+                {"name": "TICT", "confidence": 0.03},
+                {"name": "ICT", "confidence": 0.015},
+                {"name": "ESIPT", "confidence": 0.005}
+              ],
+              "diagnosis": "Internal discriminators are blocked and the next step must be verifier supplementation.",
+              "action": "request_verifier_supplement",
+              "current_hypothesis": "unknown",
+              "confidence": 0.50,
+              "needs_verifier": true,
+              "task_instruction": "Verifier: Resolve exact identity and photophysics for the current pairwise gap.",
+              "agent_task_instructions": {
+                "verifier": "Resolve exact identity and photophysics for the current pairwise gap."
+              },
+              "evidence_summary": "Verifier evidence remains the highest-leverage discriminator.",
+              "main_gap": "Need compound-specific photophysics to separate unknown from neutral aromatic.",
+              "conflict_status": "tool_and_data_integrity_bottleneck"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            current_hypothesis="unknown",
+            confidence=0.50,
+            runner_up_hypothesis="neutral aromatic",
+            runner_up_confidence=0.45,
+            decision_pair=["unknown", "neutral aromatic"],
+            hypothesis_pool=[
+                {"name": "unknown", "confidence": 0.50},
+                {"name": "neutral aromatic", "confidence": 0.45},
+                {"name": "TICT", "confidence": 0.03},
+                {"name": "ICT", "confidence": 0.015},
+                {"name": "ESIPT", "confidence": 0.005},
+            ],
+        )
+    )
+
+    assert result["decision"].action == "verifier"
+    assert result["decision"].planned_agents == ["verifier"]
+    assert result["decision"].task_instruction == "Verifier: Resolve exact identity and photophysics for the current pairwise gap."
+
+
 def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_missing(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
@@ -733,6 +785,60 @@ def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_mi
     assert result["decision"].decision_gate_status == "needs_pairwise_discriminative_task"
     assert result["decision"].closure_justification_status == "collecting"
     assert result["decision"].closure_justification_basis == "new_targeted_task"
+
+
+def test_planner_reweight_normalizes_prepare_finalization_alias_to_finalize(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "neutral aromatic", "confidence": 0.83},
+                {"name": "TICT", "confidence": 0.11},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "ICT", "confidence": 0.02},
+                {"name": "ESIPT", "confidence": 0.01}
+              ],
+              "diagnosis": "No further agent execution is needed; prepare final closure synthesis from the existing evidence chain.",
+              "action": "prepare_finalization",
+              "current_hypothesis": "neutral aromatic",
+              "confidence": 0.83,
+              "task_instruction": "No further agent execution. Prepare final closure write-up for neutral aromatic vs TICT from the parsed torsion bundle and verifier precedent.",
+              "evidence_summary": "Existing internal and verifier evidence already close the pair.",
+              "main_gap": "The decisive gap is closed.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            current_hypothesis="neutral aromatic",
+            confidence=0.83,
+            runner_up_hypothesis="TICT",
+            runner_up_confidence=0.11,
+            decision_pair=["neutral aromatic", "TICT"],
+            hypothesis_pool=[
+                {"name": "neutral aromatic", "confidence": 0.83},
+                {"name": "TICT", "confidence": 0.11},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "ICT", "confidence": 0.02},
+                {"name": "ESIPT", "confidence": 0.01},
+            ],
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="neutral aromatic__vs__TICT",
+            pairwise_task_outcome="decisive",
+            pairwise_task_rationale="Parsed torsion snapshots show the lowest state remains bright across the discriminator.",
+            verifier_reports=[_verifier_report_for_pair("neutral aromatic__vs__TICT", "close_family")],
+        )
+    )
+
+    assert result["decision"].action == "finalize"
+    assert result["decision"].finalize is True
+    assert result["decision"].planned_agents == []
+    assert result["decision"].decision_gate_status == "ready_to_finalize_decisive"
 
 
 def test_planner_reweight_allows_decisive_finalize_when_verifier_and_closure_are_sufficient(tmp_path: Path) -> None:

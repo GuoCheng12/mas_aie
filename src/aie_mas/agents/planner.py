@@ -714,7 +714,12 @@ class OpenAIPlannerBackend:
         )
         decision = PlannerDecision(
             diagnosis=response.diagnosis,
-            action=self._normalize_action(response.action, post_verifier=post_verifier),
+            action=self._normalize_action(
+                response.action,
+                post_verifier=post_verifier,
+                task_instruction=task_instruction,
+                agent_task_instructions=agent_task_instructions,
+            ),
             current_hypothesis=current_hypothesis,
             confidence=self._clamp_confidence(_normalize_confidence(hypothesis_pool[0].confidence)),
             needs_verifier=response.needs_verifier,
@@ -1261,10 +1266,53 @@ class OpenAIPlannerBackend:
         decision.final_hypothesis_rationale = None
         return decision
 
-    def _normalize_action(self, action: str, *, post_verifier: bool) -> str:
-        if post_verifier:
-            return action if action in {"macro", "microscopic", "verifier", "finalize"} else "microscopic"
-        return action if action in {"macro", "microscopic", "verifier", "finalize"} else "microscopic"
+    def _normalize_action(
+        self,
+        action: str,
+        *,
+        post_verifier: bool,
+        task_instruction: str | None = None,
+        agent_task_instructions: dict[str, str] | None = None,
+    ) -> str:
+        del post_verifier
+        normalized_action = (action or "").strip()
+        if normalized_action in {"macro", "microscopic", "verifier", "finalize", "macro_and_microscopic"}:
+            return normalized_action
+
+        lowered_action = normalized_action.lower()
+        action_aliases = {
+            "request_verifier_supplement": "verifier",
+            "request_verifier": "verifier",
+            "verifier_supplement": "verifier",
+            "high_confidence_verifier": "verifier",
+            "request_high_confidence_verifier": "verifier",
+            "finalize_best_available": "finalize",
+            "best_available_finalize": "finalize",
+            "finalize_decisive": "finalize",
+            "decisive_finalize": "finalize",
+            "prepare_finalization": "finalize",
+            "planner_synthesis": "finalize",
+            "closure_writeup": "finalize",
+            "closure_write_up": "finalize",
+        }
+        aliased_action = action_aliases.get(lowered_action)
+        if aliased_action is not None:
+            return aliased_action
+
+        normalized_task_instruction = (task_instruction or "").strip()
+        normalized_instruction_lower = normalized_task_instruction.lower()
+        normalized_agent_keys = set((agent_task_instructions or {}).keys())
+        if normalized_task_instruction.startswith("Verifier:") or (
+            "verifier" in normalized_agent_keys and "microscopic" not in normalized_agent_keys
+        ):
+            return "verifier"
+        if normalized_task_instruction.startswith("No further agent execution.") or (
+            "prepare final closure write-up" in normalized_instruction_lower
+            or "prepare finalization" in normalized_instruction_lower
+            or "planner-level closure" in normalized_instruction_lower
+        ):
+            return "finalize"
+        return "microscopic"
 
     def _planned_agents_for_action(self, action: str) -> list[str]:
         if action == "macro":
