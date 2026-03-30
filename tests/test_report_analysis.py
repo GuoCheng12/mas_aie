@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aie_mas.report_analysis import load_report_context, render_report_analysis_markdown
+from aie_mas.report_analysis import build_analysis_config, load_report_context, render_report_analysis_markdown
 
 
 REPORT_DIR = (
@@ -72,3 +72,16 @@ def test_render_report_analysis_markdown_includes_tools() -> None:
     assert "run_baseline_bundle" in markdown
     assert "run_torsion_snapshots" in markdown
     assert "verifier_evidence_lookup" in markdown
+
+
+def test_build_analysis_config_prefers_report_analysis_env(monkeypatch) -> None:
+    monkeypatch.setenv("AIE_MAS_OPENAI_BASE_URL", "http://example.test/v1")
+    monkeypatch.setenv("AIE_MAS_OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("AIE_MAS_OPENAI_MODEL", "gpt-5.2")
+    monkeypatch.setenv("AIE_MAS_REPORT_ANALYSIS_MODEL", "gpt-4o-mini")
+
+    config = build_analysis_config()
+
+    assert config.planner_base_url == "http://example.test/v1"
+    assert config.planner_api_key == "test-key"
+    assert config.planner_model == "gpt-4o-mini"

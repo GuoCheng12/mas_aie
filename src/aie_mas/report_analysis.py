@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any, Optional
@@ -372,10 +373,13 @@ def build_analysis_config(
     temperature: Optional[float] = None,
     timeout_seconds: Optional[float] = None,
 ) -> AieMasConfig:
+    resolved_base_url = base_url or os.getenv("AIE_MAS_OPENAI_BASE_URL")
+    resolved_model = model or os.getenv("AIE_MAS_REPORT_ANALYSIS_MODEL") or os.getenv("AIE_MAS_OPENAI_MODEL")
+    resolved_api_key = api_key or os.getenv("AIE_MAS_OPENAI_API_KEY")
     return AieMasConfig.from_env(
-        planner_base_url=base_url,
-        planner_model=model,
-        planner_api_key=api_key,
+        planner_base_url=resolved_base_url,
+        planner_model=resolved_model,
+        planner_api_key=resolved_api_key,
         planner_temperature=temperature,
         planner_timeout_seconds=timeout_seconds,
     )

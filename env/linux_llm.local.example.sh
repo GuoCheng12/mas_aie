@@ -5,6 +5,7 @@
 export AIE_MAS_OPENAI_BASE_URL="http://34.13.73.248:3888/v1"
 export AIE_MAS_OPENAI_MODEL="gpt-5.2"
 export AIE_MAS_MICROSCOPIC_MODEL="gpt-4.1-mini"
+export AIE_MAS_REPORT_ANALYSIS_MODEL="gpt-4o-mini"
 
 # Set this if your OpenAI-compatible relay requires a key.
 # export AIE_MAS_OPENAI_API_KEY="your-api-key"
