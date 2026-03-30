@@ -18,9 +18,10 @@ The human message contains a JSON object named `context_json`. Use these fields 
 - `task_mode`
 - `requested_deliverables`
 - `unsupported_requests`
+- `amesp_interface_catalog`
 - `action_registry`
-- `baseline_action_card_example`
-- `torsion_action_card_example`
+- `baseline_reasoned_action_example`
+- `torsion_reasoned_action_example`
 - `available_structure_context`
 - `shared_structure_context`
 - `recent_rounds_context`
@@ -35,9 +36,15 @@ Local operational reasoning rules:
 - Do not silently substitute a nearby supported action for an unsupported task.
 
 Output contract:
-- Return exactly one JSON object and nothing else.
-- Do not wrap it in markdown or code fences.
-- The response must validate against the provided structured schema.
+- Return exactly these tagged sections and nothing else:
+  - `<task_understanding>...</task_understanding>`
+  - `<reasoning_summary>...</reasoning_summary>`
+  - `<capability_limit_note>...</capability_limit_note>`
+  - `<expected_outputs>...</expected_outputs>`
+  - `<failure_policy>...</failure_policy>`
+  - `<action_decision_json>{{...}}</action_decision_json>`
+- The only execution truth is the JSON object inside `<action_decision_json>`.
+- Do not wrap the full response in markdown or code fences.
 
 Supported-shape semantics:
 - `status="supported"`
@@ -59,14 +66,12 @@ Unsupported-shape semantics:
   - `local_execution_rationale`
 
 Unsupported examples:
-- direct raw artifact inspection
-- direct `.aop` / `.mo` / stdout inspection
 - unsupported CT observables not exposed by current registry actions
 - any task that requires inventing a new action or parameter
 
 Decision examples:
-- Read `baseline_action_card_example` in `context_json` for the required round-1 baseline pattern.
-- Read `torsion_action_card_example` in `context_json` for a supported bounded torsion follow-up pattern.
+- Read `baseline_reasoned_action_example` in `context_json` for the required round-1 baseline pattern.
+- Read `torsion_reasoned_action_example` in `context_json` for a supported bounded torsion follow-up pattern.
 
 Remember:
 - This is local operational task translation only.

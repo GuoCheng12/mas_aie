@@ -231,6 +231,23 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         tmp_path,
         [
             """
+            <task_understanding>
+            Interpret the planner instruction as a bounded local baseline task with one unsupported torsion add-on.
+            </task_understanding>
+            <reasoning_summary>
+            The baseline route is supported, but the extra torsion scan request is outside the chosen bounded action and should be preserved as unsupported.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost microscopic execution.
+            </capability_limit_note>
+            <expected_outputs>
+            low-cost aTB S0 geometry optimization
+            vertical excited-state manifold characterization
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
             {
               "status": "supported",
               "execution_action": "run_baseline_bundle",
@@ -242,6 +259,7 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
               "unsupported_parts": ["torsion scan"],
               "local_execution_rationale": "Reuse or prepare a structure, run S0 optimization, then run S1 vertical excitation."
             }
+            </action_decision_json>
             """
         ],
     )
@@ -261,19 +279,85 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
         round_index=1,
     )
 
-    assert report.structured_results["reasoning_parse_mode"] == "structured_action_decision"
+    assert report.structured_results["reasoning_parse_mode"] == "reasoned_action_text"
     assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
     assert report.structured_results["unsupported_requests"] == ["torsion scan"]
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     assert fake_client.chat.completions.calls[0]["temperature"] == 0.0
-    assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
+    assert "response_format" not in fake_client.chat.completions.calls[0]
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "amesp_interface_catalog" in prompt_payload
     assert "action_registry" in prompt_payload
-    assert "baseline_action_card_example" in prompt_payload
-    assert "torsion_action_card_example" in prompt_payload
+    assert "baseline_reasoned_action_example" in prompt_payload
+    assert "torsion_reasoned_action_example" in prompt_payload
 
 
-def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) -> None:
+def test_openai_microscopic_supports_reasoned_action_text_baseline(tmp_path: Path) -> None:
+    agent, fake_client = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Run the fixed first-round microscopic baseline route.
+            </task_understanding>
+            <reasoning_summary>
+            This is exactly representable by the registry-backed baseline action.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to low-cost baseline evidence collection.
+            </capability_limit_note>
+            <expected_outputs>
+            low-cost aTB S0 geometry optimization
+            vertical excited-state manifold characterization
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "run_baseline_bundle",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": true,
+                "optimize_ground_state": true
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Run the default low-cost baseline bundle."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Run the baseline S0 and S1 microscopic route.",
+        current_hypothesis="neutral aromatic",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Collect first-round microscopic baseline evidence.",
+        ),
+        case_id="case123",
+        round_index=1,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    assert report.structured_results["reasoning_parse_mode"] == "reasoned_action_text"
+    assert report.structured_results["reasoning_contract_mode"] == "reasoned_action_text"
+    assert report.structured_results["reasoning_contract_errors"] == []
+    assert report.structured_results["registry_action_name"] == "run_baseline_bundle"
+    assert report.structured_results["registry_validation_errors"] == []
+    assert plan["capability_route"] == "baseline_bundle"
+    assert plan["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
+    assert len(plan["microscopic_tool_plan"]["calls"]) == 1
+    assert plan["microscopic_tool_plan"]["calls"][0]["call_kind"] == "execution"
+    assert "response_format" not in fake_client.chat.completions.calls[0]
+
+
+def test_openai_microscopic_accepts_plain_json_action_decision_fallback(tmp_path: Path) -> None:
     agent, fake_client = _build_agent(
         tmp_path,
         [
@@ -307,17 +391,10 @@ def test_openai_microscopic_supports_semantic_contract_baseline(tmp_path: Path) 
         round_index=1,
     )
 
-    plan = report.structured_results["execution_plan"]
     assert report.structured_results["reasoning_parse_mode"] == "structured_action_decision"
-    assert report.structured_results["reasoning_contract_mode"] == "structured_action_decision"
-    assert report.structured_results["reasoning_contract_errors"] == []
-    assert report.structured_results["registry_action_name"] == "run_baseline_bundle"
-    assert report.structured_results["registry_validation_errors"] == []
-    assert plan["capability_route"] == "baseline_bundle"
-    assert plan["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
-    assert len(plan["microscopic_tool_plan"]["calls"]) == 1
-    assert plan["microscopic_tool_plan"]["calls"][0]["call_kind"] == "execution"
-    assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
+    assert report.structured_results["execution_plan"]["capability_route"] == "baseline_bundle"
+    assert len(fake_client.chat.completions.calls) == 1
+    assert "response_format" not in fake_client.chat.completions.calls[0]
 
 
 def test_openai_microscopic_recovers_unclosed_expected_outputs_section(tmp_path: Path) -> None:
@@ -798,41 +875,44 @@ def test_semantic_contract_placeholder_target_returns_local_failed_report(tmp_pa
     assert any("Placeholder target values are not allowed" in item for item in report.structured_results["reasoning_contract_errors"])
 
 
-def test_registry_blocked_raw_artifact_inspection_fails_fast_without_tool_execution(tmp_path: Path) -> None:
+def test_reasoned_action_text_supports_raw_artifact_inspection(tmp_path: Path) -> None:
     counting_tool = _CountingAmespTool()
     agent, _ = _build_agent(
         tmp_path,
         [
             """
             <task_understanding>
-            The Planner asked to inspect baseline evidence for CT-sensitive follow-up.
+            The Planner asked to directly inspect a reusable baseline bundle for raw-file coverage.
             </task_understanding>
             <reasoning_summary>
-            Reuse a canonical artifact bundle and parse it without new calculations.
+            This is exactly representable by the raw-artifact inspection action.
             </reasoning_summary>
             <capability_limit_note>
-            Current Amesp capability is bounded to registry-backed parse-only reuse.
+            Current Amesp capability is bounded to registry-backed artifact inspection without new calculations.
             </capability_limit_note>
             <expected_outputs>
-            parsed snapshot summaries
+            raw artifact file inventory
+            extractable observable inventory
             </expected_outputs>
             <failure_policy>
-            If parsing is not possible, return a local failed report.
+            If inspection is not possible, return a local failed report.
             </failure_policy>
-            <microscopic_semantic_contract>
-            contract_version=2
-            local_goal=Reuse baseline artifacts for local inspection.
-            execution_action=parse_snapshot_outputs
-            discovery_actions=list_artifact_bundles
-            requested_route_summary=Reuse a discovered baseline artifact bundle without new calculations.
-            requested_deliverables=state-ordering summaries | CT/localization proxy
-            unsupported_requests=
-            param.perform_new_calculation=false
-            param.reuse_existing_artifacts_only=true
-            param.state_window=1,2,3
-            param.artifact_kind=baseline_bundle
-            param.source_round_selector=latest_available
-            </microscopic_semantic_contract>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "inspect_raw_artifact_bundle",
+              "discovery_actions": ["list_artifact_bundles"],
+              "params": {
+                "perform_new_calculation": false,
+                "reuse_existing_artifacts_only": true,
+                "artifact_kind": "baseline_bundle",
+                "source_round_selector": "latest_available",
+                "requested_observable_scope": ["ground_state_dipole", "vertical_excitation_energies"]
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Use the dedicated raw-artifact inspection action rather than parse-only reuse."
+            }
+            </action_decision_json>
             """
         ],
         amesp_tool=counting_tool,
@@ -854,14 +934,81 @@ def test_registry_blocked_raw_artifact_inspection_fails_fast_without_tool_execut
         round_index=3,
     )
 
-    assert report.status == "failed"
-    assert report.completion_reason_code == "action_not_supported_by_registry"
-    assert report.structured_results["registry_infeasible_for_verifier_handshake"] is True
-    assert report.structured_results["registry_validation_errors"] == [
-        "Planner requested unsupported registry-blocked microscopic task(s): raw artifact inspection."
+    assert report.status == "success"
+    assert report.completion_reason_code is None
+    assert report.structured_results["registry_action_name"] == "inspect_raw_artifact_bundle"
+    assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
+    assert report.structured_results["registry_validation_errors"] == []
+    assert counting_tool.execute_calls == 1
+
+
+def test_reasoned_action_text_supports_ct_descriptor_extraction(tmp_path: Path) -> None:
+    counting_tool = _CountingAmespTool()
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner asked for bounded CT-descriptor extraction from an existing baseline bundle.
+            </task_understanding>
+            <reasoning_summary>
+            This is exactly representable by the dedicated CT-descriptor extraction action on a reusable artifact bundle.
+            </reasoning_summary>
+            <capability_limit_note>
+            The action can report descriptor availability and bounded surrogates, but unavailable CT descriptors must remain explicit.
+            </capability_limit_note>
+            <expected_outputs>
+            CT-descriptor availability summary
+            bounded CT descriptor records
+            artifact-backed CT surrogate summary
+            </expected_outputs>
+            <failure_policy>
+            If the bundle is unavailable, return a local failed report without launching new calculations.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "extract_ct_descriptors_from_bundle",
+              "discovery_actions": ["list_artifact_bundles"],
+              "params": {
+                "perform_new_calculation": false,
+                "reuse_existing_artifacts_only": true,
+                "artifact_kind": "baseline_bundle",
+                "source_round_selector": "latest_available",
+                "state_window": [1, 2, 3],
+                "descriptor_scope": ["dominant_transitions", "ct_localization_proxy"]
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Use the dedicated bounded CT-descriptor extraction action on the reusable baseline bundle."
+            }
+            </action_decision_json>
+            """
+        ],
+        amesp_tool=counting_tool,
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="From the reusable baseline bundle, extract any bounded CT descriptors you can without new calculations.",
+        current_hypothesis="ICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="ct-descriptor-extraction",
+            objective="Use a registry-backed artifact-analysis action to inspect CT descriptor availability.",
+        ),
+        case_id="case123",
+        round_index=4,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    assert report.structured_results["reasoning_parse_mode"] == "reasoned_action_text"
+    assert report.structured_results["registry_action_name"] == "extract_ct_descriptors_from_bundle"
+    assert plan["microscopic_tool_request"]["capability_name"] == "extract_ct_descriptors_from_bundle"
+    assert plan["microscopic_tool_request"]["descriptor_scope"] == [
+        "dominant_transitions",
+        "ct_localization_proxy",
     ]
-    assert report.structured_results["executed_capability"] is None
-    assert counting_tool.execute_calls == 0
+    assert counting_tool.execute_calls == 1
 
 
 def test_tagged_semantic_contract_parser_rejects_unknown_key() -> None:

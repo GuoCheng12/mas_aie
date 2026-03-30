@@ -13,6 +13,8 @@ from aie_mas.tools.amesp import (
     AmespMicroscopicTool,
     render_amesp_action_registry,
     render_amesp_capability_registry,
+    render_amesp_interface_catalog,
+    render_reasoned_microscopic_examples,
     render_registry_backed_microscopic_examples,
 )
 from aie_mas.utils.prompts import PromptRepository
@@ -89,6 +91,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         requested_deliverables = self._requested_deliverables(task_instruction)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
         registry_examples = render_registry_backed_microscopic_examples()
+        reasoned_examples = render_reasoned_microscopic_examples()
         return {
             "current_hypothesis": current_hypothesis,
             "task_instruction": task_instruction,
@@ -97,9 +100,12 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "budget_profile": self._config.microscopic_budget_profile,
+            "amesp_interface_catalog": render_amesp_interface_catalog(),
             "action_registry": render_amesp_action_registry(),
             "baseline_action_card_example": registry_examples["baseline"],
             "torsion_action_card_example": registry_examples["torsion"],
+            "baseline_reasoned_action_example": reasoned_examples["baseline"],
+            "torsion_reasoned_action_example": reasoned_examples["torsion"],
             "capability_registry": render_amesp_capability_registry(),
             "recent_rounds_context": recent_rounds_context,
             "available_structure_context": self._available_structure_context(
@@ -279,23 +285,8 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         self,
         task_received: str,
     ) -> list[str]:
-        lower_instruction = task_received.lower()
-        registry_blocked: list[str] = []
-        bypass_parse_patterns = (
-            re.compile(r"\bdo not call parse_snapshot_outputs\b"),
-            re.compile(r"\bdo not use parse_snapshot_outputs\b"),
-            re.compile(r"\bwithout (?:calling|using) parse_snapshot_outputs\b"),
-            re.compile(r"\binstead of parse_snapshot_outputs\b"),
-        )
-        direct_raw_patterns = (
-            re.compile(r"\bdirect(?:ly)?\s+(?:inspect|read|check|review|parse)\b.*\b(raw|aop|mo|stdout|output files?)\b"),
-            re.compile(r"\binspect\b.*\braw (?:artifact|artifacts|file|files|output|outputs)\b"),
-            re.compile(r"\braw artifact inspection\b"),
-            re.compile(r"\braw baseline output files?\b"),
-        )
-        if any(pattern.search(lower_instruction) for pattern in bypass_parse_patterns + direct_raw_patterns):
-            registry_blocked.append("raw artifact inspection")
-        return registry_blocked
+        del task_received
+        return []
 
     def _has_reusable_structure(self, available_artifacts: dict[str, Any]) -> bool:
         summary_path = available_artifacts.get("prepared_summary_path")
@@ -314,7 +305,8 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
     def _capability_scope_text(self) -> str:
         return (
             "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
-            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, and parse_snapshot_outputs. "
+            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, parse_snapshot_outputs, "
+            "extract_ct_descriptors_from_bundle, and inspect_raw_artifact_bundle. "
             "unsupported_excited_state_relaxation is a fail-fast unsupported capability and does not execute."
         )
 
@@ -411,11 +403,15 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         route = structured_results.get("attempted_route") or "baseline_bundle"
         executed_capability = structured_results.get("executed_capability") or "run_baseline_bundle"
         route_summary = structured_results.get("route_summary") or {}
-        if executed_capability == "parse_snapshot_outputs":
+        if executed_capability in {
+            "parse_snapshot_outputs",
+            "extract_ct_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        }:
             parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []
             return (
                 f"Amesp capability '{executed_capability}' reused existing microscopic artifacts and returned "
-                f"{len(parsed_records)} parsed snapshot records without new calculations. "
+                f"{len(parsed_records)} parsed artifact records without new calculations. "
                 f"Route summary={route_summary}."
             )
         s0 = structured_results["s0"]

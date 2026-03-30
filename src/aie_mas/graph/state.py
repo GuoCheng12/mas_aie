@@ -43,6 +43,8 @@ MicroscopicCapabilityName = Literal[
     "run_conformer_bundle",
     "run_torsion_snapshots",
     "parse_snapshot_outputs",
+    "extract_ct_descriptors_from_bundle",
+    "inspect_raw_artifact_bundle",
     "unsupported_excited_state_relaxation",
 ]
 AmespCapabilityName = MicroscopicCapabilityName
@@ -356,6 +358,8 @@ class MicroscopicToolRequest(BaseModel):
     artifact_scope: Optional[str] = None
     artifact_bundle_id: Optional[str] = None
     artifact_kind: Optional[ArtifactBundleKind] = None
+    descriptor_scope: list[str] = Field(default_factory=list)
+    requested_observable_scope: list[str] = Field(default_factory=list)
     source_round_preference: Optional[int] = None
     min_relevance: Optional[DihedralRelevance] = None
     include_peripheral: Optional[bool] = None

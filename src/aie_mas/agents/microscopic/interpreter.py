@@ -14,12 +14,12 @@ from .compiler import (
     MicroscopicReasoningResponse,
     MicroscopicSemanticContractMode,
     _action_decision_from_execution_plan,
-    _build_reasoning_response_from_action_decision,
     _extract_tagged_reasoning_sections,
     _parse_legacy_tagged_microscopic_reasoning_response,
+    _parse_reasoned_action_response_with_plan,
     _parse_tagged_semantic_contract_response_with_plan,
+    _parse_structured_action_decision_response_with_plan,
     _tagged_contract_version,
-    compile_action_decision_to_execution_plan,
     compile_reasoning_response_to_execution_plan,
 )
 
@@ -37,6 +37,10 @@ class OpenAIMicroscopicReasoningBackend:
     ) -> None:
         self._config = config
         self._client = client or OpenAICompatibleMicroscopicClient(config)
+
+    def _invoke_reasoned_action_text(self, rendered_prompt: Any) -> str:
+        messages = prompt_value_to_messages(rendered_prompt)
+        return self._client.invoke_text(messages=messages)
 
     def _invoke_structured_action_decision_text(self, rendered_prompt: Any) -> str:
         messages = prompt_value_to_messages(rendered_prompt)
@@ -57,33 +61,41 @@ class OpenAIMicroscopicReasoningBackend:
         contract_errors: list[str] = []
         raw_text = ""
         try:
-            raw_text = self._invoke_structured_action_decision_text(rendered_prompt)
-            payload_obj = self._client.parse_json_object_text(raw_text)
-            action_decision = MicroscopicActionDecision.model_validate(payload_obj)
-            compiled_plan = compile_action_decision_to_execution_plan(
-                action_decision,
+            raw_text = self._invoke_reasoned_action_text(rendered_prompt)
+            action_decision, response, compiled_plan = _parse_reasoned_action_response_with_plan(
+                raw_text,
                 payload=payload,
-                config=self._config,
-            )
-            response = _build_reasoning_response_from_action_decision(
-                action_decision,
-                payload=payload,
-                compiled_plan=compiled_plan,
                 config=self._config,
             )
             return MicroscopicReasoningOutcome(
                 action_decision=action_decision,
                 reasoning_response=response,
                 compiled_execution_plan=compiled_plan,
-                reasoning_parse_mode="structured_action_decision",
-                reasoning_contract_mode="structured_action_decision",
+                reasoning_parse_mode="reasoned_action_text",
+                reasoning_contract_mode="reasoned_action_text",
                 reasoning_contract_errors=[],
             )
         except Exception as exc:
-            contract_errors.append(f"structured_action_decision: {exc}")
+            contract_errors.append(f"reasoned_action_text: {exc}")
 
-        if not raw_text:
-            raw_text = self._client.invoke_text(messages=prompt_value_to_messages(rendered_prompt))
+        try:
+            action_decision, response, compiled_plan = _parse_structured_action_decision_response_with_plan(
+                raw_text,
+                payload=payload,
+                config=self._config,
+            )
+        except Exception as exc:
+            contract_errors.append(f"structured_action_decision: {exc}")
+        else:
+            return MicroscopicReasoningOutcome(
+                action_decision=action_decision,
+                reasoning_response=response,
+                compiled_execution_plan=compiled_plan,
+                reasoning_parse_mode="structured_action_decision",
+                reasoning_contract_mode="structured_action_decision",
+                reasoning_contract_errors=list(contract_errors),
+            )
+
         try:
             response, compiled_plan = _parse_tagged_semantic_contract_response_with_plan(raw_text, payload=payload)
         except Exception as exc:
@@ -149,6 +161,25 @@ class OpenAIMicroscopicReasoningBackend:
                 compiled_execution_plan=compiled_plan,
                 reasoning_parse_mode="legacy_tagged_protocol_fallback",
                 reasoning_contract_mode="legacy_tagged_protocol_fallback",
+                reasoning_contract_errors=list(contract_errors),
+            )
+
+        try:
+            raw_text = self._invoke_structured_action_decision_text(rendered_prompt)
+            action_decision, response, compiled_plan = _parse_structured_action_decision_response_with_plan(
+                raw_text,
+                payload=payload,
+                config=self._config,
+            )
+        except Exception as exc:
+            contract_errors.append(f"structured_action_decision_retry: {exc}")
+        else:
+            return MicroscopicReasoningOutcome(
+                action_decision=action_decision,
+                reasoning_response=response,
+                compiled_execution_plan=compiled_plan,
+                reasoning_parse_mode="structured_action_decision",
+                reasoning_contract_mode="structured_action_decision",
                 reasoning_contract_errors=list(contract_errors),
             )
 

@@ -739,6 +739,165 @@ def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_n
     assert "CT/localization proxy" in parsed_result.missing_deliverables
 
 
+def test_amesp_extract_ct_descriptors_from_bundle_reuses_baseline_bundle_artifacts(
+    tmp_path: Path,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    baseline_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate a baseline bundle for later CT-descriptor extraction.",
+            requested_deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+            capability_route="baseline_bundle",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                optimize_ground_state=True,
+                state_window=[1, 2],
+                deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+                requested_route_summary="Run the default baseline bundle.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="baseline_ct_source",
+        workdir=tmp_path / "baseline_ct_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    ct_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Extract bounded CT descriptors from the reusable baseline bundle.",
+            requested_deliverables=[
+                "CT-descriptor availability summary",
+                "artifact-backed CT surrogate summary",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="extract_ct_descriptors_from_bundle",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_02_baseline_bundle",
+                artifact_source_round=2,
+                artifact_scope="baseline_bundle",
+                state_window=[1, 2],
+                descriptor_scope=["dominant_transitions", "ct_localization_proxy"],
+                deliverables=[
+                    "CT-descriptor availability summary",
+                    "artifact-backed CT surrogate summary",
+                ],
+                requested_route_summary="Inspect the reusable baseline bundle for bounded CT-descriptor surrogates.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if parsing fails.",
+        ),
+        smiles="N",
+        label="baseline_ct_extract",
+        workdir=tmp_path / "baseline_ct_extract_workdir",
+        available_artifacts={**baseline_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert ct_result.executed_capability == "extract_ct_descriptors_from_bundle"
+    assert ct_result.route == "artifact_parse_only"
+    assert ct_result.performed_new_calculations is False
+    assert ct_result.reused_existing_artifacts is True
+    assert ct_result.route_summary["artifact_scope"] == "baseline_bundle"
+    assert ct_result.route_summary["ct_proxy_availability"] == "partial_observable_only"
+    assert "ground_state_dipole" in ct_result.route_summary["available_ct_surrogates"]
+    assert "dominant transitions" in ct_result.missing_deliverables
+    assert "CT/localization proxy" in ct_result.missing_deliverables
+    assert len(ct_result.parsed_snapshot_records) == 1
+
+
+def test_amesp_inspect_raw_artifact_bundle_reuses_baseline_bundle_artifacts(
+    tmp_path: Path,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    baseline_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate a baseline bundle for later raw inspection.",
+            requested_deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+            capability_route="baseline_bundle",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                optimize_ground_state=True,
+                state_window=[1, 2],
+                deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+                requested_route_summary="Run the default baseline bundle.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="baseline_raw_source",
+        workdir=tmp_path / "baseline_raw_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    inspect_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Inspect the reusable baseline bundle for raw-file coverage.",
+            requested_deliverables=[
+                "raw artifact file inventory",
+                "extractable observable inventory",
+                "raw inspection notes",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="inspect_raw_artifact_bundle",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_02_baseline_bundle",
+                artifact_source_round=2,
+                artifact_scope="baseline_bundle",
+                requested_observable_scope=["ground_state_dipole", "vertical_excitation_energies"],
+                deliverables=[
+                    "raw artifact file inventory",
+                    "extractable observable inventory",
+                    "raw inspection notes",
+                ],
+                requested_route_summary="Inspect the reusable baseline bundle for raw-file coverage.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if inspection fails.",
+        ),
+        smiles="N",
+        label="baseline_raw_inspect",
+        workdir=tmp_path / "baseline_raw_inspect_workdir",
+        available_artifacts={**baseline_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert inspect_result.executed_capability == "inspect_raw_artifact_bundle"
+    assert inspect_result.route == "artifact_parse_only"
+    assert inspect_result.performed_new_calculations is False
+    assert inspect_result.reused_existing_artifacts is True
+    assert inspect_result.route_summary["artifact_scope"] == "baseline_bundle"
+    assert "s0_aop_path" in inspect_result.route_summary["available_raw_files"]
+    assert "s1_aop_path" in inspect_result.route_summary["available_raw_files"]
+    assert "ground_state_dipole" in inspect_result.route_summary["extractable_observables"]
+    assert "vertical_excitation_energies" in inspect_result.route_summary["extractable_observables"]
+    assert inspect_result.missing_deliverables == []
+
+
 def test_amesp_parse_snapshot_outputs_rejects_noncanonical_artifact_bundle_id(
     tmp_path: Path, monkeypatch
 ) -> None:

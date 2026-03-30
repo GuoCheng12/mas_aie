@@ -46,6 +46,7 @@ MicroscopicStructureStrategy = Literal[
     "reuse_if_available_else_prepare_from_smiles",
 ]
 MicroscopicSemanticContractMode = Literal[
+    "reasoned_action_text",
     "structured_action_decision",
     "semantic_contract",
     "legacy_semantic_contract_fallback",
@@ -79,7 +80,11 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
         return "conformer_bundle_follow_up"
     if capability_name == "run_torsion_snapshots":
         return "torsion_snapshot_follow_up"
-    if capability_name == "parse_snapshot_outputs":
+    if capability_name in {
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }:
         return "artifact_parse_only"
     return "excited_state_relaxation_follow_up"
 
@@ -173,6 +178,8 @@ class MicroscopicToolRequestDraft(BaseModel):
     artifact_scope: Optional[str] = None
     artifact_bundle_id: Optional[str] = None
     artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    descriptor_scope: list[str] = Field(default_factory=list)
+    requested_observable_scope: list[str] = Field(default_factory=list)
     source_round_preference: Optional[int] = None
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
@@ -240,6 +247,8 @@ class MicroscopicSemanticConstraintsDraft(BaseModel):
     max_conformers: Optional[int] = None
     honor_exact_target: Optional[bool] = None
     allow_fallback: Optional[bool] = None
+    descriptor_scope: list[str] = Field(default_factory=list)
+    requested_observable_scope: list[str] = Field(default_factory=list)
 
 
 class MicroscopicSemanticSelectionDraft(BaseModel):
@@ -308,6 +317,8 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_conformer_bundle",
         "run_torsion_snapshots",
         "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
         "unsupported_excited_state_relaxation",
     ]
     needs_discovery: Optional[MicroscopicSemanticDiscoveryNeed] = None
@@ -328,6 +339,8 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_conformer_bundle",
         "run_torsion_snapshots",
         "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
         "unsupported_excited_state_relaxation",
     ]
     discovery_actions: list[AmespCapabilityName] = Field(default_factory=list)
@@ -434,6 +447,7 @@ _TAGGED_REASONING_BASE_SECTION_NAMES = (
     "failure_policy",
 )
 _TAGGED_REASONING_PROTOCOL_SECTION_NAMES = (
+    "action_decision_json",
     "microscopic_semantic_contract",
     "microscopic_protocol",
 )
@@ -637,6 +651,24 @@ def _parse_tagged_expected_outputs(section_text: str) -> list[str]:
     return outputs
 
 
+def _extract_json_object_from_text(raw_text: str) -> dict[str, Any]:
+    candidate = _strip_reasoning_code_fence(raw_text)
+    try:
+        payload = json.loads(candidate)
+    except json.JSONDecodeError:
+        start = candidate.find("{")
+        end = candidate.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            raise TaggedMicroscopicProtocolError(f"LLM response did not contain JSON: {raw_text!r}")
+        try:
+            payload = json.loads(candidate[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise TaggedMicroscopicProtocolError(f"Invalid JSON object in microscopic response: {exc}") from exc
+    if not isinstance(payload, dict):
+        raise TaggedMicroscopicProtocolError(f"Microscopic JSON payload must be an object: {payload!r}")
+    return payload
+
+
 def _has_reusable_structure_from_payload(payload: Optional[dict[str, Any]]) -> bool:
     if payload is None:
         return False
@@ -661,7 +693,11 @@ def _structure_source_for_semantic_capability(
     task_mode: str,
     has_reusable_structure: bool,
 ) -> Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]]:
-    if capability_name == "parse_snapshot_outputs":
+    if capability_name in {
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }:
         return None
     if capability_name == "run_baseline_bundle":
         return "shared_prepared_structure" if has_reusable_structure else "latest_available"
@@ -1110,6 +1146,39 @@ def _semantic_contract_from_action_card(
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
+    elif execution_action == "extract_ct_descriptors_from_bundle":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        for key in (
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "state_window",
+            "descriptor_scope",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
+    elif execution_action == "inspect_raw_artifact_bundle":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        for key in (
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "requested_observable_scope",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
     elif execution_action == "unsupported_excited_state_relaxation":
         target_object_kind = "none"
     else:
@@ -1223,9 +1292,9 @@ def _closest_supported_actions_for_unsupported_parts(
 ) -> list[AmespCapabilityName]:
     lowered = " ".join(part.lower() for part in unsupported_parts)
     if any(token in lowered for token in ("raw artifact", "raw file", ".aop", ".mo", "stdout")):
-        return ["parse_snapshot_outputs"]
+        return ["inspect_raw_artifact_bundle"]
     if any(token in lowered for token in ("ct observable", "ct proxy", "charge transfer", "dominant transition")):
-        return ["parse_snapshot_outputs"]
+        return ["extract_ct_descriptors_from_bundle", "inspect_raw_artifact_bundle"]
     return []
 
 
@@ -1387,7 +1456,11 @@ def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft)
         return "rotatable_dihedrals"
     if contract.primary_capability == "run_conformer_bundle":
         return "conformers"
-    if contract.primary_capability == "parse_snapshot_outputs":
+    if contract.primary_capability in {
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }:
         return "artifact_bundles"
     return None
 
@@ -1536,17 +1609,61 @@ def compile_semantic_contract_to_tool_plan(
         optimize_ground_state=(
             contract.constraints.optimize_ground_state
             if contract.constraints.optimize_ground_state is not None
-            else effective_capability != "parse_snapshot_outputs"
+            else _default_optimize_ground_state_for_capability(effective_capability)
         ),
         reuse_existing_artifacts_only=(
             contract.constraints.reuse_existing_artifacts_only
             if contract.constraints.reuse_existing_artifacts_only is not None
             else not capability_definition.requires_new_calculation
         ),
-        artifact_bundle_id=contract.target.artifact_bundle_id if effective_capability == "parse_snapshot_outputs" else None,
-        artifact_kind=selection_policy.artifact_kind if effective_capability == "parse_snapshot_outputs" else None,
-        artifact_source_round=selection_policy.source_round_preference if effective_capability == "parse_snapshot_outputs" else None,
-        source_round_preference=selection_policy.source_round_preference if effective_capability in {"parse_snapshot_outputs", "list_artifact_bundles"} else selection_policy.source_round_preference,
+        artifact_bundle_id=(
+            contract.target.artifact_bundle_id
+            if effective_capability in {
+                "parse_snapshot_outputs",
+                "extract_ct_descriptors_from_bundle",
+                "inspect_raw_artifact_bundle",
+            }
+            else None
+        ),
+        artifact_kind=(
+            selection_policy.artifact_kind
+            if effective_capability in {
+                "parse_snapshot_outputs",
+                "extract_ct_descriptors_from_bundle",
+                "inspect_raw_artifact_bundle",
+            }
+            else None
+        ),
+        descriptor_scope=(
+            list(contract.constraints.descriptor_scope)
+            if effective_capability == "extract_ct_descriptors_from_bundle"
+            else []
+        ),
+        requested_observable_scope=(
+            list(contract.constraints.requested_observable_scope)
+            if effective_capability == "inspect_raw_artifact_bundle"
+            else []
+        ),
+        artifact_source_round=(
+            selection_policy.source_round_preference
+            if effective_capability in {
+                "parse_snapshot_outputs",
+                "extract_ct_descriptors_from_bundle",
+                "inspect_raw_artifact_bundle",
+            }
+            else None
+        ),
+        source_round_preference=(
+            selection_policy.source_round_preference
+            if effective_capability
+            in {
+                "parse_snapshot_outputs",
+                "extract_ct_descriptors_from_bundle",
+                "inspect_raw_artifact_bundle",
+                "list_artifact_bundles",
+            }
+            else selection_policy.source_round_preference
+        ),
         min_relevance=selection_policy.min_relevance,
         include_peripheral=selection_policy.include_peripheral,
         preferred_bond_types=list(selection_policy.preferred_bond_types),
@@ -1629,6 +1746,18 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
             "per-snapshot oscillator strengths",
             "state-ordering records",
         ]
+    if capability_name == "extract_ct_descriptors_from_bundle":
+        return [
+            "CT-descriptor availability summary",
+            "bounded CT descriptor records",
+            "artifact-backed CT surrogate summary",
+        ]
+    if capability_name == "inspect_raw_artifact_bundle":
+        return [
+            "raw artifact file inventory",
+            "extractable observable inventory",
+            "raw inspection notes",
+        ]
     return ["unsupported follow-up report"]
 
 
@@ -1664,6 +1793,20 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
             "state-ordering records",
             "artifact reuse note",
         ]
+    if capability_name == "extract_ct_descriptors_from_bundle":
+        return [
+            "CT-descriptor availability summary",
+            "bounded CT descriptor records",
+            "artifact-backed CT surrogate summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "inspect_raw_artifact_bundle":
+        return [
+            "raw artifact file inventory",
+            "extractable observable inventory",
+            "missing observable inventory",
+            "artifact reuse note",
+        ]
     return ["unsupported follow-up report"]
 
 
@@ -1676,6 +1819,10 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
         return "Use the bounded torsion-snapshot follow-up route."
     if capability_name == "parse_snapshot_outputs":
         return "Reuse an existing artifact bundle and parse snapshot outputs without new calculations."
+    if capability_name == "extract_ct_descriptors_from_bundle":
+        return "Reuse an existing artifact bundle and extract bounded CT-descriptor surrogates without new calculations."
+    if capability_name == "inspect_raw_artifact_bundle":
+        return "Inspect an existing artifact bundle and report raw-file coverage plus extractable observables without new calculations."
     return "Use the unsupported excited-state-relaxation placeholder route."
 
 
@@ -1688,7 +1835,11 @@ def _default_call_kind_for_capability(
 
 
 def _default_optimize_ground_state_for_capability(capability_name: AmespCapabilityName) -> bool:
-    return capability_name != "parse_snapshot_outputs"
+    return capability_name not in {
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }
 
 
 def _normalize_tool_request_from_draft(
@@ -1709,7 +1860,13 @@ def _normalize_tool_request_from_draft(
         snapshot_count = config.amesp_follow_up_max_conformers
     if capability_name == "run_torsion_snapshots" and snapshot_count is None:
         snapshot_count = 2 if draft.angle_offsets_deg else config.amesp_follow_up_max_torsion_snapshots_total
-    if capability_name in {"run_baseline_bundle", "run_conformer_bundle", "run_torsion_snapshots", "parse_snapshot_outputs"} and not state_window:
+    if capability_name in {
+        "run_baseline_bundle",
+        "run_conformer_bundle",
+        "run_torsion_snapshots",
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+    } and not state_window:
         state_window = list(range(1, max(1, config.amesp_s1_nstates) + 1))
     source_round_preference = (
         draft.source_round_preference
@@ -1756,6 +1913,8 @@ def _normalize_tool_request_from_draft(
         artifact_scope=draft.artifact_scope,
         artifact_bundle_id=draft.artifact_bundle_id,
         artifact_kind=draft.artifact_kind or selection_policy.artifact_kind,
+        descriptor_scope=list(draft.descriptor_scope),
+        requested_observable_scope=list(draft.requested_observable_scope),
         source_round_preference=source_round_preference,
         min_relevance=min_relevance,
         include_peripheral=include_peripheral,
@@ -1867,7 +2026,12 @@ def _insert_required_discovery_calls(
             has_conformer_discovery = True
         if (
             call.call_kind == "execution"
-            and call.request.capability_name == "parse_snapshot_outputs"
+            and call.request.capability_name
+            in {
+                "parse_snapshot_outputs",
+                "extract_ct_descriptors_from_bundle",
+                "inspect_raw_artifact_bundle",
+            }
             and not call.request.artifact_bundle_id
             and not has_artifact_discovery
         ):
@@ -1980,6 +2144,8 @@ def _build_execution_steps(
             "s1_vertical_excitation",
         ]
     elif capability_name == "parse_snapshot_outputs":
+        step_types = ["artifact_parse"]
+    elif capability_name in {"extract_ct_descriptors_from_bundle", "inspect_raw_artifact_bundle"}:
         step_types = ["artifact_parse"]
     else:
         step_types = ["structure_prep"]
@@ -2096,6 +2262,8 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
         "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
+        "extract_ct_descriptors_from_bundle: inspect reusable artifacts for bounded CT-descriptor surrogates",
+        "inspect_raw_artifact_bundle: inspect reusable artifact bundles for raw-file coverage and extractable observables",
         f"runtime budget_profile default: {config.microscopic_budget_profile or 'balanced'}",
     ]
 
@@ -2503,6 +2671,69 @@ def _parse_tagged_semantic_contract_response(
     return response
 
 
+def _parse_structured_action_decision_response_with_plan(
+    raw_text: str,
+    *,
+    payload: dict[str, Any],
+    config: AieMasConfig,
+) -> tuple[MicroscopicActionDecision, MicroscopicReasoningResponse, Optional[MicroscopicExecutionPlan]]:
+    payload_obj = _extract_json_object_from_text(raw_text)
+    decision = MicroscopicActionDecision.model_validate(payload_obj)
+    compiled_plan = compile_action_decision_to_execution_plan(
+        decision,
+        payload=payload,
+        config=config,
+    )
+    response = _build_reasoning_response_from_action_decision(
+        decision,
+        payload=payload,
+        compiled_plan=compiled_plan,
+        config=config,
+    )
+    return decision, response, compiled_plan
+
+
+def _parse_reasoned_action_response_with_plan(
+    raw_text: str,
+    *,
+    payload: dict[str, Any],
+    config: AieMasConfig,
+) -> tuple[MicroscopicActionDecision, MicroscopicReasoningResponse, Optional[MicroscopicExecutionPlan]]:
+    sections = _extract_tagged_reasoning_sections(raw_text)
+    if "action_decision_json" not in sections:
+        raise TaggedMicroscopicProtocolError("Tagged response did not contain <action_decision_json>.")
+    decision, response, compiled_plan = _parse_structured_action_decision_response_with_plan(
+        sections["action_decision_json"],
+        payload=payload,
+        config=config,
+    )
+    parsed_expected_outputs = _parse_tagged_expected_outputs(sections["expected_outputs"])
+    response = response.model_copy(
+        update={
+            "task_understanding": sections["task_understanding"],
+            "reasoning_summary": sections["reasoning_summary"],
+            "capability_limit_note": sections["capability_limit_note"],
+            "expected_outputs": parsed_expected_outputs or response.expected_outputs,
+            "failure_policy": sections["failure_policy"],
+        }
+    )
+    return decision, response, compiled_plan
+
+
+def _parse_reasoned_action_response(
+    raw_text: str,
+    *,
+    payload: Optional[dict[str, Any]] = None,
+    config: Optional[AieMasConfig] = None,
+) -> MicroscopicReasoningResponse:
+    _, response, _ = _parse_reasoned_action_response_with_plan(
+        raw_text,
+        payload=payload or {},
+        config=config or AieMasConfig(),
+    )
+    return response
+
+
 def _parse_legacy_tagged_microscopic_reasoning_response(
     raw_text: str,
     *,
@@ -2571,7 +2802,8 @@ def _parse_tagged_microscopic_reasoning_response(
     strict: bool = True,
 ) -> MicroscopicReasoningResponse:
     sections = _extract_tagged_reasoning_sections(raw_text)
+    if "action_decision_json" in sections:
+        return _parse_reasoned_action_response(raw_text, payload=payload)
     if "microscopic_semantic_contract" in sections:
         return _parse_tagged_semantic_contract_response(raw_text, payload=payload)
     return _parse_legacy_tagged_microscopic_reasoning_response(raw_text, strict=strict)
-

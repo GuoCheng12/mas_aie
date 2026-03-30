@@ -273,6 +273,34 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         unsupported_requests_note="Dominant transition and CT/localization proxy extraction may be unavailable from existing files.",
         default_budget_behavior="Reuse only the latest available microscopic snapshot artifacts and never generate new inputs.",
     ),
+    "extract_ct_descriptors_from_bundle": AmespCapabilityDefinition(
+        name="extract_ct_descriptors_from_bundle",
+        purpose="Inspect a reusable artifact bundle and extract bounded CT-descriptor surrogates without launching new calculations.",
+        requires_new_calculation=False,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "descriptor_scope"],
+        supported_deliverables=[
+            "CT-descriptor availability summary",
+            "bounded CT descriptor records",
+            "artifact-backed CT surrogate summary",
+        ],
+        unsupported_requests_note="Some requested CT descriptors may remain unavailable even when raw Amesp artifacts exist.",
+        default_budget_behavior="Reuse only existing artifact bundles and return partial observables when raw-file coverage is insufficient.",
+    ),
+    "inspect_raw_artifact_bundle": AmespCapabilityDefinition(
+        name="inspect_raw_artifact_bundle",
+        purpose="Inspect a reusable artifact bundle and report which raw Amesp files and observable families are available.",
+        requires_new_calculation=False,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "requested_observable_scope"],
+        supported_deliverables=[
+            "raw artifact file inventory",
+            "extractable observable inventory",
+            "raw inspection notes",
+        ],
+        unsupported_requests_note="Raw-file inspection reports file coverage and extractable observable families; it does not by itself guarantee complete descriptor extraction.",
+        default_budget_behavior="Reuse only existing artifact bundles and never launch new calculations.",
+    ),
     "unsupported_excited_state_relaxation": AmespCapabilityDefinition(
         name="unsupported_excited_state_relaxation",
         purpose="Return a structured capability-unsupported result for excited-state relaxation requests.",
@@ -575,6 +603,88 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         ],
         unsupported_note="Dominant transition and CT/localization proxy extraction may be unavailable from existing files.",
     ),
+    "extract_ct_descriptors_from_bundle": AmespActionDefinition(
+        action_name="extract_ct_descriptors_from_bundle",
+        action_kind="execution",
+        purpose="Extract bounded CT-descriptor surrogates from an existing artifact bundle without launching new calculations.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "descriptor_scope",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for bundle-based CT extraction.", default=False),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for CT-oriented descriptor extraction."),
+            "descriptor_scope": _action_param("descriptor_scope", "text_list", "Requested CT-descriptor families to inspect from available artifacts."),
+        },
+        defaults={
+            "perform_new_calculation": False,
+            "reuse_existing_artifacts_only": True,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "CT-descriptor availability summary",
+            "bounded CT descriptor records",
+            "artifact-backed CT surrogate summary",
+        ],
+        unsupported_note="Unavailable CT descriptors must be reported explicitly rather than inferred from unsupported raw-file parsing.",
+    ),
+    "inspect_raw_artifact_bundle": AmespActionDefinition(
+        action_name="inspect_raw_artifact_bundle",
+        action_kind="execution",
+        purpose="Inspect a reusable artifact bundle and report raw-file coverage plus extractable observable families.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "requested_observable_scope",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for raw artifact inspection.", default=False),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "requested_observable_scope": _action_param("requested_observable_scope", "text_list", "Requested raw-observable families to inspect from the bundle."),
+        },
+        defaults={
+            "perform_new_calculation": False,
+            "reuse_existing_artifacts_only": True,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "raw artifact file inventory",
+            "extractable observable inventory",
+            "raw inspection notes",
+        ],
+        unsupported_note="Raw inspection reports available files and extractable observables, but does not guarantee complete chemistry-specific descriptor extraction.",
+    ),
     "unsupported_excited_state_relaxation": AmespActionDefinition(
         action_name="unsupported_excited_state_relaxation",
         action_kind="execution",
@@ -622,6 +732,25 @@ def render_amesp_action_registry() -> str:
     return "\n".join(lines)
 
 
+def render_amesp_interface_catalog() -> str:
+    lines = [
+        "Current AIE-MAS worker-exposed Amesp actions:",
+        render_amesp_action_registry(),
+        "",
+        "Official Amesp manual highlights that are broader than the current worker surface:",
+        "- excited-state method families include CIS, TDHF, TDDFT, TDA, TDDFT-ris, TDA-ris, SOC, NAC, and TDA-aTB",
+        "- geometry optimization families include HF/DFT/MP2/CIS/TDHF/TDDFT/TDA/aTB/TDA-aTB and related low-cost solvation options",
+        "- wavefunction/property analysis includes Mulliken/Lowdin/Hirshfeld/CM5 charges, natural orbitals, orbital localization, dipole, quadrupole, and atomic polarizability",
+        "- additional workflow families include rigid/relaxed PES scan, IRC, AIMD, charge transport integral, and EDA",
+        "",
+        "Current worker boundary rules:",
+        "- Microscopic may execute only registry-backed actions listed above",
+        "- If the Planner task depends on a manual-level Amesp feature not exposed by the worker registry, return unsupported",
+        "- Current parse_snapshot_outputs does not guarantee explicit CT descriptors or raw-file inspection semantics by itself; use the dedicated artifact-analysis actions when appropriate",
+    ]
+    return "\n".join(lines)
+
+
 def render_registry_backed_microscopic_examples() -> dict[str, str]:
     return {
         "baseline": json.dumps(
@@ -666,6 +795,34 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             },
             ensure_ascii=False,
             indent=2,
+        ),
+    }
+
+
+def render_reasoned_microscopic_examples() -> dict[str, str]:
+    action_examples = render_registry_backed_microscopic_examples()
+    return {
+        "baseline": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded first-round microscopic baseline task.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is exactly representable by the baseline Amesp route, so select the registry-backed baseline action.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['baseline']}\n"
+            "</action_decision_json>"
+        ),
+        "torsion": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded torsion-sensitivity follow-up on one high-relevance dihedral.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by bounded torsion snapshots with dihedral discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['torsion']}\n"
+            "</action_decision_json>"
         ),
     }
 
@@ -865,6 +1022,16 @@ class AmespMicroscopicTool:
                 request=request,
                 available_artifacts=available_artifacts,
             )
+        if request.capability_name == "extract_ct_descriptors_from_bundle":
+            return self._execute_extract_ct_descriptors_from_bundle_route(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+        if request.capability_name == "inspect_raw_artifact_bundle":
+            return self._execute_inspect_raw_artifact_bundle_route(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
 
         raise AmespExecutionError(
             "capability_unsupported",
@@ -1000,16 +1167,20 @@ class AmespMicroscopicTool:
                 _describe_dihedral_constraints(descriptor=descriptor, policy=selection_policy)
             )
 
-        if request.capability_name == "parse_snapshot_outputs" and not resolved_request.artifact_bundle_id:
+        if request.capability_name in {
+            "parse_snapshot_outputs",
+            "extract_ct_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        } and not resolved_request.artifact_bundle_id:
             bundle_items = self._collect_discovery_items(discovery_results, "list_artifact_bundles")
             descriptor = _select_artifact_bundle_descriptor(bundle_items, selection_policy)
             if descriptor is None:
                 raise AmespExecutionError(
                     "precondition_missing",
-                    "No reusable artifact bundle satisfied the requested parse-only selection policy.",
+                    "No reusable artifact bundle satisfied the requested artifact-analysis selection policy.",
                     status="failed",
                     structured_results={
-                        "executed_capability": "parse_snapshot_outputs",
+                        "executed_capability": request.capability_name,
                         "performed_new_calculations": False,
                         "reused_existing_artifacts": True,
                     },
@@ -1310,6 +1481,92 @@ class AmespMicroscopicTool:
             return None
         return descriptor, available_artifacts
 
+    def _resolve_artifact_bundle_records_for_analysis(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> tuple[dict[str, Any], str, Optional[int], list[dict[str, Any]]]:
+        if not available_artifacts:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Artifact-backed microscopic analysis requires reusable microscopic artifacts, but none were available.",
+                status="failed",
+                structured_results={
+                    "executed_capability": request.capability_name,
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": False,
+                },
+            )
+
+        selected_artifacts = available_artifacts
+        artifact_scope = request.artifact_scope or request.artifact_kind or "latest_bundle"
+        source_round = available_artifacts.get("source_round")
+        if request.artifact_bundle_id is not None:
+            resolved_bundle = self._artifact_bundle_source_by_id(
+                artifact_bundle_id=request.artifact_bundle_id,
+                available_artifacts=available_artifacts,
+            )
+            if resolved_bundle is None:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    f"Artifact-backed follow-up requested canonical artifact bundle `{request.artifact_bundle_id}`, but it was not discoverable in the current case run.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": request.capability_name,
+                        "performed_new_calculations": False,
+                        "reused_existing_artifacts": True,
+                    },
+                )
+            descriptor, selected_artifacts = resolved_bundle
+            artifact_scope = descriptor.artifact_kind
+            source_round = descriptor.source_round
+        if request.artifact_source_round is not None and source_round not in {None, request.artifact_source_round}:
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Artifact-backed follow-up requested artifacts from round_{request.artifact_source_round:02d}, "
+                f"but only round_{int(source_round):02d} artifacts were available."
+                if isinstance(source_round, int)
+                else "Artifact-backed follow-up requested a specific artifact round, but the available artifacts did not expose a matching round marker.",
+                status="failed",
+                structured_results={
+                    "executed_capability": request.capability_name,
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        artifact_records: list[dict[str, Any]] = []
+        if artifact_scope == "conformer_bundle":
+            artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
+        elif artifact_scope == "baseline_bundle":
+            baseline_record = _baseline_artifact_record(selected_artifacts)
+            if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
+                artifact_records = [baseline_record]
+        else:
+            artifact_records = list(selected_artifacts.get("snapshot_artifacts") or [])
+            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
+                artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
+                if artifact_records:
+                    artifact_scope = "conformer_bundle"
+            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
+                baseline_record = _baseline_artifact_record(selected_artifacts)
+                if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
+                    artifact_scope = "baseline_bundle"
+                    artifact_records = [baseline_record]
+        if not artifact_records:
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Artifact-backed follow-up requested artifact scope '{artifact_scope}', but no reusable artifact records were recorded.",
+                status="failed",
+                structured_results={
+                    "executed_capability": request.capability_name,
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+        return selected_artifacts, artifact_scope, source_round, artifact_records
+
     def _load_prepared_structure_from_paths(
         self,
         *,
@@ -1569,84 +1826,12 @@ class AmespMicroscopicTool:
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
     ) -> AmespBaselineRunResult:
-        if not available_artifacts:
-            raise AmespExecutionError(
-                "precondition_missing",
-                "Parse-only microscopic follow-up requires reusable microscopic artifacts, but none were available.",
-                status="failed",
-                structured_results={
-                    "executed_capability": "parse_snapshot_outputs",
-                    "performed_new_calculations": False,
-                    "reused_existing_artifacts": False,
-                },
-            )
-
-        selected_artifacts = available_artifacts
-        artifact_scope = request.artifact_scope or "latest_bundle"
-        source_round = available_artifacts.get("source_round")
-        if request.artifact_bundle_id is not None:
-            resolved_bundle = self._artifact_bundle_source_by_id(
-                artifact_bundle_id=request.artifact_bundle_id,
+        selected_artifacts, artifact_scope, source_round, artifact_records = (
+            self._resolve_artifact_bundle_records_for_analysis(
+                request=request,
                 available_artifacts=available_artifacts,
             )
-            if resolved_bundle is None:
-                raise AmespExecutionError(
-                    "precondition_missing",
-                    f"Parse-only follow-up requested canonical artifact bundle `{request.artifact_bundle_id}`, but it was not discoverable in the current case run.",
-                    status="failed",
-                    structured_results={
-                        "executed_capability": "parse_snapshot_outputs",
-                        "performed_new_calculations": False,
-                        "reused_existing_artifacts": True,
-                    },
-                )
-            descriptor, selected_artifacts = resolved_bundle
-            artifact_scope = descriptor.artifact_kind
-            source_round = descriptor.source_round
-        if request.artifact_source_round is not None and source_round not in {None, request.artifact_source_round}:
-            raise AmespExecutionError(
-                "precondition_missing",
-                f"Parse-only follow-up requested artifacts from round_{request.artifact_source_round:02d}, "
-                f"but only round_{int(source_round):02d} artifacts were available."
-                if isinstance(source_round, int)
-                else "Parse-only follow-up requested a specific artifact round, but the available artifacts did not expose a matching round marker.",
-                status="failed",
-                structured_results={
-                    "executed_capability": "parse_snapshot_outputs",
-                    "performed_new_calculations": False,
-                    "reused_existing_artifacts": True,
-                },
-            )
-
-        artifact_records: list[dict[str, Any]] = []
-        if artifact_scope == "conformer_bundle":
-            artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
-        elif artifact_scope == "baseline_bundle":
-            baseline_record = _baseline_artifact_record(selected_artifacts)
-            if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
-                artifact_records = [baseline_record]
-        else:
-            artifact_records = list(selected_artifacts.get("snapshot_artifacts") or [])
-            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
-                artifact_records = list(selected_artifacts.get("conformer_artifacts") or [])
-                if artifact_records:
-                    artifact_scope = "conformer_bundle"
-            if not artifact_records and artifact_scope in {"latest_bundle", "snapshot_outputs"}:
-                baseline_record = _baseline_artifact_record(selected_artifacts)
-                if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
-                    artifact_scope = "baseline_bundle"
-                    artifact_records = [baseline_record]
-        if not artifact_records:
-            raise AmespExecutionError(
-                "precondition_missing",
-                f"Parse-only follow-up requested artifact scope '{artifact_scope}', but no reusable snapshot artifacts were recorded.",
-                status="failed",
-                structured_results={
-                    "executed_capability": "parse_snapshot_outputs",
-                    "performed_new_calculations": False,
-                    "reused_existing_artifacts": True,
-                },
-            )
+        )
 
         parsed_records: list[dict[str, Any]] = []
         primary_structure: PreparedStructure | None = None
@@ -1731,6 +1916,242 @@ class AmespMicroscopicTool:
                     "artifact_scope": artifact_scope,
                     "artifact_source_round": source_round,
                     "state_window": list(request.state_window),
+                    "parsed_record_count": len(parsed_records),
+                }
+            },
+            generated_artifacts={
+                "prepared_xyz_path": str(primary_structure.xyz_path),
+                "prepared_sdf_path": str(primary_structure.sdf_path),
+                "prepared_summary_path": str(primary_structure.summary_path),
+                "source_round": source_round,
+                "artifact_bundle_id": request.artifact_bundle_id,
+                "artifact_bundle_kind": artifact_scope,
+                "parsed_snapshot_record_count": len(parsed_records),
+                "reused_snapshot_artifacts": artifact_records,
+            },
+        )
+
+    def _execute_extract_ct_descriptors_from_bundle_route(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> AmespBaselineRunResult:
+        selected_artifacts, artifact_scope, source_round, artifact_records = (
+            self._resolve_artifact_bundle_records_for_analysis(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+        )
+
+        descriptor_scope = list(request.descriptor_scope) or [
+            "dominant_transitions",
+            "ct_localization_proxy",
+            "delta_dipole",
+        ]
+        parsed_records: list[dict[str, Any]] = []
+        available_ct_surrogates: set[str] = set()
+        primary_structure: PreparedStructure | None = None
+        primary_s0: AmespGroundStateResult | None = None
+        primary_s1: AmespExcitedStateResult | None = None
+
+        for artifact in artifact_records:
+            prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
+            file_inventory = _artifact_record_file_inventory(artifact)
+            source_file_availability = _artifact_record_file_availability(artifact)
+            s0_result: AmespGroundStateResult | None = None
+            s1_result: AmespExcitedStateResult | None = None
+            parse_notes: list[str] = []
+            if source_file_availability.get("s0_aop_path"):
+                try:
+                    s0_result = self._parse_s0_from_existing_artifacts(artifact, prepared)
+                except AmespExecutionError as exc:
+                    parse_notes.append(f"s0_parse_unavailable: {exc.message}")
+            if source_file_availability.get("s1_aop_path") and s0_result is not None:
+                try:
+                    s1_result = self._parse_s1_from_existing_artifacts(
+                        artifact,
+                        reference_energy=s0_result.final_energy_hartree,
+                        state_window=request.state_window,
+                    )
+                except AmespExecutionError as exc:
+                    parse_notes.append(f"s1_parse_unavailable: {exc.message}")
+            record_surrogates = _ct_surrogate_observables_from_artifact(artifact)
+            available_ct_surrogates.update(record_surrogates)
+            parsed_records.append(
+                {
+                    "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
+                    "target_angle_deg": artifact.get("target_angle_deg"),
+                    "dihedral_atoms": artifact.get("dihedral_atoms"),
+                    "conformer_rank": artifact.get("conformer_rank"),
+                    "state_count": s1_result.state_count if s1_result is not None else None,
+                    "ground_state_dipole_debye": (
+                        s0_result.dipole_debye[3]
+                        if s0_result is not None and s0_result.dipole_debye is not None
+                        else None
+                    ),
+                    "mulliken_charge_count": (
+                        len(s0_result.mulliken_charges)
+                        if s0_result is not None
+                        else 0
+                    ),
+                    "dominant_transitions": "not_available",
+                    "ct_localization_proxy": "not_available",
+                    "source_file_availability": source_file_availability,
+                    "available_ct_surrogates": record_surrogates,
+                    "inspection_notes": parse_notes,
+                }
+            )
+            if primary_structure is None:
+                primary_structure = prepared
+                primary_s0 = s0_result
+                primary_s1 = s1_result
+
+        if primary_structure is None:
+            raise AmespExecutionError(
+                "parse_failed",
+                "CT-descriptor extraction could not load any reusable prepared structure from the selected bundle.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "extract_ct_descriptors_from_bundle",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        missing_ct_descriptors = list(dict.fromkeys(descriptor_scope))
+        missing_deliverables = [_humanize_descriptor_name(item) for item in missing_ct_descriptors]
+        route_summary = {
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "descriptor_scope": descriptor_scope,
+            "ct_proxy_availability": "partial_observable_only" if available_ct_surrogates else "not_available",
+            "available_ct_surrogates": sorted(available_ct_surrogates),
+            "missing_ct_descriptors": missing_ct_descriptors,
+            "artifact_reuse_note": "Inspected an existing artifact bundle for bounded CT-descriptor surrogates without generating new Amesp inputs.",
+            "state_window": list(request.state_window),
+        }
+        return AmespBaselineRunResult(
+            route="artifact_parse_only",
+            executed_capability="extract_ct_descriptors_from_bundle",
+            performed_new_calculations=False,
+            reused_existing_artifacts=True,
+            missing_deliverables=missing_deliverables,
+            structure=primary_structure,
+            s0=primary_s0,
+            s1=primary_s1,
+            parsed_snapshot_records=parsed_records,
+            route_records=parsed_records,
+            route_summary=route_summary,
+            raw_step_results={
+                "extract_ct_descriptors_from_bundle": {
+                    "artifact_scope": artifact_scope,
+                    "artifact_source_round": source_round,
+                    "descriptor_scope": descriptor_scope,
+                    "parsed_record_count": len(parsed_records),
+                }
+            },
+            generated_artifacts={
+                "prepared_xyz_path": str(primary_structure.xyz_path),
+                "prepared_sdf_path": str(primary_structure.sdf_path),
+                "prepared_summary_path": str(primary_structure.summary_path),
+                "source_round": source_round,
+                "artifact_bundle_id": request.artifact_bundle_id,
+                "artifact_bundle_kind": artifact_scope,
+                "parsed_snapshot_record_count": len(parsed_records),
+                "reused_snapshot_artifacts": artifact_records,
+            },
+        )
+
+    def _execute_inspect_raw_artifact_bundle_route(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> AmespBaselineRunResult:
+        selected_artifacts, artifact_scope, source_round, artifact_records = (
+            self._resolve_artifact_bundle_records_for_analysis(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+        )
+
+        requested_scope = list(request.requested_observable_scope)
+        primary_structure: PreparedStructure | None = None
+        file_inventory: set[str] = set()
+        extractable_observables: set[str] = set()
+        parsed_records: list[dict[str, Any]] = []
+        for artifact in artifact_records:
+            prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
+            if primary_structure is None:
+                primary_structure = prepared
+            record_files = _artifact_record_file_inventory(artifact)
+            file_inventory.update(record_files)
+            record_observables = _extractable_observables_from_artifact(artifact)
+            extractable_observables.update(record_observables)
+            parsed_records.append(
+                {
+                    "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
+                    "target_angle_deg": artifact.get("target_angle_deg"),
+                    "dihedral_atoms": artifact.get("dihedral_atoms"),
+                    "conformer_rank": artifact.get("conformer_rank"),
+                    "available_raw_files": record_files,
+                    "extractable_observables": record_observables,
+                    "inspection_notes": [],
+                }
+            )
+
+        if primary_structure is None:
+            raise AmespExecutionError(
+                "parse_failed",
+                "Raw artifact inspection could not load any reusable prepared structure from the selected bundle.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "inspect_raw_artifact_bundle",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        missing_observables = [
+            observable for observable in requested_scope if observable not in extractable_observables
+        ]
+        missing_deliverables = (
+            [f"observable: {item}" for item in missing_observables]
+            if missing_observables
+            else []
+        )
+        route_summary = {
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "inspection_status": "completed",
+            "available_raw_files": sorted(file_inventory),
+            "extractable_observables": sorted(extractable_observables),
+            "missing_observables": missing_observables,
+            "inspection_notes": (
+                ["Requested observable scope exceeded current raw-file coverage."]
+                if missing_observables
+                else ["Requested observable scope is covered by current raw-file inventory."]
+            ),
+            "artifact_reuse_note": "Inspected an existing artifact bundle without generating new Amesp inputs.",
+        }
+        return AmespBaselineRunResult(
+            route="artifact_parse_only",
+            executed_capability="inspect_raw_artifact_bundle",
+            performed_new_calculations=False,
+            reused_existing_artifacts=True,
+            missing_deliverables=missing_deliverables,
+            structure=primary_structure,
+            s0=None,
+            s1=None,
+            parsed_snapshot_records=parsed_records,
+            route_records=parsed_records,
+            route_summary=route_summary,
+            raw_step_results={
+                "inspect_raw_artifact_bundle": {
+                    "artifact_scope": artifact_scope,
+                    "artifact_source_round": source_round,
+                    "requested_observable_scope": requested_scope,
                     "parsed_record_count": len(parsed_records),
                 }
             },
@@ -2826,6 +3247,85 @@ def _build_torsion_snapshot_summary(route_records: list[dict[str, Any]]) -> dict
     }
 
 
+def _artifact_record_file_availability(artifact_record: dict[str, Any]) -> dict[str, bool]:
+    relevant_keys = [
+        "prepared_xyz_path",
+        "prepared_sdf_path",
+        "prepared_summary_path",
+        "s0_aop_path",
+        "s1_aop_path",
+        "s0_stdout_path",
+        "s1_stdout_path",
+        "s0_stderr_path",
+        "s1_stderr_path",
+        "s0_mo_path",
+        "s1_mo_path",
+    ]
+    availability: dict[str, bool] = {}
+    for key in relevant_keys:
+        value = artifact_record.get(key)
+        availability[key] = bool(value and Path(str(value)).exists())
+    return availability
+
+
+def _artifact_record_file_inventory(artifact_record: dict[str, Any]) -> list[str]:
+    return sorted(key for key, present in _artifact_record_file_availability(artifact_record).items() if present)
+
+
+def _extractable_observables_from_artifact(artifact_record: dict[str, Any]) -> list[str]:
+    availability = _artifact_record_file_availability(artifact_record)
+    observables: set[str] = set()
+    if availability.get("s0_aop_path"):
+        observables.update(
+            {
+                "ground_state_energy",
+                "ground_state_dipole",
+                "mulliken_charges",
+                "homo_lumo_gap",
+                "optimized_geometry",
+            }
+        )
+    if availability.get("s1_aop_path"):
+        observables.update(
+            {
+                "vertical_excitation_energies",
+                "oscillator_strengths",
+                "state_ordering",
+            }
+        )
+    if availability.get("s0_mo_path") or availability.get("s1_mo_path"):
+        observables.add("molecular_orbital_files")
+    if availability.get("s0_stdout_path") or availability.get("s1_stdout_path"):
+        observables.add("stdout_logs")
+    return sorted(observables)
+
+
+def _ct_surrogate_observables_from_artifact(artifact_record: dict[str, Any]) -> list[str]:
+    observables = set(_extractable_observables_from_artifact(artifact_record))
+    surrogates: set[str] = set()
+    if "ground_state_dipole" in observables:
+        surrogates.add("ground_state_dipole")
+    if "mulliken_charges" in observables:
+        surrogates.add("mulliken_charges")
+    if "vertical_excitation_energies" in observables:
+        surrogates.add("vertical_excitation_energies")
+    if "oscillator_strengths" in observables:
+        surrogates.add("oscillator_strengths")
+    if "state_ordering" in observables:
+        surrogates.add("state_ordering")
+    return sorted(surrogates)
+
+
+def _humanize_descriptor_name(name: str) -> str:
+    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+    mapping = {
+        "dominant_transitions": "dominant transitions",
+        "ct_localization_proxy": "CT/localization proxy",
+        "delta_dipole": "delta dipole",
+    }
+    return mapping.get(normalized, name.replace("_", " "))
+
+
 def _artifact_scope_from_bundle_id(bundle_id: str) -> str:
     lowered = bundle_id.lower()
     if lowered.endswith("_torsion_snapshots"):
@@ -2905,7 +3405,11 @@ def _artifact_bundle_entry_from_generated_artifacts(
     bundle_kind: ArtifactBundleKind | None = None
     snapshot_count = 0
     available_deliverables: list[str] = []
-    parse_capabilities_supported = ["parse_snapshot_outputs"]
+    parse_capabilities_supported = [
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    ]
 
     if source_capability == "run_baseline_bundle" and (
         generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s1_aop_path")
