@@ -109,6 +109,14 @@ _EVIDENCE_SPECIFICITY_RANK = {
     "close_family": 2,
     "exact_compound": 3,
 }
+_MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
+    "run_baseline_bundle",
+    "run_conformer_bundle",
+    "run_torsion_snapshots",
+    "parse_snapshot_outputs",
+    "extract_ct_descriptors_from_bundle",
+    "inspect_raw_artifact_bundle",
+)
 
 
 def _normalize_hypothesis_label(raw_label: str | None) -> str | None:
@@ -136,6 +144,89 @@ def _normalize_confidence(value: float | None) -> float:
     if value is None:
         return 0.0
     return max(0.0, float(value))
+
+
+def _mentioned_microscopic_capabilities(text: str) -> list[str]:
+    ordered_matches: list[tuple[int, str]] = []
+    for capability in _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES:
+        match = re.search(rf"\b{re.escape(capability)}\b", text)
+        if match is not None:
+            ordered_matches.append((match.start(), capability))
+    ordered_matches.sort(key=lambda item: item[0])
+    return [capability for _, capability in ordered_matches]
+
+
+def _extract_first_artifact_bundle_id(text: str) -> str | None:
+    match = re.search(r"\b(round_\d+_(?:baseline_bundle|torsion_snapshots|conformer_bundle))\b", text)
+    return match.group(1) if match is not None else None
+
+
+def _extract_first_dihedral_id(text: str) -> str | None:
+    match = re.search(r"\b(dih_(?:\d+_){3}\d+)\b", text)
+    return match.group(1) if match is not None else None
+
+
+def _single_action_microscopic_task_instruction(
+    *,
+    capability_name: str,
+    current_hypothesis: str,
+    main_gap: str,
+    original_task_instruction: str,
+) -> str:
+    artifact_bundle_id = _extract_first_artifact_bundle_id(original_task_instruction)
+    dihedral_id = _extract_first_dihedral_id(original_task_instruction)
+    gap_note = f"Focus on the current gap: {main_gap}".strip()
+    if capability_name == "run_baseline_bundle":
+        return (
+            f"Execute ONLY `run_baseline_bundle` as one bounded microscopic action for the current working hypothesis "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure if available. {gap_note} "
+            "Return only the baseline S0/S1 outputs needed for the current discriminator."
+        )
+    if capability_name == "run_conformer_bundle":
+        return (
+            f"Execute ONLY `run_conformer_bundle` as one bounded microscopic action for the current working hypothesis "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure if available. {gap_note} "
+            "Select a bounded conformer subset consistent with current microscopic capability and return only local conformer-sensitivity evidence."
+        )
+    if capability_name == "run_torsion_snapshots":
+        target_note = (
+            f"Honor the explicit dihedral target `{dihedral_id}` if it remains available. "
+            if dihedral_id
+            else "Select one highest-relevance unresolved dihedral target from the current context. "
+        )
+        return (
+            f"Execute ONLY `run_torsion_snapshots` as one bounded microscopic action for the current working hypothesis "
+            f"'{current_hypothesis}'. Reuse the shared prepared structure or existing baseline geometry if available. "
+            f"{target_note}{gap_note} Return the generated torsion snapshot bundle and a compact per-snapshot vertical-state summary."
+        )
+    if capability_name == "parse_snapshot_outputs":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `parse_snapshot_outputs`{bundle_note} in parse-only mode (no new calculations). "
+            f"{gap_note} Return only the parsed per-snapshot vertical-state summaries needed for the current discriminator."
+        )
+    if capability_name == "extract_ct_descriptors_from_bundle":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `extract_ct_descriptors_from_bundle`{bundle_note} using reusable artifacts only. "
+            f"{gap_note} Return bounded CT-surrogate availability and any available local CT-related summary fields without launching new calculations."
+        )
+    if capability_name == "inspect_raw_artifact_bundle":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `inspect_raw_artifact_bundle`{bundle_note} using reusable artifacts only. "
+            f"{gap_note} Return raw-file coverage and extractable-observable inventory relevant to the current discriminator without launching new calculations."
+        )
+    return (
+        f"Collect additional microscopic evidence for the current working hypothesis '{current_hypothesis}'. "
+        f"{gap_note} Keep the task low-cost and bounded to current microscopic capability."
+    )
 
 
 def _sorted_hypothesis_pool(
@@ -550,6 +641,46 @@ def _default_follow_up_task_instruction(
     return None
 
 
+def _contract_microscopic_decision_to_single_action(
+    decision: PlannerDecision,
+    *,
+    main_gap: str,
+) -> PlannerDecision:
+    if decision.action != "microscopic":
+        return decision
+    microscopic_instruction = (
+        decision.agent_task_instructions.get("microscopic")
+        or decision.task_instruction
+        or ""
+    ).strip()
+    mentioned_capabilities = _mentioned_microscopic_capabilities(microscopic_instruction)
+    if len(mentioned_capabilities) <= 1:
+        return decision
+    contracted_capability = mentioned_capabilities[0]
+    contracted_instruction = _single_action_microscopic_task_instruction(
+        capability_name=contracted_capability,
+        current_hypothesis=decision.current_hypothesis,
+        main_gap=main_gap,
+        original_task_instruction=microscopic_instruction,
+    )
+    contraction_note = (
+        f"Planner microscopic task was contracted to a single registry-backed action "
+        f"(`{contracted_capability}`) because one microscopic decision may execute only one Amesp action."
+    )
+    existing_reason = (decision.contraction_reason or "").strip()
+    if contraction_note not in existing_reason:
+        decision.contraction_reason = (
+            f"{existing_reason} {contraction_note}".strip()
+            if existing_reason
+            else contraction_note
+        )
+    decision.task_instruction = contracted_instruction
+    decision.agent_task_instructions = _normalize_agent_task_instructions(
+        {"microscopic": contracted_instruction}
+    )
+    return decision
+
+
 class PlannerBackend(Protocol):
     def plan_initial(self, rendered_prompt: Any, payload: dict[str, Any]) -> dict[str, Any]:
         ...
@@ -785,6 +916,10 @@ class OpenAIPlannerBackend:
             pairwise_task_outcome=pairwise_task_outcome,
             pairwise_task_rationale=pairwise_task_rationale,
             finalization_mode=finalization_mode,
+        )
+        decision = _contract_microscopic_decision_to_single_action(
+            decision,
+            main_gap=response.main_gap,
         )
         decision = self._hydrate_verifier_and_closure_state(
             decision=decision,

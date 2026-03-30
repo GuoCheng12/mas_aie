@@ -77,6 +77,8 @@ Important rules:
 - If external evidence is the most informative next step, choose `action=verifier` and keep that choice.
 - If action is `Verifier`, the task must explicitly distinguish top1 vs top2 and ask for external discriminator criteria, precedents, or challenge signals.
 - If action is `Microscopic`, keep it low-cost and bounded.
+- If action is `Microscopic`, the task must map to exactly one registry-backed Amesp action in that round.
+- Do not ask `Microscopic` to perform multiple sequential actions, multi-bundle analysis, or conditional workflows in one decision.
 - Do not ask specialized agents to decide the global mechanism or the next system-level action.
 
 Output requirements:

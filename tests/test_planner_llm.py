@@ -738,6 +738,66 @@ def test_planner_diagnosis_normalizes_request_verifier_supplement_alias(tmp_path
     assert result["decision"].task_instruction == "Verifier: Resolve exact identity and photophysics for the current pairwise gap."
 
 
+def test_planner_diagnosis_contracts_multi_action_microscopic_task_to_single_action(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "neutral aromatic", "confidence": 0.46},
+                {"name": "TICT", "confidence": 0.31},
+                {"name": "ICT", "confidence": 0.18},
+                {"name": "unknown", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.01}
+              ],
+              "diagnosis": "A torsion follow-up is still the most informative next internal discriminator.",
+              "action": "microscopic",
+              "current_hypothesis": "neutral aromatic",
+              "confidence": 0.46,
+              "needs_verifier": false,
+              "task_instruction": "Microscopic agent: run run_torsion_snapshots on the key dihedral, then run parse_snapshot_outputs on the resulting bundle, then run extract_ct_descriptors_from_bundle on round_01_baseline_bundle and the new torsion bundle.",
+              "agent_task_instructions": {
+                "microscopic": "Execute run_torsion_snapshots for dih_1_2_3_4, then parse_snapshot_outputs, then extract_ct_descriptors_from_bundle on round_01_baseline_bundle."
+              },
+              "evidence_summary": "Baseline is bright but torsion sensitivity is still unmeasured.",
+              "main_gap": "Need torsion-dependent internal evidence to separate neutral aromatic from TICT.",
+              "conflict_status": "mixed_signals_but_resolvable",
+              "hypothesis_uncertainty_note": "The key uncertainty is whether twisting causes a dark CT-like state.",
+              "capability_assessment": "Microscopic can run bounded torsion follow-up or artifact-backed parse actions, but only one action per decision.",
+              "stagnation_assessment": "No stagnation yet.",
+              "contraction_reason": ""
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            current_hypothesis="neutral aromatic",
+            confidence=0.44,
+            runner_up_hypothesis="TICT",
+            runner_up_confidence=0.33,
+            decision_pair=["neutral aromatic", "TICT"],
+            hypothesis_pool=[
+                {"name": "neutral aromatic", "confidence": 0.44},
+                {"name": "TICT", "confidence": 0.33},
+                {"name": "ICT", "confidence": 0.18},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "ESIPT", "confidence": 0.02},
+            ],
+        )
+    )
+
+    instruction = result["decision"].task_instruction or ""
+    assert result["decision"].action == "microscopic"
+    assert instruction.startswith("Execute ONLY `run_torsion_snapshots`")
+    assert "parse_snapshot_outputs" not in instruction
+    assert "extract_ct_descriptors_from_bundle" not in instruction
+    assert result["decision"].agent_task_instructions["microscopic"] == instruction
+    assert "single registry-backed action" in (result["decision"].contraction_reason or "")
+
+
 def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_missing(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
