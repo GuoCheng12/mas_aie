@@ -409,9 +409,19 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "inspect_raw_artifact_bundle",
         }:
             parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []
+            bundle_status = (
+                route_summary.get("source_bundle_completion_status")
+                if isinstance(route_summary, dict)
+                else None
+            )
+            bundle_note = (
+                " Source artifact bundle was partial, so returned observables may reflect incomplete snapshot coverage."
+                if bundle_status == "partial"
+                else ""
+            )
             return (
                 f"Amesp capability '{executed_capability}' reused existing microscopic artifacts and returned "
-                f"{len(parsed_records)} parsed artifact records without new calculations. "
+                f"{len(parsed_records)} parsed artifact records without new calculations.{bundle_note} "
                 f"Route summary={route_summary}."
             )
         s0 = structured_results["s0"]

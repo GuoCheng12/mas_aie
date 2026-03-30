@@ -53,6 +53,7 @@ MicroscopicToolCallKind = Literal["discovery", "execution"]
 DihedralBondType = Literal["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]
 DihedralRelevance = Literal["high", "medium", "low"]
 ArtifactBundleKind = Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]
+ArtifactBundleCompletionStatus = Literal["complete", "partial"]
 ConformerSource = Literal["shared_structure", "microscopic_follow_up"]
 DiscoveryStructureSource = Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]
 MicroscopicCompletionReasonCode = Literal[
@@ -318,6 +319,7 @@ class ArtifactBundleDescriptor(BaseModel):
     source_round: int
     source_capability: str
     artifact_kind: ArtifactBundleKind
+    bundle_completion_status: ArtifactBundleCompletionStatus = "complete"
     snapshot_count: int = 0
     available_files: list[str] = Field(default_factory=list)
     available_deliverables: list[str] = Field(default_factory=list)
@@ -328,6 +330,7 @@ class ArtifactBundle(BaseModel):
     bundle_kind: ArtifactBundleKind
     source_round: int
     source_capability: str
+    bundle_completion_status: ArtifactBundleCompletionStatus = "complete"
     available_files: list[str] = Field(default_factory=list)
     available_deliverables: list[str] = Field(default_factory=list)
     parse_capabilities_supported: list[MicroscopicCapabilityName] = Field(default_factory=list)

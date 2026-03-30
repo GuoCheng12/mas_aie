@@ -172,6 +172,44 @@ class _CountingAmespTool(_SuccessfulAmespTool):
         return super().execute(**kwargs)
 
 
+class _PartialBundleInspectionTool(_SuccessfulAmespTool):
+    def execute(self, **kwargs):
+        result = super().execute(**kwargs)
+        result.route = "artifact_parse_only"
+        result.executed_capability = "inspect_raw_artifact_bundle"
+        result.performed_new_calculations = False
+        result.reused_existing_artifacts = True
+        result.parsed_snapshot_records = [
+            {
+                "snapshot_label": "torsion_01",
+                "target_angle_deg": 0.0,
+                "dihedral_atoms": [0, 1, 2, 3],
+                "source_snapshot_status": "partial",
+                "available_raw_files": ["s0_aop_path", "s1_stdout_path"],
+                "extractable_observables": ["ground_state_energy", "stdout_logs"],
+                "inspection_notes": ["Source artifact bundle is partial; raw-file coverage may be incomplete."],
+            }
+        ]
+        result.route_records = list(result.parsed_snapshot_records)
+        result.route_summary = {
+            "artifact_scope": "torsion_snapshots",
+            "artifact_source_round": 3,
+            "source_bundle_completion_status": "partial",
+            "available_raw_files": ["s0_aop_path", "s1_stdout_path"],
+            "extractable_observables": ["ground_state_energy", "stdout_logs"],
+            "missing_observables": ["vertical_excitation_energies"],
+            "inspection_notes": [
+                "Source artifact bundle is partial; inspection results may reflect incomplete snapshot coverage."
+            ],
+        }
+        result.generated_artifacts = {
+            "artifact_bundle_id": "round_03_torsion_snapshots",
+            "artifact_bundle_kind": "torsion_snapshots",
+            "bundle_completion_status": "partial",
+        }
+        return result
+
+
 def _shared_structure_context(tmp_path: Path) -> SharedStructureContext:
     return SharedStructureContext(
         input_smiles="C1=CCCCC1",
@@ -940,6 +978,68 @@ def test_reasoned_action_text_supports_raw_artifact_inspection(tmp_path: Path) -
     assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
     assert report.structured_results["registry_validation_errors"] == []
     assert counting_tool.execute_calls == 1
+
+
+def test_microscopic_report_explicitly_marks_partial_source_bundle_for_raw_inspection(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner asked to inspect a reusable torsion bundle after a partial run.
+            </task_understanding>
+            <reasoning_summary>
+            This is exactly representable by the raw-artifact inspection action on an existing torsion bundle.
+            </reasoning_summary>
+            <capability_limit_note>
+            The inspection can report raw-file coverage and missing observables but will not launch a rerun in this call.
+            </capability_limit_note>
+            <expected_outputs>
+            raw artifact file inventory
+            extractable observable inventory
+            raw inspection notes
+            </expected_outputs>
+            <failure_policy>
+            If the bundle is not reusable, return a local failed report.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "inspect_raw_artifact_bundle",
+              "discovery_actions": ["list_artifact_bundles"],
+              "params": {
+                "perform_new_calculation": false,
+                "reuse_existing_artifacts_only": true,
+                "artifact_kind": "torsion_snapshots",
+                "source_round_selector": "latest_available",
+                "requested_observable_scope": ["stdout_logs", "vertical_excitation_energies"]
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Inspect the latest torsion bundle and explicitly report if the source bundle is only partial."
+            }
+            </action_decision_json>
+            """
+        ],
+        amesp_tool=_PartialBundleInspectionTool(),
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Inspect the latest torsion bundle and tell me if the source bundle is only partial.",
+        current_hypothesis="TICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="partial-bundle-inspection",
+            objective="Inspect a reusable partial torsion bundle.",
+        ),
+        case_id="case123",
+        round_index=4,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["route_summary"]["source_bundle_completion_status"] == "partial"
+    assert "Source artifact bundle was partial" in report.result_summary
+    assert "Source artifact bundle was partial" in report.planner_readable_report
 
 
 def test_reasoned_action_text_supports_ct_descriptor_extraction(tmp_path: Path) -> None:

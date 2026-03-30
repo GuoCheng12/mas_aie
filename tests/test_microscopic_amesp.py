@@ -219,6 +219,25 @@ def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
     return _runner
 
 
+def _fake_subprocess_partial_torsion_s1(cmd, cwd, env, capture_output, text):
+    del env, capture_output, text
+    workdir = Path(cwd)
+    aip_name = Path(cmd[1]).name
+    aop_name = Path(cmd[2]).name
+    label = Path(aip_name).stem
+    if label.endswith("_s0") or label.endswith("_s0sp"):
+        aop_text = S0_AOP_TEXT
+    else:
+        aop_text = (
+            "========= Excitation energies and oscillator strengths =========\n"
+            "State    1 : E =    3.8474 eV     322.276 nm      31032.13 cm-1\n"
+            "E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.1234\n"
+            "Error occured in dpotrf!\n"
+        )
+    (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+    return subprocess.CompletedProcess(cmd, 0, stdout="partial\n", stderr="")
+
+
 class _FakePopenWithHeartbeat:
     def __init__(self, cmd, cwd, env, stdout, stderr, text):
         del env, stdout, stderr, text
@@ -896,6 +915,101 @@ def test_amesp_inspect_raw_artifact_bundle_reuses_baseline_bundle_artifacts(
     assert "ground_state_dipole" in inspect_result.route_summary["extractable_observables"]
     assert "vertical_excitation_energies" in inspect_result.route_summary["extractable_observables"]
     assert inspect_result.missing_deliverables == []
+
+
+def test_amesp_partial_torsion_bundle_is_discoverable_for_raw_inspection(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_partial_torsion_s1,
+    )
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Generate bounded torsion snapshots even if the first S1 step is unstable.",
+                requested_deliverables=["torsion sensitivity summary"],
+                capability_route="torsion_snapshot_follow_up",
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="run_torsion_snapshots",
+                    perform_new_calculation=True,
+                    optimize_ground_state=False,
+                    artifact_scope="torsion_snapshots",
+                    dihedral_id="dih_0_1_2_3",
+                    dihedral_atom_indices=[0, 1, 2, 3],
+                    snapshot_count=2,
+                    angle_offsets_deg=[0.0, 30.0],
+                    state_window=[1, 2],
+                    deliverables=["torsion sensitivity summary"],
+                    requested_route_summary="Generate two torsion snapshots for later reuse.",
+                ),
+                structure_source="prepared_from_smiles",
+                failure_reporting="Return partial or failed if Amesp fails.",
+            ),
+            smiles="N",
+            label="partial_torsion_source",
+            workdir=tmp_path / "partial_torsion_source_workdir",
+            available_artifacts={},
+            round_index=2,
+        )
+    except AmespExecutionError as exc:
+        partial_payload = exc
+    else:  # pragma: no cover - defensive
+        raise AssertionError("Expected the torsion route to fail partially.")
+
+    assert partial_payload.status == "partial"
+    registry_entries = list(partial_payload.generated_artifacts.get("artifact_bundle_registry_entries") or [])
+    assert len(registry_entries) == 1
+    assert registry_entries[0]["artifact_bundle"]["bundle_id"] == "round_02_torsion_snapshots"
+    assert registry_entries[0]["artifact_bundle"]["bundle_completion_status"] == "partial"
+
+    inspect_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Inspect the partial torsion bundle for raw-file coverage.",
+            requested_deliverables=[
+                "raw artifact file inventory",
+                "extractable observable inventory",
+                "raw inspection notes",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="inspect_raw_artifact_bundle",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_02_torsion_snapshots",
+                artifact_source_round=2,
+                artifact_scope="torsion_snapshots",
+                requested_observable_scope=["stdout_logs", "vertical_excitation_energies"],
+                deliverables=[
+                    "raw artifact file inventory",
+                    "extractable observable inventory",
+                    "raw inspection notes",
+                ],
+                requested_route_summary="Inspect the partial torsion bundle without new calculations.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if inspection fails.",
+        ),
+        smiles="N",
+        label="partial_torsion_inspect",
+        workdir=tmp_path / "partial_torsion_inspect_workdir",
+        available_artifacts={**partial_payload.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert inspect_result.executed_capability == "inspect_raw_artifact_bundle"
+    assert inspect_result.route_summary["artifact_scope"] == "torsion_snapshots"
+    assert inspect_result.route_summary["source_bundle_completion_status"] == "partial"
+    assert any(
+        "partial" in note.lower()
+        for note in inspect_result.route_summary["inspection_notes"]
+    )
+    assert inspect_result.parsed_snapshot_records[0]["source_snapshot_status"] == "partial"
 
 
 def test_amesp_parse_snapshot_outputs_rejects_noncanonical_artifact_bundle_id(

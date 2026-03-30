@@ -20,6 +20,7 @@ from aie_mas.chem.structure_prep import (
 )
 from aie_mas.graph.state import (
     ArtifactBundle,
+    ArtifactBundleCompletionStatus,
     ArtifactBundleDescriptor,
     ArtifactBundleKind,
     ArtifactBundleRegistryEntry,
@@ -904,23 +905,67 @@ class AmespMicroscopicTool:
             discovery_results=discovery_results,
             available_artifacts=available_artifacts,
         )
-        result = self._dispatch_execution_request(
-            request=resolved_request,
-            smiles=smiles,
-            label=label,
-            workdir=workdir,
-            available_artifacts=available_artifacts,
-            progress_callback=progress_callback,
-            round_index=round_index,
-            case_id=case_id,
-            current_hypothesis=current_hypothesis,
-        )
+        try:
+            result = self._dispatch_execution_request(
+                request=resolved_request,
+                smiles=smiles,
+                label=label,
+                workdir=workdir,
+                available_artifacts=available_artifacts,
+                progress_callback=progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+            )
+        except AmespExecutionError as exc:
+            exc.generated_artifacts = dict(exc.generated_artifacts)
+            exc.generated_artifacts["source_round"] = round_index
+            exc.generated_artifacts["resolved_target_ids"] = dict(
+                resolution_payload.get("resolved_target_ids", {})
+            )
+            if exc.status == "partial":
+                exc.generated_artifacts.setdefault("bundle_completion_status", "partial")
+            if isinstance(exc.structured_results, dict):
+                exc.structured_results.setdefault(
+                    "resolved_target_ids",
+                    dict(resolution_payload.get("resolved_target_ids", {})),
+                )
+                exc.structured_results.setdefault(
+                    "honored_constraints",
+                    list(resolution_payload.get("honored_constraints", [])),
+                )
+                exc.structured_results.setdefault(
+                    "unmet_constraints",
+                    list(resolution_payload.get("unmet_constraints", [])),
+                )
+            artifact_bundle_entry = _artifact_bundle_entry_from_generated_artifacts(
+                source_capability=resolved_request.capability_name,
+                source_round=round_index,
+                generated_artifacts=exc.generated_artifacts,
+            )
+            if artifact_bundle_entry is not None:
+                exc.generated_artifacts["artifact_bundle_id"] = artifact_bundle_entry.artifact_bundle.bundle_id
+                exc.generated_artifacts["artifact_bundle_kind"] = artifact_bundle_entry.artifact_bundle.bundle_kind
+                exc.generated_artifacts["artifact_bundle_registry_entries"] = [
+                    artifact_bundle_entry.model_dump(mode="json")
+                ]
+                if isinstance(exc.structured_results, dict):
+                    exc.structured_results.setdefault(
+                        "artifact_bundle_id",
+                        artifact_bundle_entry.artifact_bundle.bundle_id,
+                    )
+                    exc.structured_results.setdefault(
+                        "artifact_bundle_kind",
+                        artifact_bundle_entry.artifact_bundle.bundle_kind,
+                    )
+            raise
         result.requested_capability = execution_call.request.capability_name
         result.resolved_target_ids = dict(resolution_payload.get("resolved_target_ids", {}))
         result.honored_constraints = list(resolution_payload.get("honored_constraints", []))
         result.unmet_constraints = list(resolution_payload.get("unmet_constraints", []))
         result.generated_artifacts["resolved_target_ids"] = dict(result.resolved_target_ids)
         result.generated_artifacts["source_round"] = round_index
+        result.generated_artifacts.setdefault("bundle_completion_status", "complete")
         artifact_bundle_entry = _artifact_bundle_entry_from_generated_artifacts(
             source_capability=result.executed_capability,
             source_round=round_index,
@@ -1351,6 +1396,7 @@ class AmespMicroscopicTool:
                     source_round=bundle.source_round,
                     source_capability=bundle.source_capability,
                     artifact_kind=bundle.bundle_kind,
+                    bundle_completion_status=bundle.bundle_completion_status,
                     snapshot_count=snapshot_count,
                     available_files=list(bundle.available_files),
                     available_deliverables=list(bundle.available_deliverables),
@@ -1374,6 +1420,7 @@ class AmespMicroscopicTool:
     ) -> list[ArtifactBundleDescriptor]:
         descriptors: list[ArtifactBundleDescriptor] = []
         source_round = int(source_artifacts.get("source_round") or 0)
+        bundle_completion_status = _bundle_completion_status_from_generated_artifacts(source_artifacts)
         if source_artifacts.get("snapshot_artifacts"):
             descriptors.append(
                 ArtifactBundleDescriptor(
@@ -1381,6 +1428,7 @@ class AmespMicroscopicTool:
                     source_round=source_round,
                     source_capability="run_torsion_snapshots",
                     artifact_kind="torsion_snapshots",
+                    bundle_completion_status=bundle_completion_status,
                     snapshot_count=len(list(source_artifacts.get("snapshot_artifacts") or [])),
                     available_files=_collect_available_file_keys(source_artifacts, "snapshot_artifacts"),
                     available_deliverables=[
@@ -1397,6 +1445,7 @@ class AmespMicroscopicTool:
                     source_round=source_round,
                     source_capability="run_conformer_bundle",
                     artifact_kind="conformer_bundle",
+                    bundle_completion_status=bundle_completion_status,
                     snapshot_count=len(list(source_artifacts.get("conformer_artifacts") or [])),
                     available_files=_collect_available_file_keys(source_artifacts, "conformer_artifacts"),
                     available_deliverables=[
@@ -1413,6 +1462,7 @@ class AmespMicroscopicTool:
                     source_round=source_round,
                     source_capability="run_baseline_bundle",
                     artifact_kind="baseline_bundle",
+                    bundle_completion_status=bundle_completion_status,
                     snapshot_count=1,
                     available_files=_collect_scalar_artifact_files(source_artifacts),
                     available_deliverables=[
@@ -1457,6 +1507,7 @@ class AmespMicroscopicTool:
                         source_round=bundle.source_round,
                         source_capability=bundle.source_capability,
                         artifact_kind=bundle.bundle_kind,
+                        bundle_completion_status=bundle.bundle_completion_status,
                         snapshot_count=snapshot_count,
                         available_files=list(bundle.available_files),
                         available_deliverables=list(bundle.available_deliverables),
@@ -1765,22 +1816,50 @@ class AmespMicroscopicTool:
         snapshot_artifacts: list[dict[str, Any]] = []
         primary_result: AmespBaselineRunResult | None = None
         for snapshot in snapshots:
-            snapshot_result = self._run_single_low_cost_bundle(
-                atoms=snapshot["atoms"],
-                prepared=snapshot["prepared"],
-                label=f"{label}_{snapshot['snapshot_label']}",
-                workdir=workdir / snapshot["snapshot_label"],
-                progress_callback=progress_callback,
-                round_index=round_index,
-                case_id=case_id,
-                current_hypothesis=current_hypothesis,
-                optimize_ground_state=request.optimize_ground_state,
-                route="torsion_snapshot_follow_up",
-                state_window=request.state_window,
-                executed_capability="run_torsion_snapshots",
-                performed_new_calculations=True,
-                reused_existing_artifacts=False,
-            )
+            try:
+                snapshot_result = self._run_single_low_cost_bundle(
+                    atoms=snapshot["atoms"],
+                    prepared=snapshot["prepared"],
+                    label=f"{label}_{snapshot['snapshot_label']}",
+                    workdir=workdir / snapshot["snapshot_label"],
+                    progress_callback=progress_callback,
+                    round_index=round_index,
+                    case_id=case_id,
+                    current_hypothesis=current_hypothesis,
+                    optimize_ground_state=request.optimize_ground_state,
+                    route="torsion_snapshot_follow_up",
+                    state_window=request.state_window,
+                    executed_capability="run_torsion_snapshots",
+                    performed_new_calculations=True,
+                    reused_existing_artifacts=False,
+                )
+            except AmespExecutionError as exc:
+                snapshot_artifacts.append(
+                    _snapshot_artifact_record_from_partial_error(
+                        snapshot=snapshot,
+                        generated_artifacts=exc.generated_artifacts,
+                        failure_code=exc.code,
+                        failure_message=exc.message,
+                    )
+                )
+                partial_generated_artifacts = {
+                    "prepared_xyz_path": str(prepared.xyz_path),
+                    "prepared_sdf_path": str(prepared.sdf_path),
+                    "prepared_summary_path": str(prepared.summary_path),
+                    "torsion_snapshot_count": len(snapshot_artifacts),
+                    "snapshot_artifacts": snapshot_artifacts,
+                    "bundle_completion_status": "partial",
+                    "bundle_partial_failure_code": exc.code,
+                    "bundle_partial_failure_message": exc.message,
+                }
+                raise AmespExecutionError(
+                    exc.code,
+                    exc.message,
+                    generated_artifacts={**partial_generated_artifacts, **exc.generated_artifacts},
+                    raw_results=exc.raw_results,
+                    structured_results=exc.structured_results,
+                    status="partial",
+                ) from exc
             route_records.append(
                 {
                     "snapshot_label": snapshot["snapshot_label"],
@@ -1793,19 +1872,10 @@ class AmespMicroscopicTool:
                 }
             )
             snapshot_artifacts.append(
-                {
-                    "snapshot_label": snapshot["snapshot_label"],
-                    "dihedral_atoms": snapshot["dihedral_atoms"],
-                    "target_angle_deg": snapshot["target_angle_deg"],
-                    "prepared_xyz_path": snapshot_result.generated_artifacts.get("prepared_xyz_path"),
-                    "prepared_summary_path": snapshot_result.generated_artifacts.get("prepared_summary_path"),
-                    "s0_aop_path": snapshot_result.generated_artifacts.get("s0_aop_path"),
-                    "s1_aop_path": snapshot_result.generated_artifacts.get("s1_aop_path"),
-                    "s0_stdout_path": snapshot_result.generated_artifacts.get("s0_stdout_path"),
-                    "s1_stdout_path": snapshot_result.generated_artifacts.get("s1_stdout_path"),
-                    "s0_mo_path": snapshot_result.generated_artifacts.get("s0_mo_path"),
-                    "s1_mo_path": snapshot_result.generated_artifacts.get("s1_mo_path"),
-                }
+                _snapshot_artifact_record_from_generated_artifacts(
+                    snapshot=snapshot,
+                    generated_artifacts=snapshot_result.generated_artifacts,
+                )
             )
             if primary_result is None or snapshot_result.s0.final_energy_hartree < primary_result.s0.final_energy_hartree:
                 primary_result = snapshot_result
@@ -1816,8 +1886,10 @@ class AmespMicroscopicTool:
         primary_result.performed_new_calculations = True
         primary_result.route_records = route_records
         primary_result.route_summary = _build_torsion_snapshot_summary(route_records)
+        primary_result.route_summary["source_bundle_completion_status"] = "complete"
         primary_result.generated_artifacts["torsion_snapshot_count"] = len(route_records)
         primary_result.generated_artifacts["snapshot_artifacts"] = snapshot_artifacts
+        primary_result.generated_artifacts["bundle_completion_status"] = "complete"
         return primary_result
 
     def _execute_parse_snapshot_outputs_route(
@@ -1837,6 +1909,7 @@ class AmespMicroscopicTool:
         primary_structure: PreparedStructure | None = None
         primary_s0: AmespGroundStateResult | None = None
         primary_s1: AmespExcitedStateResult | None = None
+        source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
         for artifact in artifact_records:
             prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
             s0_result = self._parse_s0_from_existing_artifacts(artifact, prepared)
@@ -1852,6 +1925,7 @@ class AmespMicroscopicTool:
                     "target_angle_deg": artifact.get("target_angle_deg"),
                     "dihedral_atoms": artifact.get("dihedral_atoms"),
                     "conformer_rank": artifact.get("conformer_rank"),
+                    "source_snapshot_status": artifact.get("snapshot_status") or "success",
                     "final_energy_hartree": s0_result.final_energy_hartree,
                     "first_excitation_energy_ev": s1_result.first_excitation_energy_ev,
                     "first_oscillator_strength": s1_result.first_oscillator_strength,
@@ -1895,6 +1969,7 @@ class AmespMicroscopicTool:
             "snapshot_count": len(parsed_records),
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
+            "source_bundle_completion_status": source_bundle_completion_status,
             "artifact_reuse_note": "Parsed existing microscopic snapshot artifacts without generating new Amesp inputs.",
             "ct_proxy_availability": "not_available",
             "state_window": list(request.state_window),
@@ -1954,6 +2029,7 @@ class AmespMicroscopicTool:
         primary_structure: PreparedStructure | None = None
         primary_s0: AmespGroundStateResult | None = None
         primary_s1: AmespExcitedStateResult | None = None
+        source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
 
         for artifact in artifact_records:
             prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
@@ -1984,6 +2060,7 @@ class AmespMicroscopicTool:
                     "target_angle_deg": artifact.get("target_angle_deg"),
                     "dihedral_atoms": artifact.get("dihedral_atoms"),
                     "conformer_rank": artifact.get("conformer_rank"),
+                    "source_snapshot_status": artifact.get("snapshot_status") or "success",
                     "state_count": s1_result.state_count if s1_result is not None else None,
                     "ground_state_dipole_debye": (
                         s0_result.dipole_debye[3]
@@ -2024,6 +2101,7 @@ class AmespMicroscopicTool:
         route_summary = {
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
+            "source_bundle_completion_status": source_bundle_completion_status,
             "descriptor_scope": descriptor_scope,
             "ct_proxy_availability": "partial_observable_only" if available_ct_surrogates else "not_available",
             "available_ct_surrogates": sorted(available_ct_surrogates),
@@ -2081,6 +2159,8 @@ class AmespMicroscopicTool:
         file_inventory: set[str] = set()
         extractable_observables: set[str] = set()
         parsed_records: list[dict[str, Any]] = []
+        source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
+        source_bundle_partial_message = str(selected_artifacts.get("bundle_partial_failure_message") or "").strip()
         for artifact in artifact_records:
             prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
             if primary_structure is None:
@@ -2089,15 +2169,25 @@ class AmespMicroscopicTool:
             file_inventory.update(record_files)
             record_observables = _extractable_observables_from_artifact(artifact)
             extractable_observables.update(record_observables)
+            inspection_notes: list[str] = []
+            if source_bundle_completion_status == "partial":
+                inspection_notes.append(
+                    "Source artifact bundle is partial; raw-file coverage may be incomplete."
+                )
+            if artifact.get("snapshot_status") == "partial":
+                inspection_notes.append(
+                    "This snapshot record is partial and may expose only a subset of expected Amesp files."
+                )
             parsed_records.append(
                 {
                     "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
                     "target_angle_deg": artifact.get("target_angle_deg"),
                     "dihedral_atoms": artifact.get("dihedral_atoms"),
                     "conformer_rank": artifact.get("conformer_rank"),
+                    "source_snapshot_status": artifact.get("snapshot_status") or "success",
                     "available_raw_files": record_files,
                     "extractable_observables": record_observables,
-                    "inspection_notes": [],
+                    "inspection_notes": inspection_notes,
                 }
             )
 
@@ -2124,6 +2214,7 @@ class AmespMicroscopicTool:
         route_summary = {
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
+            "source_bundle_completion_status": source_bundle_completion_status,
             "inspection_status": "completed",
             "available_raw_files": sorted(file_inventory),
             "extractable_observables": sorted(extractable_observables),
@@ -2135,6 +2226,12 @@ class AmespMicroscopicTool:
             ),
             "artifact_reuse_note": "Inspected an existing artifact bundle without generating new Amesp inputs.",
         }
+        if source_bundle_completion_status == "partial":
+            route_summary["inspection_notes"].append(
+                "Source artifact bundle is partial; inspection results may reflect incomplete snapshot coverage."
+            )
+            if source_bundle_partial_message:
+                route_summary["inspection_notes"].append(source_bundle_partial_message)
         return AmespBaselineRunResult(
             route="artifact_parse_only",
             executed_capability="inspect_raw_artifact_bundle",
@@ -3337,6 +3434,72 @@ def _artifact_scope_from_bundle_id(bundle_id: str) -> str:
     return "latest_bundle"
 
 
+def _bundle_completion_status_from_generated_artifacts(
+    generated_artifacts: dict[str, Any],
+) -> ArtifactBundleCompletionStatus:
+    status = str(generated_artifacts.get("bundle_completion_status") or "").strip().lower()
+    if status == "partial":
+        return "partial"
+    snapshot_artifacts = list(generated_artifacts.get("snapshot_artifacts") or [])
+    if any(str(item.get("snapshot_status") or "").strip().lower() == "partial" for item in snapshot_artifacts):
+        return "partial"
+    return "complete"
+
+
+def _snapshot_artifact_record_from_generated_artifacts(
+    *,
+    snapshot: dict[str, Any],
+    generated_artifacts: dict[str, Any],
+) -> dict[str, Any]:
+    return {
+        "snapshot_label": snapshot["snapshot_label"],
+        "dihedral_atoms": snapshot["dihedral_atoms"],
+        "target_angle_deg": snapshot["target_angle_deg"],
+        "snapshot_status": "success",
+        "prepared_xyz_path": generated_artifacts.get("prepared_xyz_path"),
+        "prepared_summary_path": generated_artifacts.get("prepared_summary_path"),
+        "s0_aop_path": generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s0_singlepoint_aop_path"),
+        "s1_aop_path": generated_artifacts.get("s1_aop_path"),
+        "s0_stdout_path": generated_artifacts.get("s0_stdout_path") or generated_artifacts.get("s0_singlepoint_stdout_path"),
+        "s1_stdout_path": generated_artifacts.get("s1_stdout_path"),
+        "s0_mo_path": generated_artifacts.get("s0_mo_path") or generated_artifacts.get("s0_singlepoint_mo_path"),
+        "s1_mo_path": generated_artifacts.get("s1_mo_path"),
+    }
+
+
+def _snapshot_artifact_record_from_partial_error(
+    *,
+    snapshot: dict[str, Any],
+    generated_artifacts: dict[str, Any],
+    failure_code: str,
+    failure_message: str,
+) -> dict[str, Any]:
+    step_id = str(generated_artifacts.get("step_id") or "").strip()
+    s1_aop_path = generated_artifacts.get("s1_aop_path")
+    s1_stdout_path = generated_artifacts.get("s1_stdout_path")
+    s1_mo_path = generated_artifacts.get("s1_mo_path")
+    if step_id == "s1_vertical_excitation":
+        s1_aop_path = s1_aop_path or generated_artifacts.get("aop_path")
+        s1_stdout_path = s1_stdout_path or generated_artifacts.get("stdout_path")
+        s1_mo_path = s1_mo_path or generated_artifacts.get("mo_path")
+    return {
+        "snapshot_label": snapshot["snapshot_label"],
+        "dihedral_atoms": snapshot["dihedral_atoms"],
+        "target_angle_deg": snapshot["target_angle_deg"],
+        "snapshot_status": "partial",
+        "failure_code": failure_code,
+        "failure_message": failure_message,
+        "prepared_xyz_path": generated_artifacts.get("prepared_xyz_path"),
+        "prepared_summary_path": generated_artifacts.get("prepared_summary_path"),
+        "s0_aop_path": generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s0_singlepoint_aop_path"),
+        "s1_aop_path": s1_aop_path,
+        "s0_stdout_path": generated_artifacts.get("s0_stdout_path") or generated_artifacts.get("s0_singlepoint_stdout_path"),
+        "s1_stdout_path": s1_stdout_path,
+        "s0_mo_path": generated_artifacts.get("s0_mo_path") or generated_artifacts.get("s0_singlepoint_mo_path"),
+        "s1_mo_path": s1_mo_path,
+    }
+
+
 def _dihedral_atoms_from_id(dihedral_id: str) -> list[int]:
     if not dihedral_id.startswith("dih_"):
         return []
@@ -3405,6 +3568,7 @@ def _artifact_bundle_entry_from_generated_artifacts(
     bundle_kind: ArtifactBundleKind | None = None
     snapshot_count = 0
     available_deliverables: list[str] = []
+    bundle_completion_status = _bundle_completion_status_from_generated_artifacts(generated_artifacts)
     parse_capabilities_supported = [
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -3453,6 +3617,7 @@ def _artifact_bundle_entry_from_generated_artifacts(
             bundle_kind=bundle_kind,
             source_round=source_round,
             source_capability=source_capability,
+            bundle_completion_status=bundle_completion_status,
             available_files=available_files,
             available_deliverables=available_deliverables,
             parse_capabilities_supported=parse_capabilities_supported,
