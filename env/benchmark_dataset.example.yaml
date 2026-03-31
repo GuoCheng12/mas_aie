@@ -9,3 +9,4 @@ disable_long_term_memory: true
 amesp_npara: 22
 amesp_maxcore_mb: 16000
 show_case_progress: true
+show_workflow_progress: true

@@ -28,6 +28,7 @@ BENCHMARK_CONFIG_KEYS = {
     "user_query",
     "execution_profile",
     "show_case_progress",
+    "show_workflow_progress",
 }
 PATH_CONFIG_KEYS = {
     "dataset_path",
@@ -101,8 +102,23 @@ def _load_config_file(config_file: Optional[Path]) -> tuple[dict[str, Any], Opti
             normalized.pop("hide_case_progress"),
             key="hide_case_progress",
         )
+    if "hide_workflow_progress" in normalized:
+        if "show_workflow_progress" in normalized:
+            raise typer.BadParameter(
+                "Config file cannot specify both hide_workflow_progress and "
+                "show_workflow_progress."
+            )
+        normalized["show_workflow_progress"] = not _coerce_bool(
+            normalized.pop("hide_workflow_progress"),
+            key="hide_workflow_progress",
+        )
 
-    for bool_key in {"enable_long_term_memory", "show_case_progress", "amesp_use_ricosx"}:
+    for bool_key in {
+        "enable_long_term_memory",
+        "show_case_progress",
+        "show_workflow_progress",
+        "amesp_use_ricosx",
+    }:
         if bool_key in normalized:
             normalized[bool_key] = _coerce_bool(normalized[bool_key], key=bool_key)
 
@@ -178,6 +194,11 @@ def main(
         "--show-case-progress/--hide-case-progress",
         help="Print one benchmark progress line per evaluated molecule.",
     ),
+    show_workflow_progress: Optional[bool] = typer.Option(
+        None,
+        "--show-workflow-progress/--hide-workflow-progress",
+        help="Print live per-case workflow progress, matching run-case supervision output.",
+    ),
 ) -> None:
     config_values, resolved_config_file = _load_config_file(config_file)
     merged_values = dict(config_values)
@@ -189,6 +210,7 @@ def main(
         "user_query": user_query,
         "execution_profile": execution_profile,
         "show_case_progress": show_case_progress,
+        "show_workflow_progress": show_workflow_progress,
     }
     for key, value in cli_overrides.items():
         if value is not None:
@@ -222,6 +244,13 @@ def main(
         )
     else:
         show_case_progress = True
+    if "show_workflow_progress" in merged_values:
+        show_workflow_progress = _coerce_bool(
+            merged_values["show_workflow_progress"],
+            key="show_workflow_progress",
+        )
+    else:
+        show_workflow_progress = True
 
     rows = load_benchmark_rows(dataset_path)
     sampled_rows = select_benchmark_sample(rows, sample_size=sample_size, seed=seed)
@@ -256,7 +285,7 @@ def main(
         return run_case_workflow_with_reporting(
             smiles=smiles,
             user_query=user_query,
-            show_progress=show_case_progress,
+            show_progress=show_workflow_progress,
             **kwargs,
         )
 

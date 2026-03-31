@@ -216,7 +216,8 @@ def test_benchmark_cli_reads_config_file(tmp_path: Path, monkeypatch: pytest.Mon
         "disable_long_term_memory: true\n"
         "amesp_npara: 22\n"
         "amesp_maxcore_mb: 16000\n"
-        "show_case_progress: false\n",
+        "show_case_progress: false\n"
+        "show_workflow_progress: true\n",
         encoding="utf-8",
     )
 
@@ -258,6 +259,6 @@ def test_benchmark_cli_reads_config_file(tmp_path: Path, monkeypatch: pytest.Mon
     assert captured_kwargs[0]["enable_long_term_memory"] is False
     assert captured_kwargs[0]["amesp_npara"] == 22
     assert captured_kwargs[0]["amesp_maxcore_mb"] == 16000
-    assert captured_kwargs[0]["show_progress"] is False
+    assert captured_kwargs[0]["show_progress"] is True
     assert (tmp_path / "outputs" / "metrics.json").exists()
     assert (tmp_path / "outputs" / "summary.md").exists()
