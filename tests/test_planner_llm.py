@@ -138,6 +138,34 @@ def _microscopic_registry_blocked_report() -> dict[str, object]:
     }
 
 
+def _microscopic_structure_blocked_report(code: str = "embedding_failed") -> dict[str, object]:
+    return {
+        "agent_name": "microscopic",
+        "task_received": "microscopic task",
+        "task_understanding": "microscopic understanding",
+        "reasoning_summary": "microscopic reasoning summary",
+        "execution_plan": "microscopic execution plan",
+        "result_summary": "structure preparation failed",
+        "remaining_local_uncertainty": "microscopic uncertainty",
+        "tool_calls": [],
+        "raw_results": {
+            "structure_prep_error": {
+                "code": code,
+                "message": "RDKit failed to embed any 3D conformer for the current molecule.",
+            }
+        },
+        "structured_results": {
+            "completion_reason_code": "precondition_missing",
+            "structure_prep_error": {
+                "code": code,
+                "message": "RDKit failed to embed any 3D conformer for the current molecule.",
+            },
+        },
+        "status": "failed",
+        "planner_readable_report": "microscopic planner readable report",
+    }
+
+
 def test_openai_planner_backend_invokes_chat_completions_with_configured_model(tmp_path: Path) -> None:
     fake_client = _FakeClient(
         [
@@ -796,6 +824,103 @@ def test_planner_diagnosis_contracts_multi_action_microscopic_task_to_single_act
     assert "extract_ct_descriptors_from_bundle" not in instruction
     assert result["decision"].agent_task_instructions["microscopic"] == instruction
     assert "single registry-backed action" in (result["decision"].contraction_reason or "")
+
+
+def test_planner_diagnosis_redirects_structure_blocked_microscopic_to_verifier(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.58},
+                {"name": "TICT", "confidence": 0.24},
+                {"name": "neutral aromatic", "confidence": 0.11},
+                {"name": "unknown", "confidence": 0.05},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "diagnosis": "A bounded microscopic follow-up would normally be next.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.58,
+              "needs_verifier": false,
+              "task_instruction": "Collect additional microscopic evidence for the current working hypothesis 'ICT'.",
+              "evidence_summary": "The previous internal result was incomplete.",
+              "main_gap": "Need one more discriminator between ICT and TICT.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual uncertainty remains.",
+              "capability_assessment": "Microscopic can usually run one bounded follow-up.",
+              "stagnation_assessment": "No stagnation yet."
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            microscopic_reports=[_microscopic_structure_blocked_report()],
+            shared_structure_status="failed",
+            shared_structure_error={
+                "code": "embedding_failed",
+                "message": "RDKit failed to embed any 3D conformer for the current molecule.",
+            },
+        )
+    )
+
+    assert result["decision"].action == "verifier"
+    assert result["decision"].planned_agents == ["verifier"]
+    assert result["decision"].needs_verifier is True
+    assert "structure preparation is blocked" in (result["decision"].capability_assessment or "").lower()
+    assert "high-confidence external verification" in (result["decision"].task_instruction or "")
+
+
+def test_planner_reweight_redirects_structure_blocked_microscopic_to_macro_after_verifier(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.63},
+                {"name": "TICT", "confidence": 0.21},
+                {"name": "neutral aromatic", "confidence": 0.10},
+                {"name": "unknown", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "diagnosis": "One more microscopic refinement would normally be useful before closure.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.63,
+              "needs_verifier": false,
+              "task_instruction": "Collect additional microscopic evidence for the current working hypothesis 'ICT'.",
+              "evidence_summary": "Verifier already supplied the external context; one internal refinement would usually follow.",
+              "main_gap": "Need one more pairwise discriminator between ICT and TICT.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual uncertainty remains.",
+              "capability_assessment": "Microscopic can usually provide a bounded follow-up.",
+              "stagnation_assessment": "No stagnation yet."
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            microscopic_reports=[_microscopic_structure_blocked_report()],
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT", "close_family")],
+            shared_structure_status="failed",
+            shared_structure_error={
+                "code": "embedding_failed",
+                "message": "RDKit failed to embed any 3D conformer for the current molecule.",
+            },
+        )
+    )
+
+    assert result["decision"].action == "macro"
+    assert result["decision"].planned_agents == ["macro"]
+    assert "microscopic" not in result["decision"].planned_agents
+    assert result["decision"].task_instruction
+    assert "shared 3d structure preparation is unavailable" in (result["decision"].task_instruction or "").lower()
 
 
 def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_missing(tmp_path: Path) -> None:

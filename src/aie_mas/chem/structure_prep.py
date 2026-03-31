@@ -66,15 +66,10 @@ class PreparedConformerBundleMember:
 
 
 def validate_closed_shell_support(formal_charge: int, radical_electrons: int) -> None:
-    if formal_charge != 0:
-        raise StructurePrepError(
-            "unsupported_formal_charge",
-            f"Only neutral closed-shell molecules are supported in the first version; got formal_charge={formal_charge}.",
-        )
     if radical_electrons != 0:
         raise StructurePrepError(
             "unsupported_radical",
-            "Only neutral closed-shell molecules are supported in the first version; radical electrons were detected.",
+            "Only closed-shell molecules are supported in the first version; radical electrons were detected.",
         )
 
 

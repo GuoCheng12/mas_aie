@@ -22,11 +22,8 @@ def test_structure_prep_error_exposes_code_and_message() -> None:
     assert error.to_payload() == {"code": "invalid_smiles", "message": "bad smiles"}
 
 
-def test_validate_closed_shell_support_rejects_formal_charge() -> None:
-    with pytest.raises(StructurePrepError) as exc_info:
-        validate_closed_shell_support(formal_charge=1, radical_electrons=0)
-
-    assert exc_info.value.code == "unsupported_formal_charge"
+def test_validate_closed_shell_support_allows_closed_shell_formal_charge() -> None:
+    validate_closed_shell_support(formal_charge=1, radical_electrons=0)
 
 
 def test_validate_closed_shell_support_rejects_radicals() -> None:
@@ -87,6 +84,36 @@ def test_prepare_structure_from_smiles_generates_artifacts(tmp_path: Path) -> No
     summary_payload = json.loads(prepared.summary_path.read_text(encoding="utf-8"))
     assert summary_payload["canonical_smiles"] == prepared.canonical_smiles
     assert summary_payload["charge"] == 0
+    assert summary_payload["multiplicity"] == 1
+
+
+@pytest.mark.skipif(
+    pytest.importorskip("rdkit", reason="RDKit is required for structure prep integration checks")
+    is None,
+    reason="unreachable",
+)
+def test_prepare_structure_from_smiles_supports_closed_shell_cation(tmp_path: Path) -> None:
+    pytest.importorskip("ase", reason="ASE is required for structure prep integration checks")
+
+    atoms, prepared = prepare_structure_from_smiles(
+        StructurePrepRequest(
+            smiles="C[n+]1ccccc1",
+            label="n_methyl_pyridinium",
+            workdir=tmp_path,
+        )
+    )
+
+    assert len(atoms) == prepared.atom_count
+    assert prepared.charge == 1
+    assert prepared.multiplicity == 1
+    assert prepared.canonical_smiles
+    assert prepared.conformer_count >= 1
+    assert prepared.xyz_path.exists()
+    assert prepared.sdf_path.exists()
+    assert prepared.summary_path.exists()
+
+    summary_payload = json.loads(prepared.summary_path.read_text(encoding="utf-8"))
+    assert summary_payload["charge"] == 1
     assert summary_payload["multiplicity"] == 1
 
 

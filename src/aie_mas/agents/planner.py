@@ -117,6 +117,13 @@ _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
     "extract_ct_descriptors_from_bundle",
     "inspect_raw_artifact_bundle",
 )
+_MICROSCOPIC_STRUCTURE_BLOCK_CODES = {
+    "unsupported_formal_charge",
+    "unsupported_radical",
+    "embedding_failed",
+    "forcefield_failed",
+    "rdkit_unavailable",
+}
 
 
 def _normalize_hypothesis_label(raw_label: str | None) -> str | None:
@@ -164,6 +171,63 @@ def _extract_first_artifact_bundle_id(text: str) -> str | None:
 def _extract_first_dihedral_id(text: str) -> str | None:
     match = re.search(r"\b(dih_(?:\d+_){3}\d+)\b", text)
     return match.group(1) if match is not None else None
+
+
+def _append_unique_detail(existing: str | None, addition: str) -> str:
+    normalized_existing = (existing or "").strip()
+    normalized_addition = addition.strip()
+    if not normalized_existing:
+        return normalized_addition
+    if normalized_addition in normalized_existing:
+        return normalized_existing
+    separator = " " if normalized_existing.endswith((".", "!", "?")) else ". "
+    return f"{normalized_existing}{separator}{normalized_addition}"
+
+
+def _structured_results_from_report(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {}
+    structured = report.get("structured_results")
+    return structured if isinstance(structured, dict) else {}
+
+
+def _raw_results_from_report(report: Any) -> dict[str, Any]:
+    if not isinstance(report, dict):
+        return {}
+    raw = report.get("raw_results")
+    return raw if isinstance(raw, dict) else {}
+
+
+def _normalize_structure_prep_error(error_payload: Any) -> dict[str, str] | None:
+    if not isinstance(error_payload, dict):
+        return None
+    code = str(error_payload.get("code") or "").strip()
+    message = str(error_payload.get("message") or "").strip()
+    if code not in _MICROSCOPIC_STRUCTURE_BLOCK_CODES:
+        return None
+    if not message:
+        message = code
+    return {"code": code, "message": message}
+
+
+def _microscopic_structure_block_reason(payload: dict[str, Any]) -> str | None:
+    shared_error = _normalize_structure_prep_error(payload.get("shared_structure_error"))
+    if shared_error is not None:
+        return f"{shared_error['code']}: {shared_error['message']}"
+
+    latest_microscopic_report = payload.get("latest_microscopic_report")
+    structured = _structured_results_from_report(latest_microscopic_report)
+    raw = _raw_results_from_report(latest_microscopic_report)
+
+    structured_error = _normalize_structure_prep_error(structured.get("structure_prep_error"))
+    if structured_error is not None:
+        return f"{structured_error['code']}: {structured_error['message']}"
+
+    raw_error = _normalize_structure_prep_error(raw.get("structure_prep_error"))
+    if raw_error is not None:
+        return f"{raw_error['code']}: {raw_error['message']}"
+
+    return None
 
 
 def _single_action_microscopic_task_instruction(
@@ -937,6 +1001,11 @@ class OpenAIPlannerBackend:
                 main_gap=main_gap,
                 latest_microscopic_report=payload.get("latest_microscopic_report"),
             )
+            decision = self._apply_microscopic_structure_block_gate(
+                decision=decision,
+                payload=payload,
+                main_gap=main_gap,
+            )
             decision.planned_agents = self._planned_agents_for_action(decision.action)
             if decision.action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
                 decision.agent_task_instructions = _normalize_agent_task_instructions(
@@ -948,6 +1017,11 @@ class OpenAIPlannerBackend:
                 conflict_status,
                 main_gap,
                 payload,
+            )
+            decision = self._apply_microscopic_structure_block_gate(
+                decision=decision,
+                payload=payload,
+                main_gap=main_gap,
             )
 
         return {
@@ -1065,6 +1139,81 @@ class OpenAIPlannerBackend:
             if trailing_rationale:
                 decision.final_hypothesis_rationale += f" {trailing_rationale}"
         return decision, conflict_status, main_gap
+
+    def _apply_microscopic_structure_block_gate(
+        self,
+        *,
+        decision: PlannerDecision,
+        payload: dict[str, Any],
+        main_gap: str,
+    ) -> PlannerDecision:
+        block_reason = _microscopic_structure_block_reason(payload)
+        if block_reason is None or decision.action != "microscopic":
+            return decision
+
+        block_note = (
+            "Microscopic 3D structure preparation is blocked for this molecule "
+            f"({block_reason}). Do not schedule additional microscopic structure-dependent tasks; "
+            "fall back to macro/verifier-only routing until a compatible route exists."
+        )
+        decision.capability_assessment = _append_unique_detail(decision.capability_assessment, block_note)
+        decision.contraction_reason = _append_unique_detail(decision.contraction_reason, block_note)
+
+        existing_lessons = {
+            (lesson.agent_name, lesson.blocked_task_pattern, lesson.observed_limitation)
+            for lesson in decision.capability_lesson_candidates
+        }
+        lesson_key = (
+            "microscopic",
+            "Structure-dependent microscopic follow-up after 3D structure preparation is blocked",
+            "Microscopic 3D structure preparation is unavailable for this molecule under the current runtime/tooling constraints.",
+        )
+        if lesson_key not in existing_lessons:
+            decision.capability_lesson_candidates.append(
+                CapabilityLessonEntry(
+                    agent_name="microscopic",
+                    blocked_task_pattern=lesson_key[1],
+                    observed_limitation=lesson_key[2],
+                    recommended_contraction="Use macro structural discriminators and verifier evidence instead of additional microscopic tasks until a compatible 3D structure route exists.",
+                )
+            )
+
+        if decision.verifier_supplement_status != "sufficient":
+            redirected = self._require_high_confidence_verifier(
+                decision=decision,
+                main_gap=main_gap,
+            )
+            redirected.capability_assessment = _append_unique_detail(redirected.capability_assessment, block_note)
+            redirected.contraction_reason = _append_unique_detail(redirected.contraction_reason, block_note)
+            return redirected
+
+        decision.action = "macro"
+        decision.needs_verifier = False
+        decision.finalize = False
+        decision.finalization_mode = "none"
+        decision.planned_agents = ["macro"]
+        decision.task_instruction = _default_follow_up_task_instruction(
+            "macro",
+            decision.current_hypothesis,
+            {
+                "main_gap": main_gap,
+                "challenger_hypothesis": decision.runner_up_hypothesis,
+                "capability_assessment": decision.capability_assessment,
+                "contraction_reason": decision.contraction_reason,
+                "shared_structure_note": "Shared 3D structure preparation is unavailable; use SMILES/topology-grounded macro evidence only.",
+                "pairwise_task_rationale": decision.pairwise_task_rationale,
+                "is_pairwise_discriminative_task": decision.decision_gate_status == "needs_pairwise_discriminative_task",
+            },
+        )
+        decision.agent_task_instructions = _normalize_agent_task_instructions(
+            {"macro": decision.task_instruction or ""}
+        )  # type: ignore[assignment]
+        if decision.closure_justification_status in {"collecting", "blocked"}:
+            decision.decision_gate_status = "needs_pairwise_discriminative_task"
+        else:
+            decision.decision_gate_status = "not_ready"
+        decision.final_hypothesis_rationale = None
+        return decision
 
     def _apply_pre_decision_gate(
         self,
@@ -1548,6 +1697,7 @@ class PlannerAgent:
             "latest_verifier_report": latest_verifier,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
             "shared_structure_status": state.shared_structure_status,
+            "shared_structure_error": state.shared_structure_error,
             "shared_structure_context": (
                 state.shared_structure_context.model_dump(mode="json")
                 if state.shared_structure_context is not None
@@ -1564,6 +1714,9 @@ class PlannerAgent:
         return self._backend.plan_diagnosis(rendered_prompt, payload)
 
     def plan_reweight_or_finalize(self, state: AieMasState) -> dict[str, Any]:
+        latest_microscopic = (
+            state.microscopic_reports[-1].model_dump(mode="json") if state.microscopic_reports else None
+        )
         payload = {
             "smiles": state.smiles,
             "current_hypothesis": state.current_hypothesis,
@@ -1595,8 +1748,11 @@ class PlannerAgent:
             "verifier_report": state.verifier_reports[-1].model_dump(mode="json")
             if state.verifier_reports
             else None,
+            "latest_microscopic_report": latest_microscopic,
             "recent_internal_evidence_summary": state.latest_evidence_summary,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
+            "shared_structure_status": state.shared_structure_status,
+            "shared_structure_error": state.shared_structure_error,
             "molecule_identity_status": state.molecule_identity_status,
             "molecule_identity_context": (
                 state.molecule_identity_context.model_dump(mode="json")
