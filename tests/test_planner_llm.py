@@ -227,6 +227,8 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "runtime_context" in prompt_payload
+    assert "current_round_index" in prompt_payload
+    assert "max_rounds" in prompt_payload
     assert "shared_structure_status" in prompt_payload
     assert "shared_structure_context" in prompt_payload
     assert "low-cost" in prompt_payload.lower()
@@ -536,6 +538,9 @@ def test_openai_planner_diagnosis_prompt_includes_recent_rounds_context(tmp_path
     assert result["raw_response"]["action"] == "microscopic"
     assert result["normalized_response"]["decision"]["action"] == "microscopic"
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "current_round_index" in message_payload
+    assert "max_rounds" in message_payload
+    assert "rounds_remaining_including_current" in message_payload
     assert "shared_structure_status" in message_payload
     assert "shared_structure_context" in message_payload
     assert "recent_rounds_context" in message_payload
@@ -1162,3 +1167,50 @@ def test_planner_reweight_allows_best_available_finalize_when_closure_is_blocked
     assert result["decision"].finalization_mode == "best_available"
     assert result["decision"].closure_justification_status == "blocked"
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+
+
+def test_planner_diagnosis_forces_finalize_on_last_allowed_round(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.61},
+                {"name": "TICT", "confidence": 0.25},
+                {"name": "neutral aromatic", "confidence": 0.08},
+                {"name": "unknown", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "diagnosis": "A final microscopic refinement would normally be helpful.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.61,
+              "needs_verifier": false,
+              "finalize": false,
+              "task_instruction": "Collect additional microscopic evidence for ICT versus TICT.",
+              "evidence_summary": "Internal evidence is still incomplete.",
+              "main_gap": "Need one more ICT-vs-TICT discriminator.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual uncertainty remains.",
+              "capability_assessment": "Microscopic can usually provide one bounded follow-up.",
+              "stagnation_assessment": "No stagnation yet."
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            round_idx=3,
+            latest_main_gap="Need one more ICT-vs-TICT discriminator.",
+        )
+    )
+
+    assert result["decision"].action == "finalize"
+    assert result["decision"].finalize is True
+    assert result["decision"].planned_agents == []
+    assert result["decision"].task_instruction is None
+    assert result["decision"].finalization_mode == "best_available"
+    assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+    assert "Round-budget closure at round 4/4" in (result["decision"].final_hypothesis_rationale or "")

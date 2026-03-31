@@ -14,6 +14,9 @@ The hypothesis label space is fixed:
 
 You will be given:
 - `smiles`
+- `current_round_index`
+- `max_rounds`
+- `rounds_remaining_including_current`
 - `current_hypothesis`
 - `current_confidence`
 - `runner_up_hypothesis`
@@ -62,9 +65,11 @@ Your task is to:
 Important rules:
 - Do not rely on scaffold stereotypes or hardcoded chemistry rules.
 - Use only the evidence chain from this run.
+- Explicitly account for the round budget using `current_round_index`, `max_rounds`, and `rounds_remaining_including_current`.
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
 - If top2 changes after verifier reweighting, re-evaluate the current closure pair accordingly.
+- If `rounds_remaining_including_current` is 1, you must finalize in this round. Use `decisive` when the decisive conditions are met; otherwise use `best_available` and state the unresolved gap explicitly.
 - Do not ask specialized agents to decide the global mechanism.
 
 Output requirements:

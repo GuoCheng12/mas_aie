@@ -1023,6 +1023,11 @@ class OpenAIPlannerBackend:
                 payload=payload,
                 main_gap=main_gap,
             )
+        decision = self._apply_round_budget_gate(
+            decision=decision,
+            payload=payload,
+            main_gap=main_gap,
+        )
 
         return {
             "hypothesis_pool": hypothesis_pool,
@@ -1213,6 +1218,63 @@ class OpenAIPlannerBackend:
         else:
             decision.decision_gate_status = "not_ready"
         decision.final_hypothesis_rationale = None
+        return decision
+
+    def _apply_round_budget_gate(
+        self,
+        *,
+        decision: PlannerDecision,
+        payload: dict[str, Any],
+        main_gap: str,
+    ) -> PlannerDecision:
+        try:
+            current_round_index = int(payload.get("current_round_index") or 1)
+        except (TypeError, ValueError):
+            current_round_index = 1
+        try:
+            max_rounds = int(payload.get("max_rounds") or self._config.max_rounds)
+        except (TypeError, ValueError):
+            max_rounds = self._config.max_rounds
+
+        if current_round_index < max_rounds:
+            return decision
+
+        budget_note = (
+            f"Round budget exhausted at round {current_round_index}/{max_rounds}; no additional specialized-agent "
+            "execution can be scheduled beyond this point."
+        )
+        decision.capability_assessment = _append_unique_detail(decision.capability_assessment, budget_note)
+        decision.contraction_reason = _append_unique_detail(decision.contraction_reason, budget_note)
+        decision.stagnation_assessment = _append_unique_detail(decision.stagnation_assessment, budget_note)
+
+        normal_mode = self._finalization_mode_for_decision(decision)
+        decision.action = "finalize"
+        decision.needs_verifier = False
+        decision.finalize = True
+        decision.task_instruction = None
+        decision.agent_task_instructions = {}  # type: ignore[assignment]
+        decision.planned_agents = []
+
+        if normal_mode == "decisive":
+            decision.finalization_mode = "decisive"
+            decision.decision_gate_status = "ready_to_finalize_decisive"
+            decision.final_hypothesis_rationale = _normalize_final_hypothesis_rationale(
+                raw_rationale=decision.final_hypothesis_rationale,
+                diagnosis=decision.diagnosis,
+                finalize=True,
+            )
+            return decision
+
+        trailing_rationale = (decision.final_hypothesis_rationale or "").strip()
+        decision.finalization_mode = "best_available"
+        decision.decision_gate_status = "ready_to_finalize_best_available"
+        decision.final_hypothesis_rationale = (
+            f"Round-budget closure at round {current_round_index}/{max_rounds} keeps "
+            f"'{decision.current_hypothesis}' ahead of '{decision.runner_up_hypothesis or 'unknown'}'. "
+            f"The main unresolved gap remains: {main_gap}"
+        )
+        if trailing_rationale:
+            decision.final_hypothesis_rationale += f" {trailing_rationale}"
         return decision
 
     def _apply_pre_decision_gate(
@@ -1624,9 +1686,14 @@ class PlannerAgent:
         self._backend = self._build_backend(config, llm_client)
 
     def plan_initial(self, state: AieMasState) -> dict[str, Any]:
+        current_round_index = state.round_idx + 1
+        rounds_remaining_including_current = max(0, self._config.max_rounds - state.round_idx)
         payload = {
             "user_query": state.user_query,
             "smiles": state.smiles,
+            "current_round_index": current_round_index,
+            "max_rounds": self._config.max_rounds,
+            "rounds_remaining_including_current": rounds_remaining_including_current,
             "shared_structure_status": state.shared_structure_status,
             "shared_structure_context": (
                 state.shared_structure_context.model_dump(mode="json")
@@ -1664,8 +1731,13 @@ class PlannerAgent:
         latest_verifier = (
             state.verifier_reports[-1].model_dump(mode="json") if state.verifier_reports else None
         )
+        current_round_index = state.round_idx + 1
+        rounds_remaining_including_current = max(0, self._config.max_rounds - state.round_idx)
         payload = {
             "smiles": state.smiles,
+            "current_round_index": current_round_index,
+            "max_rounds": self._config.max_rounds,
+            "rounds_remaining_including_current": rounds_remaining_including_current,
             "current_hypothesis": state.current_hypothesis,
             "current_confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
@@ -1717,8 +1789,13 @@ class PlannerAgent:
         latest_microscopic = (
             state.microscopic_reports[-1].model_dump(mode="json") if state.microscopic_reports else None
         )
+        current_round_index = state.round_idx + 1
+        rounds_remaining_including_current = max(0, self._config.max_rounds - state.round_idx)
         payload = {
             "smiles": state.smiles,
+            "current_round_index": current_round_index,
+            "max_rounds": self._config.max_rounds,
+            "rounds_remaining_including_current": rounds_remaining_including_current,
             "current_hypothesis": state.current_hypothesis,
             "current_confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
