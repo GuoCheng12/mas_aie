@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 import json
 import sys
 import uuid
@@ -22,6 +23,27 @@ from aie_mas.graph.builder import build_graph, invoke_graph
 from aie_mas.graph.state import AieMasState, WorkflowProgressEvent
 
 app = typer.Typer(add_completion=False)
+
+
+@dataclass(frozen=True)
+class WorkflowRunArtifacts:
+    state: AieMasState
+    report_paths: dict[str, Path]
+    runtime_context: dict[str, object]
+
+
+class WorkflowRunFailed(RuntimeError):
+    def __init__(
+        self,
+        cause: Exception,
+        *,
+        case_id: str,
+        report_paths: dict[str, Path],
+    ) -> None:
+        super().__init__(f"{type(cause).__name__}: {cause}")
+        self.cause = cause
+        self.case_id = case_id
+        self.report_paths = report_paths
 
 
 def build_runtime_config(
@@ -214,6 +236,143 @@ def run_case_workflow(
     return invoke_graph(graph, initial_state)
 
 
+def run_case_workflow_with_reporting(
+    smiles: str,
+    user_query: str,
+    execution_profile: Optional[ExecutionProfile] = None,
+    tool_backend: Optional[ToolBackend] = None,
+    enable_long_term_memory: Optional[bool] = None,
+    planner_backend: Optional[PlannerBackend] = None,
+    planner_base_url: Optional[str] = None,
+    planner_model: Optional[str] = None,
+    planner_api_key: Optional[str] = None,
+    planner_temperature: Optional[float] = None,
+    planner_timeout_seconds: Optional[float] = None,
+    macro_backend: Optional[MacroBackend] = None,
+    macro_base_url: Optional[str] = None,
+    macro_model: Optional[str] = None,
+    macro_api_key: Optional[str] = None,
+    macro_temperature: Optional[float] = None,
+    macro_timeout_seconds: Optional[float] = None,
+    verifier_backend: Optional[VerifierBackend] = None,
+    verifier_base_url: Optional[str] = None,
+    verifier_model: Optional[str] = None,
+    verifier_api_key: Optional[str] = None,
+    verifier_temperature: Optional[float] = None,
+    verifier_timeout_seconds: Optional[float] = None,
+    microscopic_backend: Optional[MicroscopicBackend] = None,
+    microscopic_base_url: Optional[str] = None,
+    microscopic_model: Optional[str] = None,
+    microscopic_api_key: Optional[str] = None,
+    microscopic_temperature: Optional[float] = None,
+    microscopic_timeout_seconds: Optional[float] = None,
+    amesp_npara: Optional[int] = None,
+    amesp_maxcore_mb: Optional[int] = None,
+    amesp_use_ricosx: Optional[bool] = None,
+    amesp_s1_nstates: Optional[int] = None,
+    amesp_td_tout: Optional[int] = None,
+    amesp_probe_interval_seconds: Optional[float] = None,
+    prompts_dir: Optional[Path] = None,
+    data_dir: Optional[Path] = None,
+    memory_dir: Optional[Path] = None,
+    report_dir: Optional[Path] = None,
+    log_dir: Optional[Path] = None,
+    runtime_dir: Optional[Path] = None,
+    tools_work_dir: Optional[Path] = None,
+    atb_binary_path: Optional[Path] = None,
+    amesp_binary_path: Optional[Path] = None,
+    external_search_binary_path: Optional[Path] = None,
+    show_progress: bool = True,
+    progress_callback: Optional[Callable[[WorkflowProgressEvent], None]] = None,
+) -> WorkflowRunArtifacts:
+    config = build_runtime_config(
+        execution_profile=execution_profile,
+        tool_backend=tool_backend,
+        enable_long_term_memory=enable_long_term_memory,
+        planner_backend=planner_backend,
+        planner_base_url=planner_base_url,
+        planner_model=planner_model,
+        planner_api_key=planner_api_key,
+        planner_temperature=planner_temperature,
+        planner_timeout_seconds=planner_timeout_seconds,
+        macro_backend=macro_backend,
+        macro_base_url=macro_base_url,
+        macro_model=macro_model,
+        macro_api_key=macro_api_key,
+        macro_temperature=macro_temperature,
+        macro_timeout_seconds=macro_timeout_seconds,
+        verifier_backend=verifier_backend,
+        verifier_base_url=verifier_base_url,
+        verifier_model=verifier_model,
+        verifier_api_key=verifier_api_key,
+        verifier_temperature=verifier_temperature,
+        verifier_timeout_seconds=verifier_timeout_seconds,
+        microscopic_backend=microscopic_backend,
+        microscopic_base_url=microscopic_base_url,
+        microscopic_model=microscopic_model,
+        microscopic_api_key=microscopic_api_key,
+        microscopic_temperature=microscopic_temperature,
+        microscopic_timeout_seconds=microscopic_timeout_seconds,
+        amesp_npara=amesp_npara,
+        amesp_maxcore_mb=amesp_maxcore_mb,
+        amesp_use_ricosx=amesp_use_ricosx,
+        amesp_s1_nstates=amesp_s1_nstates,
+        amesp_td_tout=amesp_td_tout,
+        amesp_probe_interval_seconds=amesp_probe_interval_seconds,
+        prompts_dir=prompts_dir,
+        data_dir=data_dir,
+        memory_dir=memory_dir,
+        report_dir=report_dir,
+        log_dir=log_dir,
+        runtime_dir=runtime_dir,
+        tools_work_dir=tools_work_dir,
+        atb_binary_path=atb_binary_path,
+        amesp_binary_path=amesp_binary_path,
+        external_search_binary_path=external_search_binary_path,
+    )
+    case_id = uuid.uuid4().hex[:12]
+    report_paths = prepare_report_paths(config, case_id)
+    tracer = LiveRunTracer(
+        report_dir=report_paths["report_dir"],
+        case_id=case_id,
+        smiles=smiles,
+        user_query=user_query,
+    )
+    progress_callback = compose_progress_callbacks(
+        render_progress_event if show_progress and sys.stderr.isatty() else None,
+        tracer.handle_event,
+        progress_callback,
+    )
+    graph = build_graph(config, progress_callback=progress_callback)
+    initial_state = AieMasState(case_id=case_id, user_query=user_query, smiles=smiles)
+    try:
+        state = invoke_graph(graph, initial_state)
+    except Exception as exc:
+        (report_paths["report_dir"] / "workflow_error.json").write_text(
+            json.dumps(
+                {
+                    "case_id": case_id,
+                    "smiles": smiles,
+                    "user_query": user_query,
+                    "error_type": type(exc).__name__,
+                    "error_message": str(exc),
+                    "report_dir": str(report_paths["report_dir"]),
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        raise WorkflowRunFailed(exc, case_id=case_id, report_paths=report_paths) from exc
+    report_paths = write_run_report(config, state, report_paths=report_paths)
+    return WorkflowRunArtifacts(
+        state=state,
+        report_paths=report_paths,
+        runtime_context=config.runtime_context(),
+    )
+
+
 @app.command()
 def main(
     smiles: str = typer.Option(..., help="Target molecule SMILES."),
@@ -401,7 +560,9 @@ def main(
         help="Print live workflow progress with round and agent information.",
     ),
 ) -> None:
-    config = build_runtime_config(
+    run_result = run_case_workflow_with_reporting(
+        smiles=smiles,
+        user_query=user_query,
         execution_profile=execution_profile,
         tool_backend=tool_backend,
         enable_long_term_memory=enable_long_term_memory,
@@ -445,24 +606,12 @@ def main(
         atb_binary_path=atb_binary_path,
         amesp_binary_path=amesp_binary_path,
         external_search_binary_path=external_search_binary_path,
+        show_progress=show_progress,
     )
-    case_id = uuid.uuid4().hex[:12]
-    report_paths = prepare_report_paths(config, case_id)
-    tracer = LiveRunTracer(
-        report_dir=report_paths["report_dir"],
-        case_id=case_id,
-        smiles=smiles,
-        user_query=user_query,
-    )
-    progress_callback = compose_progress_callbacks(
-        render_progress_event if show_progress and sys.stderr.isatty() else None,
-        tracer.handle_event,
-    )
-    graph = build_graph(config, progress_callback=progress_callback)
-    state = invoke_graph(graph, AieMasState(case_id=case_id, user_query=user_query, smiles=smiles))
-    report_paths = write_run_report(config, state, report_paths=report_paths)
+    state = run_result.state
+    report_paths = run_result.report_paths
     payload = {
-        "runtime_context": config.runtime_context(),
+        "runtime_context": run_result.runtime_context,
         "summary": build_summary_payload(state, report_paths["report_dir"]),
         "state_snapshot": state.state_snapshot,
     }

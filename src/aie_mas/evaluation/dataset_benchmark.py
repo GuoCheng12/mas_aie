@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from aie_mas.agents.planner import ALLOWED_HYPOTHESIS_LABELS
-from aie_mas.cli.run_case import run_case_workflow
+from aie_mas.cli.run_case import WorkflowRunArtifacts, run_case_workflow
 from aie_mas.graph.state import AieMasState
 
 SUPPORTED_MECHANISM_LABELS = tuple(ALLOWED_HYPOTHESIS_LABELS)
@@ -57,10 +57,11 @@ def select_benchmark_sample(
 def evaluate_benchmark_rows(
     rows: list[dict[str, str]],
     *,
-    workflow_runner: Callable[..., AieMasState] = run_case_workflow,
+    workflow_runner: Callable[..., AieMasState | WorkflowRunArtifacts] = run_case_workflow,
     user_query: str = DEFAULT_USER_QUERY,
     runtime_kwargs: Optional[dict[str, Any]] = None,
     progress_callback: Optional[Callable[[int, int, dict[str, str]], None]] = None,
+    result_callback: Optional[Callable[[int, int, dict[str, Any]], None]] = None,
 ) -> list[dict[str, Any]]:
     runtime_kwargs = dict(runtime_kwargs or {})
     results: list[dict[str, Any]] = []
@@ -69,42 +70,70 @@ def evaluate_benchmark_rows(
         if progress_callback is not None:
             progress_callback(index, total, row)
         try:
-            state = workflow_runner(
+            workflow_result = workflow_runner(
                 smiles=row["SMILES"],
                 user_query=user_query,
                 **runtime_kwargs,
             )
         except Exception as exc:  # pragma: no cover
-            results.append(
-                {
-                    **row,
-                    "predicted_top1": "",
-                    "predicted_confidence": None,
-                    "is_correct": False,
-                    "workflow_status": "failed",
-                    "error_message": f"{type(exc).__name__}: {exc}",
-                    "case_id": None,
-                    "working_memory_rounds": None,
-                    "finalize": False,
-                }
-            )
+            report_paths = getattr(exc, "report_paths", {}) or {}
+            result_row = {
+                **row,
+                "predicted_top1": "",
+                "predicted_confidence": None,
+                "is_correct": False,
+                "workflow_status": "failed",
+                "error_message": f"{type(exc).__name__}: {exc}",
+                "case_id": getattr(exc, "case_id", None),
+                "working_memory_rounds": None,
+                "finalize": False,
+                "report_dir": _stringify_path(report_paths.get("report_dir")),
+                "summary_path": _stringify_path(report_paths.get("summary_path")),
+                "full_state_path": _stringify_path(report_paths.get("full_state_path")),
+                "live_trace_path": _stringify_path(report_paths.get("live_trace_path")),
+                "live_status_path": _stringify_path(report_paths.get("live_status_path")),
+            }
+            results.append(result_row)
+            if result_callback is not None:
+                result_callback(index, total, result_row)
             continue
 
+        state, report_paths = _unpack_workflow_result(workflow_result)
         predicted_top1 = (state.current_hypothesis or "").strip()
-        results.append(
-            {
-                **row,
-                "predicted_top1": predicted_top1,
-                "predicted_confidence": state.confidence,
-                "is_correct": predicted_top1 == row["mechanism_id"],
-                "workflow_status": "success",
-                "error_message": "",
-                "case_id": state.case_id,
-                "working_memory_rounds": len(state.working_memory),
-                "finalize": state.finalize,
-            }
-        )
+        result_row = {
+            **row,
+            "predicted_top1": predicted_top1,
+            "predicted_confidence": state.confidence,
+            "is_correct": predicted_top1 == row["mechanism_id"],
+            "workflow_status": "success",
+            "error_message": "",
+            "case_id": state.case_id,
+            "working_memory_rounds": len(state.working_memory),
+            "finalize": state.finalize,
+            "report_dir": _stringify_path(report_paths.get("report_dir")),
+            "summary_path": _stringify_path(report_paths.get("summary_path")),
+            "full_state_path": _stringify_path(report_paths.get("full_state_path")),
+            "live_trace_path": _stringify_path(report_paths.get("live_trace_path")),
+            "live_status_path": _stringify_path(report_paths.get("live_status_path")),
+        }
+        results.append(result_row)
+        if result_callback is not None:
+            result_callback(index, total, result_row)
     return results
+
+
+def _unpack_workflow_result(
+    workflow_result: AieMasState | WorkflowRunArtifacts,
+) -> tuple[AieMasState, dict[str, Path]]:
+    if isinstance(workflow_result, WorkflowRunArtifacts):
+        return workflow_result.state, workflow_result.report_paths
+    return workflow_result, {}
+
+
+def _stringify_path(value: Any) -> str:
+    if value is None:
+        return ""
+    return str(value)
 
 
 def summarize_benchmark_results(
@@ -183,15 +212,26 @@ def write_benchmark_outputs(
             "case_id",
             "working_memory_rounds",
             "finalize",
+            "report_dir",
+            "summary_path",
+            "full_state_path",
+            "live_trace_path",
+            "live_status_path",
         ),
         evaluated_results,
     )
     metrics_path.write_text(json.dumps(metrics, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    summary_path = output_dir / "summary.md"
+    summary_path.write_text(
+        _render_benchmark_summary(metrics=metrics, evaluated_results=evaluated_results),
+        encoding="utf-8",
+    )
     return {
         "output_dir": output_dir,
         "sampled_dataset_path": sampled_dataset_path,
         "case_results_path": case_results_path,
         "metrics_path": metrics_path,
+        "summary_path": summary_path,
     }
 
 
@@ -201,3 +241,47 @@ def _write_csv(path: Path, fieldnames: tuple[str, ...], rows: list[dict[str, Any
         writer.writeheader()
         for row in rows:
             writer.writerow({field: row.get(field, "") for field in fieldnames})
+
+
+def _render_benchmark_summary(
+    *,
+    metrics: dict[str, Any],
+    evaluated_results: list[dict[str, Any]],
+) -> str:
+    lines = [
+        "# Benchmark Summary",
+        "",
+        f"- dataset_row_count: {metrics['dataset_row_count']}",
+        f"- sampled_row_count: {metrics['sampled_row_count']}",
+        f"- evaluated_row_count: {metrics['evaluated_row_count']}",
+        f"- successful_case_count: {metrics['successful_case_count']}",
+        f"- failed_case_count: {metrics['failed_case_count']}",
+        f"- top1_accuracy: {metrics['top1_accuracy']}",
+        f"- macro_recall: {metrics['macro_recall']}",
+        "",
+        "## Per-label Metrics",
+        "",
+        "| label | support | predicted_count | true_positive | recall | precision |",
+        "| --- | ---: | ---: | ---: | ---: | ---: |",
+    ]
+    for entry in metrics["per_label"]:
+        lines.append(
+            "| {label} | {support} | {predicted_count} | {true_positive} | {recall} | "
+            "{precision} |".format(**entry)
+        )
+    lines.extend(
+        [
+            "",
+            "## Case Results",
+            "",
+            "| id | code | truth | predicted_top1 | status | is_correct | report_dir | live_status_path |",
+            "| --- | --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+    for row in evaluated_results:
+        lines.append(
+            "| {id} | {code} | {mechanism_id} | {predicted_top1} | {workflow_status} | "
+            "{is_correct} | {report_dir} | {live_status_path} |".format(**row)
+        )
+    lines.append("")
+    return "\n".join(lines)

@@ -7,7 +7,7 @@ from typing import Any, Optional
 import typer
 import yaml
 
-from aie_mas.cli.run_case import run_case_workflow
+from aie_mas.cli.run_case import run_case_workflow, run_case_workflow_with_reporting
 from aie_mas.evaluation.dataset_benchmark import (
     DEFAULT_USER_QUERY,
     default_output_dir,
@@ -231,16 +231,42 @@ def main(
         if not show_case_progress:
             return
         typer.echo(
-            f"[{index}/{total}] code={row.get('code') or '-'} truth={row['mechanism_id']} "
+            f"[{index}/{total}] start code={row.get('code') or '-'} truth={row['mechanism_id']} "
             f"smiles_length={len(row['SMILES'])}"
+        )
+
+    def _result(index: int, total: int, result: dict[str, Any]) -> None:
+        if not show_case_progress:
+            return
+        if result["workflow_status"] == "success":
+            typer.echo(
+                f"[{index}/{total}] done code={result.get('code') or '-'} "
+                f"truth={result['mechanism_id']} top1={result['predicted_top1'] or '-'} "
+                f"correct={result['is_correct']} rounds={result['working_memory_rounds']} "
+                f"report_dir={result['report_dir'] or '-'}"
+            )
+            return
+        typer.echo(
+            f"[{index}/{total}] failed code={result.get('code') or '-'} "
+            f"truth={result['mechanism_id']} error={result['error_message']} "
+            f"report_dir={result['report_dir'] or '-'}"
+        )
+
+    def _workflow_runner(*, smiles: str, user_query: str, **kwargs: Any) -> Any:
+        return run_case_workflow_with_reporting(
+            smiles=smiles,
+            user_query=user_query,
+            show_progress=show_case_progress,
+            **kwargs,
         )
 
     evaluated_results = evaluate_benchmark_rows(
         sampled_rows,
-        workflow_runner=run_case_workflow,
+        workflow_runner=_workflow_runner,
         user_query=user_query,
         runtime_kwargs=runtime_kwargs,
         progress_callback=_progress,
+        result_callback=_result,
     )
     metrics = summarize_benchmark_results(
         dataset_rows=rows,
@@ -272,6 +298,7 @@ def main(
     typer.echo(f"sampled_dataset: {output_paths['sampled_dataset_path']}")
     typer.echo(f"case_results: {output_paths['case_results_path']}")
     typer.echo(f"metrics_json: {output_paths['metrics_path']}")
+    typer.echo(f"summary_md: {output_paths['summary_path']}")
 
 
 def cli() -> None:
