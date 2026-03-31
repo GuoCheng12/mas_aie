@@ -1,0 +1,265 @@
+id,code,SMILES,mechanism_id
+1025.0,t-BPITBT-TPA,CC(C)(C)C(C=C1)=CC=C1N2C(C3=CC=C(C4=CC=C(C5=CC=C(/C(C6=CC=CC=C6)=C(C7=CC=CC=C7)/C8=CC=CC=C8)C=C5)C9=NSN=C49)S3)=NC%10=C2C(C=CC=C%11)=C%11C%12=C%10C=CC=C%12,TICT
+1029.0,BTPETTD,C1(/C(C2=CC=C(C3=CC=C(C4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)\C7=CC=CC=C7)C=C4)C8=NSN=C83)C=C2)=C(C9=CC=CC=C9)\C%10=CC=CC=C%10)=CC=CC=C1,ESIPT
+1030.0,BTPEBTTD,C1(/C(C2=CC=C(C3=CC=C(C4=CC=C(C5=CC=C(C6=CC=C(/C(C7=CC=CC=C7)=C(C8=CC=CC=C8)\C9=CC=CC=C9)C=C6)S5)C%10=NSN=C%104)S3)C=C2)=C(C%11=CC=CC=C%11)\C%12=CC=CC=C%12)=CC=CC=C1,ESIPT
+1050.0,DPPM-DMAC,O=C(C1=CC2=C(N=C(C(C=C3)=C(C4=C5)C=C3N(C6=CC=CC=C6C7(C)C)C8=C7C=CC=C8)C(C4=CC=C5N9C%10=CC=CC=C%10C(C)(C)C%11=C9C=CC=C%11)=N2)C=C1)C%12=CC=CC=C%12,ICT
+1052.0,DPPM-DPAC,O=C(C1=CC2=C(N=C(C(C=C3)=C(C4=C5)C=C3N(C6=CC=CC=C6C7(C8=CC=CC=C8)C9=CC=CC=C9)C%10=C7C=CC=C%10)C(C4=CC=C5N%11C%12=CC=CC=C%12C(C%13=CC=CC=C%13)(C%14=CC=CC=C%14)C%15=C%11C=CC=C%15)=N2)C=C1)C%16=CC=CC=C%16,ICT
+1053.0,DPPM-SFAC,O=C(C1=CC2=C(N=C(C(C=C3)=C(C4=C5)C=C3N(C6=CC=CC=C6C7(C8=CC=CC=C89)C%10=C9C=CC=C%10)C%11=C7C=CC=C%11)C(C4=CC=C5N%12C%13=CC=CC=C%13C(C%14=C%15C=CC=C%14)(C%16=CC=CC=C%16%15)C%17=C%12C=CC=C%17)=N2)C=C1)C%18=CC=CC=C%18,ICT
+1054.0,DPPM-SXAC,O=C(C1=CC2=C(N=C(C(C=C3)=C(C4=C5)C=C3N(C6=CC=CC=C6C7(C8=CC=CC=C8O9)C%10=C9C=CC=C%10)C%11=C7C=CC=C%11)C(C4=CC=C5N%12C%13=CC=CC=C%13C(C%14=C%15C=CC=C%14)(C%16=CC=CC=C%16O%15)C%17=C%12C=CC=C%17)=N2)C=C1)C%18=CC=CC=C%18,ICT
+1055.0,DPPM-STAC,O=C(C1=CC2=C(N=C(C(C=C3)=C(C4=C5)C=C3N(C6=CC=CC=C6C7(C8=CC=CC=C8S9)C%10=C9C=CC=C%10)C%11=C7C=CC=C%11)C(C4=CC=C5N%12C%13=CC=CC=C%13C(C%14=C%15C=CC=C%14)(C%16=CC=CC=C%16S%15)C%17=C%12C=CC=C%17)=N2)C=C1)C%18=CC=CC=C%18,ICT
+1063.0,o-TPEPh,c1(/C(c2ccccc2c3ccccc3)=C(c4ccccc4)\c5ccccc5)ccccc1,neutral aromatic
+1064.0,o-2-TPENp,c1(/C(c2ccccc2c3cc4ccccc4cc3)=C(c5ccccc5)\c6ccccc6)ccccc1,neutral aromatic
+1065.0,o-TPEAn,c1(cc2ccccc2c3c4c(/C(c5ccccc5)=C(c6ccccc6)\c7ccccc7)cccc4)c3cccc1,neutral aromatic
+1066.0,o-TPEPa,c1(/C(c2c(c3cc4c(c5c3cccc5)cccc4)cccc2)=C(c6ccccc6)/c7ccccc7)ccccc1,neutral aromatic
+1067.0,o-TPEPy,c1(/C(c2c(c3ccc4c5c3ccc6cccc(cc4)c56)cccc2)=C(c7ccccc7)/c8ccccc8)ccccc1,neutral aromatic
+1072.0,l-TPEB,CC1=CC(C)=CC(C)=C1B(C2=C(C)C=C(C)C=C2C)C3=CC=C(C=C3)C(C=C4)=CC=C4C(C=C5)=CC=C5/C(C6=CC=CC=C6)=C(C7=CC=C(C8=CC=C(C9=CC=C(B(C%10=C(C)C=C(C)C=C%10C)C%11=C(C)C=C(C)C=C%11C)C=C9)C=C8)C=C7)\C%12=CC=CC=C%12,neutral aromatic
+1073.0,(TPE)2PF,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=CC=C6)C=C3)C=C2)C(C7=CC=CC=C7)(C8=CC=CC=C8)C9=C1C=CC(C%10=CC=C(/C(C%11=CC=CC=C%11)=C(C%12=CC=CC=C%12)\C%13=CC=CC=C%13)C=C%10)=C9,neutral aromatic
+1074.0,TPE(PF)2,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=C(C(C=C7)=CC8=C7C(C=CC=C9)=C9C8(C%10=CC=CC=C%10)C%11=CC=CC=C%11)C=C6)C=C3)C=C2)C(C%12=CC=CC=C%12)(C%13=CC=CC=C%13)C%14=C1C=CC=C%14,neutral aromatic
+1075.0,(TPE)2SF,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=CC=C6)C=C3)C=C2)C7(C8=C(C=CC=C8)C9=C7C=CC=C9)C%10=C1C=CC(C%11=CC=C(/C(C%12=CC=CC=C%12)=C(C%13=CC=CC=C%13)\C%14=CC=CC=C%14)C=C%11)=C%10,neutral aromatic
+1076.0,TPE(SF)2,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=C(C(C=C7)=CC8=C7C(C=CC=C9)=C9C8%10C%11=C(C=CC=C%11)C%12=C%10C=CC=C%12)C=C6)C=C3)C=C2)C%13(C%14=C(C=CC=C%14)C%15=C%13C=CC=C%15)C%16=C1C=CC=C%16,neutral aromatic
+1080.0,5-BTDMS,C[Si]1(C)C(C2=CC(C=CS3)=C3C=C2)=C(C4=CC=CC=C4)C(C5=CC=CC=C5)=C1C6=CC=C(C=CS7)C7=C6,ESIPT
+1091.0,(Z)-o-BCaPTPE,C1(/C(C2=CC=CC=C2C3=CC=C(N4C(C=CC=C5)=C5C6=C4C=CC=C6)C=C3)=C(C7=C(C8=CC=C(N9C(C=CC=C%10)=C%10C%11=C9C=CC=C%11)C=C8)C=CC=C7)\C%12=CC=CC=C%12)=CC=CC=C1,ICT
+1092.0,(Z)-o-BTPATPE,C1(/C(C2=CC=CC=C2C3=CC=C(N(C4=CC=CC=C4)C5=CC=CC=C5)C=C3)=C(C6=C(C7=CC=C(N(C8=CC=CC=C8)C9=CC=CC=C9)C=C7)C=CC=C6)\C%10=CC=CC=C%10)=CC=CC=C1,ICT
+1093.0,p-BCaPTPE,C1(/C(C2=CC=C(C3=CC=C(N4C(C=CC=C5)=C5C6=C4C=CC=C6)C=C3)C=C2)=C(C7=CC=C(C8=CC=C(N9C(C=CC=C%10)=C%10C%11=C9C=CC=C%11)C=C8)C=C7)/C%12=CC=CC=C%12)=CC=CC=C1,ICT
+1101.0,CZ2TPAN,CCN(C1=CC=C(C2=CC=C(/C(C#N)=C(C3=CC=CC=C3)\C4=CC=CC=C4)C=C2)C=C15)C6=C5C=C(C7=CC=C(/C(C#N)=C(C8=CC=CC=C8)\C9=CC=CC=C9)C=C7)C=C6,ICT
+1140.0,DEATPE,CCN(CC)C(C=C1)=CC=C1/C(C2=CC=C(N(CC)CC)C=C2)=C(C3=CC=CC=C3)\C4=CC=CC=C4,ICT
+1141.0,DFDEATPE,CCN(CC)C(C=C1)=CC=C1/C(C2=CC=C(N(CC)CC)C=C2)=C(C3=CC=C(F)C=C3)\C4=CC=C(F)C=C4,ICT
+1142.0,CNDEATPE,CCN(CC)C(C=C1)=CC=C1/C(C2=CC=C(N(CC)CC)C=C2)=C(C3=CC=CC=C3)\C4=CC=C(C#CC5=CC=C(C#N)C=C5)C=C4,ICT
+1727.0,Azo-TPA-Th(+),C%12=C(N(C3=CC=C(C2=CC=C(C1=CC=[N+](C)C=C1)S2)C=C3)C%11=CC=C(C%10=CC=C(/N=N/C9=CC=C(C8=CC=C(N(C4=CC=CC=C4)C7=CC=C(C6=CC=C(C5=CC=[N+](C)C=C5)S6)C=C7)C=C8)C=C9)C=C%10)C=C%11)C=CC=C%12,TICT
+1729.0,TPA-Th(+),N(C2=CC=C(C1=CC=C(N)C=C1)C=C2)(C3=CC=CC=C3)C6=CC=C(C5=CC=C(C4=CC=[N+](C)C=C4)S5)C=C6,TICT
+1774.0,MTPE-M,COC1=CC=C(/C(C2=CC=CC=C2)=C(C3=CC=C(C4=CC=C(/C=C(C#N)C#N)C=C4)C=C3)C5=CC=C(OC)C=C5)C=C1,ICT
+1776.0,TETPE,C#CC(C=C1)=CC=C1/C(C2=CC=C(C#C)C=C2)=C(C3=CC=C(C#C)C=C3)C4=CC=C(C#C)C=C4,neutral aromatic
+1781.0,TPP-2MP,COC(C=C1)=CC=C1C2=C(C3=CC=C(C4=CC=CC=C4)C=C3)N=C(C5=CC=C(OC)C=C5)C(C6=CC=C(C7=CC=CC=C7)C=C6)=N2,ESIPT
+1792.0,TPP-PDCV,N#C/C(C#N)=CC1=CC=C(C(C=C2)=CC=C2C3=C(C4=CC=CC=C4)N=C(C5=CC=CC=C5)C(C6=CC=CC=C6)=N3)C=C1,ESIPT
+1835.0,TBFCN,FC1=C(C#N)C2=NSN=C2C(C(C=C3)=CC=C3N(C4=CC=CC=C4)C5=CC=CC=C5)=C1,TICT
+1836.0,TB2FCN,FC1=C(C#N)C2=NSN=C2C(C(C=C3)=CC=C3N(C4=CC=CC=C4)C5=CC=CC=C5)=C1F,TICT
+1838.0,TPABSM,FC(C(S/C(S1)=C(C#N)/C#N)=C1C2=NSN=C32)=C3C(C=C4)=CC=C4N(C5=CC=CC=C5)C6=CC=CC=C6,TICT
+1870.0,TPEDCPy,CCN1C2=C(C=CC(/C=C/C3=CC=[N+](C)C=C3)=C2)C4=C1C=CC(N(C5=CC=CC=C5)C(C=C6)=CC=C6/C(C7=CC=CC=C7)=C(C8=CC=CC=C8)/C9=CC=CC=C9)=C4.[I-],TICT
+1897.0,AAPP,CCOC(C(C=C1)=CC=C1N2C3=C(N(C4=CC=C(C(OCC)=O)C=C4)C(C5=CC=CC=C5)=C3)C=C2C6=CC=CC=C6)=O,TICT
+1902.0,TPE-Th-B,COC1=CC=C(/C(C2=CC=C(OC)C=C2)=C(C3=CC=CC=C3)/C4=CC=C(C5=CC=C(/C=C6C(N(C)C(N(C)C/6=O)=O)=O)S5)C=C4)C=C1,TICT
+1907.0,TPA-Se,N(C1=CC=CC=C1)(C2=CC=CC=C2)C3=CC=C(C4=CC=C(C5=CC=C(N(C6=CC=CC=C6)C7=CC=CC=C7)C=C5)C8=N[Se]N=C84)C=C3,TICT
+1910.0,BT-2ATPE,C1(N(C2=CC=C(/C(C3=CC=CC=C3)=C(C4=CC=CC=C4)/C5=CC=CC=C5)C=C2)C6=CC=CC=C6)=CC=C(N(C7=CC=C(/C(C8=CC=CC=C8)=C(C9=CC=CC=C9)C%10=CC=CC=C%10)C=C7)C%11=CC=CC=C%11)C%12=NSN=C%121,TICT
+1916.0,2-AFN,O=C1C2=C(C=CC=C2)C3=C1C(C(C=C4)=CC=C4N(C5=CC=CC=C5)C6=CC=CC=C6)=NC(N(CCN(C)C)C)=C3C#N,TICT
+1961.0,SA-4CO2Na,OC1=CC=C(CN(CC(O[Na])=O)CC(O[Na])=O)C=C1/C=N/N=C/C2=CC(CN(CC(O[Na])=O)CC(O[Na])=O)=CC=C2O,ESIPT
+1966.0,TPE-PR-COOH,COC(C=C1)=CC=C1/C(C2=CC=C(OC)C=C2)=C(C3=CC=C(C4=CC=C(/C=C5C(N(CC(O)=O)C(S/5)=S)=O)C=C4)C=C3)/C6=CC=CC=C6,TICT
+1975.0,IND-TPA,O=C1C2=C(C=CC=C2)C(/C1=CC(C=C3)=CC=C3N(C4=CC=CC=C4)C5=CC=CC=C5)=O,TICT
+1979.0,TPA-2Ph-SCP,C[N+](C=C1)=CC=C1C(C=C2)=CC=C2/C([N+]#[C-])=C/C(C=C3)=CC=C3/C=C(C4=CC=CC=C4)/C(C=C5)=CC=C5N(C6=CC=CC=C6)C7=CC=CC=C7,ICT
+1983.0,TPM-MO,COC1=CC=C(C(C2=CC=C(OC)C=C2)C3=CC=C(OC)C=C3)C=C1,neutral aromatic
+1984.0,TPM-DMA,CN(C)C1=CC=C(C(C2=CC=C(N(C)C)C=C2)C3=CC=C(N(C)C)C=C3)C=C1,ESIPT
+1991.0,BTPE-C4,C1(/C(C2=CC=CC=C2)=C(C3=CC=C(OCCCCOC4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)/C7=CC=CC=C7)C=C4)C=C3)C8=CC=CC=C8)=CC=CC=C1,ESIPT
+1998.0,FKP-PTA,O=C(C1=CC=C(C(C=CC=C2)=C2C3(CCC(C)CCCC(C)C)CCC(C)CCCC(C)C)C3=C1)C4=CC=C(N5C6=CC=CC=C6SC7=C5C=CC=C7)C=C4,TICT
+2002.0,DTPA-BT-M,COC1=CC=C(N(C2=CC=C(OC)C=C2)C3=CC=C(C4=CC=C(C5=CC=C(N(C6=CC=C(OC)C=C6)C7=CC=C(OC)C=C7)C=C5)C8=NSN=C84)C=C3)C=C1,TICT
+2010.0,TP1,N#C/C(C#N)=C/C(C=C1)=CC=C1/C(C2=CC=CC=C2)=C(C3=CC=CC=C3)/C4=CC=CC=C4,neutral aromatic
+2011.0,TNZPPI,C1(N(C2=CC=C(C3=C(C=CC=C4)C4=C(C5=CC=C(C6=NC(C(C=CC=C7)=C7C8=C9C=CC=C8)=C9N6C%10=CC=CC=C%10)C=C5)C%11=NSN=C%113)C=C2)C%12=CC=CC=C%12)=CC=CC=C1,TICT
+2012.0,TNZtPPI,CC(C)(C)C(C=C1)=CC=C1N2C3=C(C(C=CC=C4)=C4C5=C3C=CC=C5)N=C2C(C=C6)=CC=C6C(C7=NSN=C78)=C9C(C=CC=C9)=C8C(C=C%10)=CC=C%10N(C%11=CC=CC=C%11)C%12=CC=CC=C%12,TICT
+2013.0,TNZ2tPPI,CC(C)(C)C1=CC(N2C3=C(C(C=CC=C4)=C4C5=C3C=CC=C5)N=C2C(C=C6)=CC=C6C(C7=NSN=C78)=C9C(C=CC=C9)=C8C(C=C%10)=CC=C%10N(C%11=CC=CC=C%11)C%12=CC=CC=C%12)=CC(C(C)(C)C)=C1,TICT
+2014.0,TNZ,C1(N(C2=CC=C(C3=C(C=CC=C4)C4=CC5=NSN=C53)C=C2)C6=CC=CC=C6)=CC=CC=C1,TICT
+2016.0,PheTNZ,C1(N(C2=CC=C(C3=C(C=CC=C4)C4=C(C5=C(C=CC=C6)C6=C(C=CC=C7)C7=C5)C8=NSN=C83)C=C2)C9=CC=CC=C9)=CC=CC=C1,TICT
+2038.0,CBBHA-4,O=C(N/N=C/C1=CC(C(C2=CC(/C=N/NC(C3=CC=C(OCCCC)C=C3)=O)=C(O)C=C2)=O)=CC=C1O)C4=CC=C(OCCCC)C=C4,ICT
+2039.0,CBBHA-8,O=C(N/N=C/C1=CC(C(C2=CC(/C=N/NC(C3=CC=C(OCCCCCCCC)C=C3)=O)=C(O)C=C2)=O)=CC=C1O)C4=CC=C(OCCCCCCCC)C=C4,ESIPT
+2042.0,2N-DPAS,OC(C=CC=C1)=C1/C=N/N=C(C2=CC=C(N(CC)CC)C=C2)/C3=CC=C(N(CC)CC)C=C3,ESIPT
+2047.0,TBP,S1N=C2C(=N1)C(=CC=C2C1=CC=NC=C1)C1=CC=C(C=C1)N(C1=CC=CC=C1)C1=CC=CC=C1,TICT
+2050.0,CSMPP,CN1CCN(CC1)C1=CC=C(C=C(/C#N)C2=CC=C(C=C2)C2=CC=NC=C2)C=C1,TICT
+2056.0,TBTO,CC[N+](CC)([O-])C(C=C1)=CC=C1N(C2=CC=C([N+](CC)([O-])CC)C=C2)C(C=C3)=CC=C3C4=CC=C(C5=CC=C(N(C6=CC=C([N+](CC)([O-])CC)C=C6)C7=CC=C([N+](CC)([O-])CC)C=C7)C=C5)C8=NSN=C84,ESIPT
+2063.0,CN-TPB-TPA,N#CC(C=C1)=CC=C1C2=C(C3=CC=CC=C3)C=C(C4=CC=C(C5=CC=C(N(C6=CC=CC=C6)C7=CC=CC=C7)C=C5)C=C4)C(C8=CC=CC=C8)=C2,TICT
+2065.0,CN-TPB-AD,CC(C1=C2C=CC=C1)(C)C3=C(C=CC=C3)N2C(C=C4)=CC=C4C5=CC(C6=CC=CC=C6)=C(C7=CC=C(C#N)C=C7)C=C5C8=CC=CC=C8,TICT
+2066.0,TPB-CzC1,N#CC(C=C1)=CC=C1C2=CC(C3=CC=CC=C3)=C(C4=CC=C(N5C(C=CC=C6)=C6C7=C5C=CC=C7)C=C4)C=C2C8=CC=CC=C8,TICT
+2067.0,TPB-CzC2,N#CC(C=C1)=CC=C1C2=CC(C3=CC=CC=C3)=C(C4=CC=C(C5=CC=C(N6C(C=CC=C7)=C7C8=C6C=CC=C8)C=C5)C=C4)C=C2C9=CC=CC=C9,TICT
+2068.0,TPB-CzC3,N#CC(C=C1)=CC=C1C2=CC(C3=CC=CC=C3)=C(C4=CC=C(C5=CC=C(N(C6=CC=CC=C6)C7=C8C=CC=C7)C8=C5)C=C4)C=C2C9=CC=CC=C9,TICT
+2069.0,PXZ-TPB-CN,N#CC(C=C1)=CC=C1C2=CC(C3=CC=CC=C3)=C(C4=CC=C(N5C(C=CC=C6)=C6OC7=C5C=CC=C7)C=C4)C=C2C8=CC=CC=C8,TICT
+2076.0,TPE-RNS,O=C1N(NC(NC2=CC=CC=C2)=S)C3(C(C=CC(N(CC)CC)=C4)=C4OC5=C3C=CC(N(CC)CC)=C5)C(C1=C6)=CC=C6C(C=C7)=CC=C7/C(C8=CC=CC=C8)=C(C9=CC=CC=C9)/C%10=CC=CC=C%10,ESIPT
+2115.0,PI,O=C1C2=C(C=CC=C2)C(/C1=C/C(C=C3)=CC4=C3N(C5=CC=CC=C5)C(C=CC=C6)=C6S4)=O,TICT
+2138.0,FC6-2BP-PXZ,O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C(C=C5)=CC6=C5C(C=CC(C(C7=CC=C(N8C(C=CC=C9)=C9OC%10=C8C=CC=C%10)C=C7)=O)=C%11)=C%11C6(CCCCCC)CCCCCC,TICT
+2156.0,DMF-BP-PXZ,O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C5=CC6=C(C7=C(C6(C)C)C=CC=C7)C=C5,ICT
+2157.0,DPF-BP-PXZ,O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C5=CC6=C(C7=C(C6(C8=CC=CC=C8)C9=CC=CC=C9)C=CC=C7)C=C5,ICT
+2158.0,SBF-BP-PXZ,O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C5=CC6=C(C7=C(C68C9=CC=CC=C9C%10=C8C=CC=C%10)C=CC=C7)C=C5,ICT
+2159.0,DBT-BZ-PXZ,O=C(C1=CC(C(C=CC=C2)=C2S3)=C3C=C1)C4=CC=C(N5C(C=CC=C6)=C6OC7=C5C=CC=C7)C=C4,ICT
+2160.0,DBT-BZ-PTZ,O=C(C1=CC(C(C=CC=C2)=C2S3)=C3C=C1)C4=CC=C(N5C(C=CC=C6)=C6SC7=C5C=CC=C7)C=C4,ICT
+2161.0,DBT-BZ-DMAC,O=C(C1=CC(C(C=CC=C2)=C2S3)=C3C=C1)C4=CC=C(N5C(C=CC=C6)=C6C(C)(C)C7=C5C=CC=C7)C=C4,ICT
+2243.0,DMACP-TTDO,O=S1(C2=C(SC(C3=CC=C(N(C4=CC=CC=C4C5(C)C)C6=C5C=CC=C6)C=C3)=C2C7=CC=C(C(C)(C)C)C=C7)C(C8=CC=C(C(C)(C)C)C=C8)=C1C9=CC=C(N(C%10=CC=CC=C%10C%11(C)C)C%12=C%11C=CC=C%12)C=C9)=O,ESIPT
+2248.0,SFDMS,C[Si]1(C)C(C(C=C2)=CC3=C2C(C=CC=C4)=C4C35C6=CC=CC=C6C7=C5C=CC=C7)=C(C8=CC=CC=C8)C(C9=CC=CC=C9)=C1C%10=CC%11=C(C=C%10)C%12=C(C=CC=C%12)C%11%13C%14=CC=CC=C%14C%15=C%13C=CC=C%15,ESIPT
+2255.0,TPE-TAPBI,CC(C)(C)C1=CC=C(C(C2=CC=C(/C(C3=CC=CC=C3)=C(C4=CC=CC=C4)C5=CC=CC=C5)C=C2)=C(C=C(C(C)(C)C)C=C6)C6=C7C8=CC=C(C9=NC(C=CC=C%10)=C%10N9C%11=CC=CC=C%11)C=C8)C7=C1,ESIPT
+2257.0,TriPE-TAPBI,[H]/C(C(C=C1)=CC=C1C2=C(C=C(C(C)(C)C)C=C3)C3=C(C4=CC=C(C5=NC(C=CC=C6)=C6N5C7=CC=CC=C7)C=C4)C8=CC(C(C)(C)C)=CC=C82)=C(C9=CC=CC=C9)/C%10=CC=CC=C%10,ESIPT
+2259.0,FDMS,C[Si]1(C)C(C2=CC=C(C(C=CC=C3)=C3C4)C4=C2)=C(C5=CC=CC=C5)C(C6=CC=CC=C6)=C1C7=CC(CC8=C9C=CC=C8)=C9C=C7,ESIPT
+2260.0,FMPS,C[Si]1(C2=CC=CC=C2)C(C3=CC=C(C(C=CC=C4)=C4C5)C5=C3)=C(C6=CC=CC=C6)C(C7=CC=CC=C7)=C1C8=CC(CC9=C%10C=CC=C9)=C%10C=C8,ESIPT
+2261.0,FrDMS,C[Si]1(C)C(C2=C3C(C4=CC=C3)=C(C5=C4C=CC=C5)C=C2)=C(C6=CC=CC=C6)C(C7=CC=CC=C7)=C1C8=C(C=CC=C9C%10=C%11C=CC=C%10)C9=C%11C=C8,ESIPT
+2262.0,FrMPS,C[Si]1(C2=CC=CC=C2)C(C3=C4C(C5=CC=C4)=C(C6=C5C=CC=C6)C=C3)=C(C7=CC=CC=C7)C(C8=CC=CC=C8)=C1C9=C(C=CC=C%10C%11=C%12C=CC=C%11)C%10=C%12C=C9,ESIPT
+2264.0,NpMPS,C[Si]1(C2=CC=CC=C2)C(C3=CC4=C(C=CC=C4)C=C3)=C(C5=CC=CC=C5)C(C6=CC=CC=C6)=C1C7=CC(C=CC=C8)=C8C=C7,ESIPT
+2265.0,PyDMS,C[Si]1(C)C(C2=C3C(C(C(C=C3)=CC=C4)=C4C=C5)=C5C=C2)=C(C6=CC=CC=C6)C(C7=CC=CC=C7)=C1C8=C(C=CC9=C%10C(C=C%11)=CC=C9)C%10=C%11C=C8,ESIPT
+2266.0,PyMPS,C[Si]1(C2=CC=CC=C2)C(C3=C4C(C(C(C=C4)=CC=C5)=C5C=C6)=C6C=C3)=C(C7=CC=CC=C7)C(C8=CC=CC=C8)=C1C9=C(C=CC%10=C%11C(C=C%12)=CC=C%10)C%11=C%12C=C9,ESIPT
+2275.0,(MesB)2MPPS,CC1=CC(C)=CC(C)=C1B(C2=C(C)C=C(C)C=C2C)C3=CC=C(C4=C(C5=CC=CC=C5)C(C6=CC=CC=C6)=C(C7=CC=C(B(C8=C(C)C=C(C)C=C8C)C9=C(C)C=C(C)C=C9C)C=C7)[Si]4(C)C%10=CC=CC=C%10)C=C3,ESIPT
+2277.0,(MesB)2HPS,CC1=CC(C)=CC(C)=C1B(C2=C(C)C=C(C)C=C2C)C3=CC=C(C4=C(C5=CC=CC=C5)C(C6=CC=CC=C6)=C(C7=CC=C(B(C8=C(C)C=C(C)C=C8C)C9=C(C)C=C(C)C=C9C)C=C7)[Si]4(C%10=CC=CC=C%10)C%11=CC=CC=C%11)C=C3,ESIPT
+2293.0,TPEDMesB,CC(C=C(C)C=C1C)=C1B(C2=C(C)C=C(C)C=C2C)C(C=C3)=CC=C3/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=CC=C6,neutral aromatic
+2298.0,3TPETPA,C1(N(C2=CC=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)C6=CC=CC=C6)C=C3)C=C2)C7=CC=C(C8=CC=C(/C(C9=CC=CC=C9)=C(C%10=CC=CC=C%10)C%11=CC=CC=C%11)C=C8)C=C7)=CC=C(C%12=CC=C(/C(C%13=CC=CC=C%13)=C(C%14=CC=CC=C%14)C%15=CC=CC=C%15)C=C%12)C=C1,neutral aromatic
+2359.0,But-Phc,O=C(C=C1NCCCC)N(CC2=CC=CC=C2)C1=O,ESIPT
+2383.0,TPA-BDTO,O=S1(C(C(C=C1C2=CC=C(N(C3=CC=CC=C3)C4=CC=CC=C4)C=C2)=C(C5=C6C=C(C7=CC=C(N(C8=CC=CC=C8)C9=CC=CC=C9)C=C7)S5(=O)=O)OC(CC)CCCC)=C6OC(CC)CCCC)=O,ICT
+2385.0,CzP-BDTO,CCC(COC1=C2C(C=C(S2(=O)=O)C3=CC=C(N4C5=C(C6=C4C=CC=C6)C=CC=C5)C=C3)=C(C7=C1C=C(C8=CC=C(N9C%10=C(C%11=C9C=CC=C%11)C=CC=C%10)C=C8)S7(=O)=O)OCC(CC)CCCC)CCCC,ICT
+2386.0,PCz-BDTO,CCC(COC1=C2C(C=C(S2(=O)=O)C3=CC=C(N(C4=CC=CC=C4)C5=C6C=CC=C5)C6=C3)=C(C7=C1C=C(C8=CC=C(C(C=CC=C9)=C9N%10C%11=CC=CC=C%11)C%10=C8)S7(=O)=O)OCC(CC)CCCC)CCCC,ICT
+2401.0,TCzP-BDT,CCC(CCCC)COC1=C2C(C=C(C(C=C3)=CC=C3N4C5=C(C=C(C(C)(C)C)C=C5)C6=C4C=CC(C(C)(C)C)=C6)S2)=C(OCC(CCCC)CC)C7=C1C=C(S7)C(C=C8)=CC=C8N9C%10=C(C=C(C(C)(C)C)C=C%10)C%11=C9C=CC(C(C)(C)C)=C%11,ICT
+2409.0,TPATPAN,N#C/C(C(C=C1)=CC=C1C(C=C2)=CC=C2N(C3=CC=CC=C3)C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=CC=C6,ICT
+2425.0,TPECa,N1(C(C=CC=C2)=C2C3=C1C=CC=C3)C4=CC=C(C=C4)/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)/C7=CC=CC=C7,ESIPT
+2429.0,TTPECaP,C1(N2C3=CC=C(C4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)C7=CC=CC=C7)C=C4)C=C3)=C(C8=C2C=CC(C(C=C9)=CC=C9/C(C%10=CC=CC=C%10)=C(C%11=CC=CC=C%11)/C%12=CC=CC=C%12)=C8)C=C(C(C=C%13)=CC=C%13/C(C%14=CC=CC=C%14)=C(C%15=CC=CC=C%15)/C%16=CC=CC=C%16)C=C1,ESIPT
+2430.0,Dt-BPITBT-TPE,CC(C)(C)C1=CC(N2C(C3=CC=C(C4=CC=C(C5=CC=C(/C(C6=CC=CC=C6)=C(C7=CC=CC=C7)/C8=CC=CC=C8)C=C5)C9=NSN=C49)S3)=NC%10=C2C(C=CC=C%11)=C%11C%12=C%10C=CC=C%12)=CC(C(C)(C)C)=C1,TICT
+1.0,TPE-IQ-2O,CCC[n+]6cc4ccc(/C(=C(c1ccc(OC)cc1)\c2ccc(OC)cc2)c3ccccc3)cc4c(c5ccccc5)c6c7ccccc7,ICT
+2.0,DBA-AM,CCCCN(CCCC)c1ccc(/C=N/C(C#N)=C(N)/C#N)cc1,ICT
+3.0,DMA-AM,CN(C)c1ccc(/C=N/C(C#N)=C(N)/C#N)cc1,ICT
+4.0,DEAH-AM,CCN(CC)c1ccc(/C=N/C(C#N)=C(N)/C#N)c(O)c1,ICT
+5.0,TTE,c4csc(/C(=C(c1cccs1)/c2cccs2)c3cccs3)c4,neutral aromatic
+6.0,TFE,c4coc(/C(=C(c1ccco1)/c2ccco2)c3ccco3)c4,neutral aromatic
+7.0,SL-TTE,c5csc(c3c(c1cccs1)c2sccc2c4ccsc34)c5,neutral aromatic
+13.0,DPI-B,Cn4c(/C=C(c1ccccc1)/c2ccccc2)nc(c3ccccc3)c4c5ccccc5,neutral aromatic
+14.0,DPI-A,Cn3c(/C=C(C#N)/c1ccccc1)nc(c2ccccc2)c3c4ccccc4,ICT
+17.0,TPE-IPB,CC7(C)OB(c6ccc(COc1ccccc1/C=N/c5ccc(/C(=C(c2ccccc2)/c3ccccc3)c4ccccc4)cc5)cc6)OC7(C)C,neutral aromatic
+18.0,TPE-Tetrazole-1,c5ccc(/C(=C(c1ccccc1)\c3ccc(c2nnn[nH]2)cc3)c4ccccc4)cc5,neutral aromatic
+19.0,TPE-Tetrazole-2,c6ccc(/C(=C(c2ccc(c1nnn[nH]1)cc2)/c4ccc(c3nnn[nH]3)cc4)c5ccccc5)cc6,neutral aromatic
+20.0,TPE-Tetrazole-4,c2cc(c1nnn[nH]1)ccc2/C(=C(c4ccc(c3nnn[nH]3)cc4)/c6ccc(c5nnn[nH]5)cc6)c8ccc(c7nnn[nH]7)cc8,neutral aromatic
+21.0,ESIPT-N3,N#N=NCCOc4ccc(/C=N/N=c2c1ccccc1c3ccccc23)c(O)c4,ESIPT
+22.0,CM-b,c8ccc(/C(=C(c1ccccc1)/c6ccc(c4nc(c2ccccc2)c(c3ccccc3)nc4c5ccccc5)cc6)c7ccccc7)cc8,neutral aromatic
+23.0,CM-d,c8ccc(/C(=C(c1ccccc1)/c6cccc(c4nc(c2ccccc2)c(c3ccccc3)nc4c5ccccc5)c6)c7ccccc7)cc8,neutral aromatic
+24.0,CM-e,c8ccc(/C(=C(c1ccccc1)/c2ccccc2c5nc(c3ccccc3)c(c4ccccc4)nc5c6ccccc6)c7ccccc7)cc8,neutral aromatic
+25.0,CM-c,N#C/C(C#N)=C\c6ccc(c5ccc(c3nc(c1ccccc1)c(c2ccccc2)nc3c4ccccc4)cc5)cc6,ICT
+27.0,CM-i,N#Cc9nc(c4ccc(c3ccc(N(c1ccccc1)c2ccccc2)cc3)cc4)c(c8ccc(c7ccc(N(c5ccccc5)c6ccccc6)cc7)cc8)nc9C#N,ICT
+28.0,TriPCE,COc3ccc(/C(=C(C#N)\c1ccccc1)c2ccccc2)cc3,ICT
+30.0,Ryan2,O=P([O-])([O-])Oc4ccc(/C(=C(c1ccccc1)/c2ccc(OP(=O)([O-])[O-])cc2)c3ccccc3)cc4,neutral aromatic
+32.0,ASCP,CN(C)c3ccc(/C=C(C#N)/c2ccc(c1cc[n+](C)cc1)cc2)cc3,ICT
+33.0,ASCP-2P,C[n+]5ccc(c4ccc(/C(C#N)=C/c3ccc(N(c1ccccc1)c2ccccc2)cc3)cc4)cc5,ICT
+36.0,ASCP-PZ,C[n+]4ccc(c3ccc(/C(C#N)=C(C#N)/c2ccc(N1CC[N+](C)(C)CC1)cc2)cc3)cc4,TICT
+37.0,TTB,C1(C2=CC=C(N(C3=CC=CC=C3)C4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)/C7=CC=CC=C7)C=C4)C=C2)=CC=C(C8=CC=C(N(C9=CC=CC=C9)C%10=CC=C(/C(C%11=CC=CC=C%11)=C(C%12=CC=CC=C%12)/C%13=CC=CC=C%13)C=C%10)C=C8)C%14=NSN=C1%14,ICT
+39.0,TPE-NPB,C1(/C(C2=CC=C(C3=CC=C(N(C4=C(C=CC=C5)C5=CC=C4)C6=CC=CC=C6)C=C3)C=C2)=C(C7=CC=CC=C7)\C8=CC=C(C9=CC=C(N(C%10=CC=CC%11=C%10C=CC=C%11)C%12=CC=CC=C%12)C=C9)C=C8)=CC=CC=C1,ICT
+42.0,DPBA-TPE,COc1c(/C=C(c2ccc(N(c3ccc(/C(c4ccccc4)=C(c5ccccc5)/c6ccccc6)cc3)c7ccccc7)cc2)\C#N)cc(OC)c(/C=C(C#N)/c8ccc(N(c9ccc(/C(c%10ccccc%10)=C(c%11ccccc%11)/c%12ccccc%12)cc9)c%13ccccc%13)cc8)c1,ICT
+52.0,TPE-TMX,CN(C)CCOc1ccc(/C(c2ccccc2)=C(c3ccccc3)/c4ccccc4)cc1,neutral aromatic
+60.0,p-TPE-RNS,CCN(CC)c1cc2c(C3(N(NC(Nc4ccccc4)=S)C(c5ccc(c6ccc(/C(c7ccccc7)=C(c8ccccc8)/c9ccccc9)cc6)cc53)=O)c%10ccc(N(CC)CC)cc%10O2)cc1,TICT
+61.0,m-TPE-RNS,CCN(CC)c1cc2c(C3(N(NC(Nc4ccccc4)=S)C(c5cc(c6ccc(/C(c7ccccc7)=C(c8ccccc8)/c9ccccc9)cc6)ccc53)=O)c%10ccc(N(CC)CC)cc%10O2)cc1,TICT
+64.0,BMO,O=C1OC(C)=N/C1=C\c2ccccc2,ICT
+65.0,BMO-PH,O=C1OC(C)=N/C1=C\c2ccc(c3ccccc3)cc2,ICT
+66.0,BMO-PF,O=C1OC(C)=N/C1=C\c2cc3c(c4ccccc4C3)cc2,ICT
+67.0,BMO-PM,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(OC)cc3)cc2,ICT
+68.0,BMO-PC,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(C#N)cc3)cc2,ICT
+69.0,TPE-BMO,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(/C(c4ccccc4)=C(c5ccccc5)/c6ccccc6)cc3)cc2,ICT
+70.0,TPA-BMO,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(N(c4ccccc4)c5ccccc5)cc3)cc2,ICT
+71.0,DM-TPE-DMO,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(/C(c4ccccc4)=C(c5ccc(OC)cc5)/c6ccc(OC)cc6)cc3)cc2,ICT
+72.0,TPE-PA,O=Cc1ccc(c2ccc(/C(c3ccccc3)=C(c4ccccc4)/c5ccccc5)cc2)cc1,ICT
+73.0,DM-TPE-PA,O=Cc1ccc(c2ccc(/C(c3ccccc3)=C(c4ccc(OC)cc4)/c5ccc(OC)cc5)cc2)cc1,ICT
+74.0,Naph-BMO,O=C1OC(C)=N/C1=C\c2ccc(c3ccc(OC)c4ccccc43)cc2,ICT
+75.0,Naph-PA,COc1ccc(c2ccc(C=O)cc2)c3ccccc31,ICT
+76.0,TPA-BI,O=C1N(CCC)C(C)=N/C1=C\c2ccc(c3ccc(N(c4ccccc4)c5ccccc5)cc3)cc2,ICT
+108.0,CSPP-NHS,C[N+](CC1)(C)CCN1c2ccc(/C=C(C#N)/c3ccc(c4cc[n+](CCCC(ON5C(CCC5=O)=O)=O)cc4)cc3)cc2,ICT
+135.0,Startrek-1,c1(c2ccc(c(n3)c(c4ccc(c5ccc(N(c6ccccc6)c7ccccc7)cc5)cc4)nc8c3nsn8)cc2)ccc(N(c9ccccc9)c%10ccccc%10)cc1,ICT
+137.0,Lyh40,N#C/C(C#N)=C1c2ccccc2CC\1=C/c3ccc(N(c4ccccc4)c5ccccc5)cc3,neutral aromatic
+138.0,TPE-APT,Cc1nnn(Cc2ccc(/C(c3ccccc3)=C(c4ccccc4)\c5ccccc5)cc2)c1,neutral aromatic
+139.0,BB_067,c1(/C(c2ccc(C3=NN=NN3)cc2)=C(c4ccc(C5=NN=NN5)cc4)/c6ccccc6)ccccc1,neutral aromatic
+140.0,BB_062,c1(/C(C2=NN=NN2)=C(C3=NN=NN3)/c4ccccc4)ccccc1,neutral aromatic
+141.0,BB_068,c1(/C(c2ccc(C3=NN=NN3)cc2)=C(c4ccc(C5=NN=NN5)cc4)\c6ccccc6)ccccc1,neutral aromatic
+142.0,BB_066,O=C(c1ccc(/C(c2ccccc2)=C(c3ccc(C(O)=O)cc3)\c4ccccc4)cc1)O,neutral aromatic
+144.0,XS_025,N#C/C(c1c(C#N)cccc1)=C(/C/2=C(c3c(C#N)cccc3)/C#N)/C2=C(C#N)\c4c(C#N)cccc4,neutral aromatic
+145.0,Bi_Tri_TPE,c1(/C(c2ccc([Bi](c3ccc(/C(c4ccccc4)=C(c5ccccc5)/c6ccccc6)cc3)c7ccc(/C(c8ccccc8)=C(c9ccccc9)/c%10ccccc%10)cc7)cc2)=C(c%11ccccc%11)/c%12ccccc%12)ccccc1,neutral aromatic
+146.0,Bi_Tri_PhOMe,COc1ccc([Bi](c2ccc(OC)cc2)c3ccc(OC)cc3)cc1,neutral aromatic
+147.0,Di_Hydrazone,O=C(N/N=C/c1ccc(/C=N/NC(c2ccccc2)=O)cc1)c3ccccc3,neutral aromatic
+148.0,Pyren-Sal,Oc1c(/C=N/c2c3ccc4cccc(c4c35)ccc5cc2)cccc1,ESIPT
+149.0,DQ-1,Cc1cc2c(NC(c3ccccc3)(CCCC)C(c4ccccc4)=N2)cc1C,neutral aromatic
+150.0,DQ-2,Cc1cc2c(NC(c3ccc(C)cc3)(CCCC)C(c4ccc(C)cc4)=N2)cc1C,neutral aromatic
+151.0,DQ-3,CCCCC(C(c1ccc(C)cc1)=N2)(c3ccc(C)cc3)Nc4c2cccc4,neutral aromatic
+152.0,DQ-4,CCCCC(C(c1ccc(C2=CC=CC=C2)cc1)=N3)(c4ccc(C5=CC=CC=C5)cc4)Nc6c3cccc6,neutral aromatic
+165.0,TPE-IS,CC(C/1)CC(/C=C/c2ccc(/C(c3ccccc3)=C(c4ccccc4)\c5ccccc5)cc2)=CC1=C(C#N)/C#N,neutral aromatic
+166.0,TPE-MOI,CC(C/1)CC(/C=C/c2ccc(/C(c3ccccc3)=C(c4ccc(OC)cc4)\c5ccc(OC)cc5)cc2)=CC1=C(C#N)/C#N,neutral aromatic
+167.0,AIE-ISO-Lyso,CC(C/1)CC(/C=C/c2ccc(OCCCCCCN3CCOCC3)cc2)=CC1=C(C#N)/C#N,neutral aromatic
+171.0,2-CZTPE,CCn1c2ccccc2c3ccc(/C(c4ccccc4)=C(c5ccccc5)/c6ccccc6)cc31,neutral aromatic
+172.0,3-CZTPE,CCn1c2ccccc2c3cc(/C(c4ccccc4)=C(c5ccccc5)\c6ccccc6)ccc31,neutral aromatic
+180.0,TPE-DZF,O=C1c2cc(c3ccc(/C(c4ccccc4)=C(c5ccccc5)\c6ccccc6)cc3)cnc2c7c1cccn7,ICT
+181.0,TPA-DZF,O=C1c2cc(c3ccc(N(c4ccccc4)c5ccccc5)cc3)cnc2c6c1cccn6,ICT
+182.0,TPA-Ome-DZF,O=C1c2cc(c3ccc(N(c4ccc(OC)cc4)c5ccc(OC)cc5)cc3)cnc2c6c1cccn6,ICT
+183.0,TPA-MN,N#C/C(C#N)=C/c1ccc(c2ccc(N(c3ccccc3)c4ccccc4)cc2)cc1,ICT
+184.0,TPA-S-MN,N#C/C(C#N)=C/c1sc(c2ccc(N(c3ccccc3)c4ccccc4)cc2)cc1,ICT
+186.0,TPCB,Oc1ccc(C(/C=C/c2ccc(N(c3ccccc3)c4ccccc4)cc2)=C(C#N)/C#N)cc1,ICT
+187.0,TPCMB,COc1ccc(C(/C=C/c2ccc(N(c3ccccc3)c4ccccc4)cc2)=C(C#N)/C#N)cc1,ICT
+188.0,TPCAB,O=C(C=C)Oc1ccc(C(/C=C/c2ccc(N(c3ccccc3)c4ccccc4)cc2)=C(C#N)/C#N)cc1,ICT
+189.0,PBP,Oc1c(/C=N/N=C/c2ccc(/C=N/N=C/c3c(O)cccc3)cc2)cccc1,ESIPT
+190.0,EBP,Oc1c(/C=N/N=C/C=N/N=C/c2c(O)cccc2)cccc1,ESIPT
+191.0,SATPA,Oc1c(/C=N/N=C/c2ccc(N(c3ccccc3)c4ccccc4)cc2)cccc1,ESIPT
+193.0,TPAB-3HF,O=c1c(O)c(c2ccc(c3ccc(N(c4ccccc4)c5ccccc5)cc3)cc2)oc6ccccc61,ESIPT
+195.0,6-Methoxy-NaphAS,COc1cc2ccc(/C=N/N=C/c3c(O)cccc3)cc2cc1,ESIPT
+196.0,TPA-PC,O=C(c1ncccc1)/C=C/c2ccc(N(c3ccccc3)c4ccccc4)cc2,ICT
+197.0,TPE-T3HF,O=c1c(O)c(c2ccc(c3ccc(/C(c4ccc(c5ccc(c(c6O)oc7ccccc7c6=O)cc5)cc4)=C(c8ccc(c9ccc(c(oc%10ccccc%10%11)c(O)c%11=O)cc9)cc8)\c%12ccc(c%13ccc(c(c%14O)oc%15ccccc%15c%14=O)cc%13)cc%12)cc3)cc2)oc%16ccccc%161,ESIPT
+198.0,TPAP-B,c1ccc(cc1)N(c1ccccc1)c1ccc2-c3cccc[n+]3[B-](c2c1)(c1ccccc1)c1ccccc1,ICT
+207.0,DPDC,C[n+]1ccc(c2ccc(/C(C#N)=C(C#N)/c3ccc(c4cc[n+](C)cc4)cc3)cc2)cc1,ICT
+208.0,PCMN,C[n+]1ccc(c2ccc(/C(C#N)=C/c3ccc4ccc(OC)cc4c3)cc2)cc1,ICT
+214.0,Phoenix-1,N#C/C(C#N)=C1C2=C(C=CC=C2)C(/C/1=C(C=C(/C=C/c3ccc(N(c4ccccc4)c5ccccc5)cc3)O6)\C=C6/C=C/c7ccc(N(c8ccccc8)c9ccccc9)cc7)=C(C#N)/C#N,ICT
+215.0,NAP-Ph,CN(C)c1cc2ccc(/C=C(C#N)/c3ccc(c4ccccc4)cc3)c(OC)c2cc1,ICT
+216.0,NAP-Br,CN(C)c1cc2ccc(/C=C(C#N)/c3ccc(Br)cc3)c(OC)c2cc1,ICT
+217.0,NAP-CF3,CN(C)c1cc2ccc(/C=C(C#N)/c3cc(C(F)(F)F)cc(C(F)(F)F)c3)c(OC)c2cc1,ICT
+218.0,NAP-Py,CN(C)c1cc2ccc(/C=C(C#N)/c3ccc(c4ccncc4)cc3)c(OC)c2cc1,ICT
+219.0,NAP-Py+,CN(C)c1cc2ccc(/C=C(C#N)/c3ccc(c4cc[n+](C)cc4)cc3)c(OC)c2cc1,ICT
+220.0,CS-Py+SO3-,CCN(CC)c1c(OCCCCCCCC)cc(/C=C(C#N)/c2ccc(c3cc[n+](CCCS(=O)([O-])=O)cc3)cc2)cc1,ICT
+224.0,ABCXF,CN(C)c1ccc(/C=C/C=C(C#N)/c2cc(C(F)(F)F)cc(C(F)(F)F)c2)cc1,ICT
+232.0,TQ-BPN,c12nc(c3ccccc3)c(c4ccccc4)nc1c(c5ccc(N(c6cccc7ccccc67)c8ccccc8)cc5)c9nsnc9c2c%10ccc(N(c%11ccccc%11)c%12c%13ccccc%13ccc%12)cc%10,ICT
+236.0,OTPA-TQ2,C#Cc1ccc(c2nc3c(c4ccc(N(c5ccc(OCCCCCCCC)cc5)c6ccc(OCCCCCCCC)cc6)cc4)c7nsnc7c(c8ccc(N(c9ccc(OCCCCCCCC)cc9)c%10ccc(OCCCCCCCC)cc%10)cc8)c3nc2c%11ccc(C#C)cc%11)cc1,ICT
+238.0,PTZ-BT-TPA,CCCCCCCCN1c2ccc(c3c4nsnc4c(c5ccc(N(c6ccccc6)c7ccccc7)cc5)cc3)cc2Sc8cc(c9ccc(c%10ccc(N(c%11ccccc%11)c%12ccccc%12)cc%10)c%13nsnc%139)ccc18,ICT
+239.0,MTPE-TP1,COc1ccc(/C(c2ccc(OC)cc2)=C(c3ccccc3)/c4ccc(c5sc(c6ccc(/C(c7ccccc7)=C(c8ccc(OC)cc8)/c9ccc(OC)cc9)cc6)c%10nccnc%105)cc4)cc1,ICT
+240.0,MTPE-TP2,COc1ccc(/C(c2ccc(OC)cc2)=C(c3ccccc3)/c4ccc(c5sc(c6ccc(/C(c7ccccc7)=C(c8ccc(OC)cc8)/c9ccc(OC)cc9)cc6)c%10nc(c%11ccccc%11)c(c%12ccccc%12)nc%105)cc4)cc1,ICT
+242.0,4TPA-BQ,Cc1c[n+]2c(c3ccc(N(c4ccccc4)c5ccccc5)cc3)c(c6ccc(N(c7ccccc7)c8ccccc8)cc6)c9cc(N(c%10ccccc%10)c%11ccccc%11)ccc9c2c(c%12ccc(N(c%13ccccc%13)c%14ccccc%14)cc%12)c1,ICT
+249.0,APA,c12c(CN(Cc3ccccn3)Cc4ncccc4)c5ccccc5cc1cccc2,neutral aromatic
+254.0,TFPy,C[n+]1ccc(/C=C/c2oc(c3ccc(N(c4ccccc4)c5ccccc5)cc3)cc2)cc1,ICT
+256.0,TPE-TFPy,C[n+]1ccc(/C=C/c2oc(c3ccc(N(c4ccc(/C(c5ccccc5)=C(c6ccccc6)/c7ccccc7)cc4)c8ccccc8)cc3)cc2)cc1,ICT
+257.0,TTV,c1(c2sccc2)ccc(N(c3ccccc3)c4ccccc4)cc1,ICT
+258.0,TTB,c1(c2sc(c3ccc(/C(c4ccccc4)=C(c5ccccc5)\c6ccccc6)cc3)cc2)ccc(N(c7ccccc7)c8ccccc8)cc1,ICT
+259.0,TTG,O=Cc1sc(c2ccc(N(c3ccccc3)c4ccccc4)cc2)cc1,ICT
+260.0,TTY,O=Cc1sc(c2ccc(N(c3ccc(OC)cc3)c4ccc(OC)cc4)cc2)cc1,ICT
+261.0,TTO,O=Cc1ccc(c2sc(c3ccc(N(c4ccc(OC)cc4)c5ccc(OC)cc5)cc3)cc2)s1,ICT
+262.0,TTR,O=Cc1sc(c2ccc(c3sc(c4ccc(N(c5ccc(OC)cc5)c6ccc(OC)cc6)cc4)cc3)s2)cc1,ICT
+264.0,TTNIR,COc1ccc(N(c2ccc(OC)cc2)c3ccc(c4sc(c5ccc(/C=C(C#N)/C#N)s5)cc4)cc3)cc1,ICT
+270.0,SA-4CO2Na,Oc1c(/C=N/N=C/c2c(O)ccc(CN(CC(O[Na])=O)CC(O[Na])=O)c2)cc(CN(CC(O[Na])=O)CC(O[Na])=O)cc1,ESIPT
+272.0,IND,O=C(c1ccccc1C/2=O)C2=C/c3ccc(N(CCCC)CCCC)cc3,ICT
+273.0,AIE-Mito-TPP,Oc1c(/C=N/N=C/c2c(O)cc(OCCCCCC[P+](c3ccccc3)(c4ccccc4)c5ccccc5)cc2)ccc(OCCCCCC[P+](c6ccccc6)(c7ccccc7)c8ccccc8)c1,ESIPT
+278.0,TBP,c1(c(ccc2c3ccncc3)c4c2nsn4)ccc(N(c5ccccc5)c6ccccc6)cc1,ICT
+283.0,4(TPE-COO)-TPP,O=C(c1ccc(/C(c2ccccc2)=C(c3ccccc3)/c4ccccc4)cc1)Oc5ccc(c6c([N]7)C=Cc7c(c8ccc(OC(c9ccc(/C(c%10ccccc%10)=C(c%11ccccc%11)/c%12ccccc%12)cc9)=O)cc8)c%13[nH]c(cc%13)c(c%14ccc(OC(c%15ccc(/C(c%16ccccc%16)=C(c%17ccccc%17)\c%18ccccc%18)cc%15)=O)cc%14)c([N]%19)C=Cc%19c(c%20ccc(OC(c%21ccc(/C(c%22ccccc%22)=C(c%23ccccc%23)/c%24ccccc%24)cc%21)=O)cc%20)c%25[nH]c6cc%25)cc5,ICT
+286.0,TPE-Man,OCC(O1)C(O)C(O)C(O)C1c2nnn(CCCOc3ccc(/C(c4ccc(OCCCn5nnc(C6C(O)C(O)C(O)C(CO)O6)c5)cc4)=C(c7ccc(/C(c8ccccc8)=C(C#N)\C#N)cc7)/c9ccccc9)cc3)c2,neutral aromatic
+289.0,TPE-DOX,O=C(OCc1cc(C)cc(COC(NC2CC(CC3CC(C)(O)Cc4c(O)c(C(c5cccc(OC)c5C6=O)=O)c6c(O)c43)OC(C)C2O)=O)c1OCc7ccc(B8OC(C)(C)C(C)(C)O8)cc7)c9ccc(/C(c%10ccccc%10)=C(c%11ccccc%11)\c%12ccccc%12)cc9,neutral aromatic
+290.0,(Z)-TPEDEPy,c1(C#Cc2ccncc2)ccc(/C(c3ccccc3)=C(c4ccccc4)\c5ccc(C#Cc6ccncc6)cc5)cc1,neutral aromatic
+291.0,(E)-TPEDEPy,c1(C#Cc2ccncc2)ccc(/C(c3ccccc3)=C(c4ccccc4)/c5ccc(C#Cc6ccncc6)cc5)cc1,neutral aromatic
+293.0,TBZPy,C[n+]1ccc(/C=C/c2ccc(c3c4nsnc4c(c5ccc(N(c6ccccc6)c7ccccc7)cc5)cc3)cc2)cc1.[I-],ICT
+297.0,PXZ-TBP-CN,N#Cc1ccc(c2c(c3ccccc3)cc(c4ccc(N5c6ccccc6Oc7ccccc75)cc4)c(c8ccccc8)c2)cc1,ICT
+301.0,COTh,c12ccsc1c3sccc3c4ccsc4c5sccc25,neutral aromatic
+302.0,DCDMF-BP-PXZ,CC(c1cc(n2c3ccc(C(c4ccc(N5c6ccccc6Oc7ccccc75)cc4)=O)cc3c8ccccc28)ccc19)(C)c%10c9ccc(n%11c%12ccccc%12c%13ccccc%11%13)c%10,ICT
+303.0,DCDPF-BP-PXZ,O=C(c1ccc(N2c3ccccc3Oc4ccccc42)cc1)c5ccc6n(c7ccc(c8ccc(n9c%10ccccc%10c%11ccccc9%11)cc8C%12(c%13ccccc%13)c%14ccccc%14)c%12c7)c%15ccccc%15c6c5,ICT
+304.0,DCSBF-BP-PXZ,O=C(c1ccc(N2c3ccccc3Oc4ccccc42)cc1)c5ccc6n(c7ccc(c8ccc(n9c%10ccccc%10c%11ccccc9%11)cc8C%12%13c%14ccccc%14c%15ccccc%15%13)c%12c7)c%16ccccc%16c6c5,ICT
+305.0,TPE-NA,c1(/C(c2ccccc2)=C(c3ccc(c4cccc5cccc(c6ccc(/C(c7ccccc7)=C(c8ccccc8)/c9ccccc9)cc6)c54)cc3)\c%10ccccc%10)ccccc1,ICT
+309.0,DAMB-SA,C[C@@]12C(CCc3cc(/N=C/c4c(O)cccc4)c(Br)cc32)[C@](C)(C(OC)=O)CCC1,ESIPT
+310.0,DAMB-SAB,C[C@@]12C(CCc3cc(/N=C/c4c(O)c(C(C)(C)C)cc(C(C)(C)C)c4)c(Br)cc32)[C@](C)(C(OC)=O)CCC1,ESIPT
+311.0,DAMB-SAN,C[C@@]12C(CCc3cc(/N=C/c4c(O)ccc([N+]([O-])=O)c4)c(Br)cc32)[C@](C)(C(OC)=O)CCC1,ESIPT
+312.0,DB-BCZ,Cc1cc(C)c(B(c2c(C)cc(C)cc2C)c3ccc(c4cc(n5c6ccccc6c7ccccc57)cc(n8c9ccccc9c%10ccccc8%10)c4)cc3)c(C)c1,ICT
+315.0,o-PP-2CN,N#Cc1ccc(c2c(c3c(c4c(c5ccc(C#N)cc5)cccc4)cccc3)cccc2)cc1,neutral aromatic
+316.0,SPOC-SQ,[O-]C1=C(N(c2ccc(Cl)cc2)c3ccc(Cl)cc3)C(/C1=[N+](c4ccc(Cl)cc4)/c5ccc(Cl)cc5)=O,ICT
+317.0,TBTO,CC[N+](CC)([O-])c1ccc(N(c2ccc([N+](CC)([O-])CC)cc2)c3ccc(c4c5c(c(c6ccc(N(c7ccc([N+](CC)([O-])CC)cc7)c8ccc([N+](CC)([O-])CC)cc8)cc6)cc4)nsn5)cc3)cc1,ICT
+318.0,o-TPBQ,Cc1c[n+]2c(c3ccccc3)c(c4ccccc4)c5ccccc5c2c(c6ccccc6)c1,ICT
+320.0,TQ-BPN,c12c(c(c3ccc(N(c4ccccc4)c5cccc6ccccc56)cc3)c7nc(c8ccccc8)c(c9ccccc9)nc7c2c%10ccc(N(c%11c%12ccccc%12ccc%11)c%13ccccc%13)cc%10)nsn1,ICT
+321.0,TPEBe-I(TPEBe-ATP),CC[n+]1c2ccccc2sc1/C=C/c3ccc(C(c4ccccc4)C(c5ccccc5)c6ccccc6)cc3,ICT
+324.0,TPE-CN,c1(C(C(c2ccccc2)c3ccccc3)c4ccc(/C=N/N=C/c5ccc(C(C(c6ccccc6)c7ccccc7)c8ccccc8)cc5)cc4)ccccc1,neutral aromatic
+328.0,DTPA-BT-M,COc1ccc(N(c2ccc(OC)cc2)c3ccc(c4ccc(c5ccc(N(c6ccc(OC)cc6)c7ccc(OC)cc7)cc5)c8c4nsn8)cc3)cc1,ICT
+330.0,TIOdB,CCC[n+]1c(c2ccccc2)c(c3ccccc3)c4ccc(/C(c5cc6c[n+](CCC)c(c7ccccc7)c(c8ccccc8)c6cc5)=C(c9ccc(OC)cc9)/c%10ccc(OC)cc%10)cc4c1,ICT
+331.0,CHE,COc1c(OC)c2c[n+](C)c3c4cc(OCO5)c5cc4ccc3c2cc1,ICT
+333.0,TNZ,c12c(cc3ccccc3c2c4ccc(N(c5ccccc5)c6ccccc6)cc4)nsn1,ICT
+335.0,PheTNZ,c12c(c(c3cc4ccccc4c5ccccc53)c6ccccc6c2c7ccc(N(c8ccccc8)c9ccccc9)cc7)nsn1,ICT
+336.0,NpTNZ,c12c(c(c3cc4ccccc4cc3)c5ccccc5c2c6ccc(N(c7ccccc7)c8ccccc8)cc6)nsn1,ICT
+338.0,TPE-2BA,OB(O)c1ccc(/C(c2ccccc2)=C(c3ccccc3)/c4ccc(B(O)O)cc4)cc1,neutral aromatic
+340.0,PTZ2,CCCN1c2ccccc2Sc2cc(\C=C(/C#N)c3nc4ccccc4o3)ccc12,ICT
+341.0,PTZ3,[H]n1c(nc2ccccc12)C(=C\c1ccc2N(CCC)c3ccccc3Sc2c1)\C#N,ICT
+342.0,PTZ4,CCCN1c2ccccc2Sc2cc(\C=C\C(=O)c3ccccc3O)ccc12,ICT
+343.0,PTZ5,CCCN1c2ccccc2Sc2cc(C=C(C#N)C#N)ccc12,ICT
+344.0,PTZ6,CCCN1c2ccccc2Sc2cc(\C=C(\C#N)C(=O)OCC)ccc12,ICT
+345.0,PTZ7,CCCN1c2ccccc2Sc2cc(C=C(C(O)=O)C(O)=O)ccc12,ICT
+346.0,PTZ8,CCCN1c2ccccc2Sc2cc(\C=C(\C#N)C(O)=O)ccc12,ICT
+347.0,PTZ9,CCCN1c2ccccc2Sc2cc(\C=C\C(=O)c3cccc(O)c3)ccc12,ICT
+348.0,PTZ10,CCCN1c2ccccc2Sc2cc(\C=C\C3=CC(CC(C)(C)C3)=C(C#N)C#N)ccc12,ICT
+349.0,PTZ11,CCCN1c2ccccc2Sc2cc(C=C3C(=O)c4ccccc4C3=O)ccc12,ICT
+350.0,bBTAE-Th,C(=C(c1nc2ccccc2s1)c1nc2ccccc2s1)c1cccs1,ICT
+351.0,bBTAE-PhDMA,CN(C)c1ccc(C=C(c2nc3ccccc3s2)c2nc3ccccc3s2)cc1,ICT
+353.0,bBTAE-Ph,C(=C(c1nc2ccccc2s1)c1nc2ccccc2s1)c1ccccc1,ICT
+354.0,bBTAE-PhM,Cc1ccc(C=C(c2nc3ccccc3s2)c2nc3ccccc3s2)cc1,ICT
+355.0,bBTAE-PhOM,COc1ccc(C=C(c2nc3ccccc3s2)c2nc3ccccc3s2)cc1,ICT
+356.0,bBTAE-NpOM,COc1ccc2cc(C=C(c3nc4ccccc4s3)c3nc4ccccc4s3)ccc2c1,ICT
+357.0,bBTAE-Pyr,C(=C(c1nc2ccccc2s1)c1nc2ccccc2s1)c1ccc2ccc3cccc4ccc1c2c34,ICT
+358.0,bBTAE-PTAB,CCCCN1c2ccccc2Sc2cc(C=C(c3nc4ccccc4s3)c3nc4ccccc4s3)ccc12,ICT
+359.0,bBTAE-BODIPYPh,Cc1cc(C)[n+]8c1=C(c2ccccc2)c7c(C)c(/C=C(c4nc3ccccc3s4)/c6nc5ccccc5s6)c(C)n7[B-]8(F)F,ICT
+1749.0,Py-2TPE,CC(C)(C)C1=CC2=C3C(C=CC4=C(C=C(C5=CC=C(C=C5)C(=C(C5=CC=CC=C5)C5=CC=CC=C5)C5=CC=CC=C5)C(C=C2)=C34)C2=CC=C(C=C2)C(=C(C2=CC=CC=C2)C2=CC=CC=C2)C2=CC=CC=C2)=C1,ESIPT
+1751.0,Py-TPA,COC1=CC=C(C=C1)N(C1=CC=C(OC)C=C1)C1=CC=C(C=C1)C1=C2C=CC3=CC(=CC4=C3C2=C(C=C4)C=C1)C(C)(C)C,ICT
+2001.0,DTPA-BT-H,C1(N(C2=CC=C(C3=CC=C(C4=CC=C(N(C5=CC=CC=C5)C6=CC=CC=C6)C=C4)C7=NSN=C37)C=C2)C8=CC=CC=C8)=CC=CC=C1,ESIPT

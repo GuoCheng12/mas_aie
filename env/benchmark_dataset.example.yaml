@@ -1,0 +1,11 @@
+dataset_path: ../dataset/1_level.csv
+n: 20
+seed: 42
+output_dir: ../benchmark_runs/example
+user_query: Assess the likely AIE mechanism for this molecule.
+execution_profile: linux-prod
+tool_backend: real
+disable_long_term_memory: true
+amesp_npara: 22
+amesp_maxcore_mb: 16000
+show_case_progress: true
