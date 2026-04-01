@@ -83,6 +83,8 @@ Important rules:
 - If action is `Microscopic`, keep it low-cost and bounded.
 - If action is `Microscopic`, the task must map to exactly one registry-backed Amesp action in that round.
 - Do not ask `Microscopic` to perform multiple sequential actions, multi-bundle analysis, or conditional workflows in one decision.
+- If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
+- When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia; contract to a different next step such as `Verifier`, a different bounded agent route, or a finalization-ready conclusion if the remaining gap is no longer shrinking.
 - If `rounds_remaining_including_current` is 1, do not plan any further follow-up round after the current one; return a finalization-ready decision with the unresolved gap stated explicitly.
 - Do not ask specialized agents to decide the global mechanism or the next system-level action.
 

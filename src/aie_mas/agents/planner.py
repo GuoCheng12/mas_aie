@@ -230,6 +230,49 @@ def _microscopic_structure_block_reason(payload: dict[str, Any]) -> str | None:
     return None
 
 
+def _latest_report_for_action(payload: dict[str, Any], action: str) -> dict[str, Any]:
+    report_keys = {
+        "macro": ("latest_macro_report",),
+        "microscopic": ("latest_microscopic_report",),
+        "verifier": ("verifier_report", "latest_verifier_report"),
+    }.get(action, ())
+    for key in report_keys:
+        report = payload.get(key)
+        if isinstance(report, dict):
+            return report
+    return {}
+
+
+def _report_local_uncertainty(report: dict[str, Any]) -> str:
+    return str(report.get("remaining_local_uncertainty") or "").strip()
+
+
+def _repeated_local_uncertainty_for_action(
+    payload: dict[str, Any],
+    action: str,
+) -> str | None:
+    capability_context = payload.get("recent_capability_context")
+    if not isinstance(capability_context, dict):
+        return None
+    repeated_uncertainties = capability_context.get("repeated_local_uncertainties")
+    if not isinstance(repeated_uncertainties, list):
+        return None
+    repeated_texts = [str(item).strip() for item in repeated_uncertainties if str(item).strip()]
+    if not repeated_texts:
+        return None
+    uncertainty = _report_local_uncertainty(_latest_report_for_action(payload, action))
+    if uncertainty and uncertainty in repeated_texts:
+        return uncertainty
+    return None
+
+
+def _truncate_local_uncertainty(text: str, limit: int = 220) -> str:
+    normalized = " ".join(text.split())
+    if len(normalized) <= limit:
+        return normalized
+    return f"{normalized[: limit - 3]}..."
+
+
 def _single_action_microscopic_task_instruction(
     *,
     capability_name: str,
@@ -1006,6 +1049,11 @@ class OpenAIPlannerBackend:
                 payload=payload,
                 main_gap=main_gap,
             )
+            decision = self._apply_repeated_local_uncertainty_gate(
+                decision=decision,
+                payload=payload,
+                main_gap=main_gap,
+            )
             decision.planned_agents = self._planned_agents_for_action(decision.action)
             if decision.action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
                 decision.agent_task_instructions = _normalize_agent_task_instructions(
@@ -1019,6 +1067,11 @@ class OpenAIPlannerBackend:
                 payload,
             )
             decision = self._apply_microscopic_structure_block_gate(
+                decision=decision,
+                payload=payload,
+                main_gap=main_gap,
+            )
+            decision = self._apply_repeated_local_uncertainty_gate(
                 decision=decision,
                 payload=payload,
                 main_gap=main_gap,
@@ -1219,6 +1272,146 @@ class OpenAIPlannerBackend:
             decision.decision_gate_status = "not_ready"
         decision.final_hypothesis_rationale = None
         return decision
+
+    def _apply_repeated_local_uncertainty_gate(
+        self,
+        *,
+        decision: PlannerDecision,
+        payload: dict[str, Any],
+        main_gap: str,
+    ) -> PlannerDecision:
+        repeated_uncertainty = _repeated_local_uncertainty_for_action(payload, decision.action)
+        if repeated_uncertainty is None or decision.action not in {"macro", "microscopic", "verifier"}:
+            return decision
+
+        action_label = decision.action
+        stagnation_note = (
+            f"Recent working memory repeats the same {action_label} local uncertainty, so repeating the same "
+            f"{action_label} route is unlikely to shrink the current gap: "
+            f"{_truncate_local_uncertainty(repeated_uncertainty)}"
+        )
+        decision.stagnation_detected = True
+        decision.stagnation_assessment = _append_unique_detail(decision.stagnation_assessment, stagnation_note)
+        decision.capability_assessment = _append_unique_detail(decision.capability_assessment, stagnation_note)
+        decision.contraction_reason = _append_unique_detail(decision.contraction_reason, stagnation_note)
+        decision.information_gain_assessment = _append_unique_detail(
+            decision.information_gain_assessment,
+            f"The same {action_label} local limitation has repeated across recent rounds, so additional "
+            f"{action_label} follow-up is unlikely to add material new information.",
+        )
+
+        existing_lessons = {
+            (lesson.agent_name, lesson.blocked_task_pattern, lesson.observed_limitation)
+            for lesson in decision.capability_lesson_candidates
+        }
+        lesson_key = (
+            action_label,
+            f"Repeated {action_label} follow-up after the same local uncertainty signal",
+            repeated_uncertainty,
+        )
+        if lesson_key not in existing_lessons:
+            recommended_contraction = (
+                "Escalate to verifier or finalize best-available once verifier supplementation is already sufficient, "
+                "instead of repeating the same bounded internal route."
+                if action_label in {"macro", "microscopic"}
+                else "Use the strongest available internal pairwise evidence or a different bounded internal closure task instead of retrying the same verifier route."
+            )
+            decision.capability_lesson_candidates.append(
+                CapabilityLessonEntry(
+                    agent_name=action_label,  # type: ignore[arg-type]
+                    blocked_task_pattern=lesson_key[1],
+                    observed_limitation=lesson_key[2],
+                    recommended_contraction=recommended_contraction,
+                )
+            )
+
+        if action_label in {"macro", "microscopic"}:
+            if decision.verifier_supplement_status != "sufficient":
+                redirected = self._require_high_confidence_verifier(
+                    decision=decision,
+                    main_gap=main_gap,
+                )
+                redirected.stagnation_detected = True
+                redirected.stagnation_assessment = _append_unique_detail(
+                    redirected.stagnation_assessment,
+                    stagnation_note,
+                )
+                redirected.capability_assessment = _append_unique_detail(
+                    redirected.capability_assessment,
+                    stagnation_note,
+                )
+                redirected.contraction_reason = _append_unique_detail(
+                    redirected.contraction_reason,
+                    stagnation_note,
+                )
+                return redirected
+
+            decision.action = "finalize"
+            decision.needs_verifier = False
+            decision.finalize = True
+            decision.task_instruction = None
+            decision.agent_task_instructions = {}  # type: ignore[assignment]
+            decision.planned_agents = []
+            decision.closure_justification_status = "blocked"
+            decision.closure_justification_evidence_source = "internal"
+            decision.closure_justification_basis = "existing_evidence"
+            decision.closure_justification_summary = (
+                decision.closure_justification_summary
+                or f"Repeated {action_label} local uncertainty indicates the current internal route no longer shrinks the unresolved gap: {main_gap}"
+            )
+            decision.finalization_mode = "best_available"
+            decision.decision_gate_status = "ready_to_finalize_best_available"
+            trailing_rationale = (decision.final_hypothesis_rationale or "").strip()
+            decision.final_hypothesis_rationale = (
+                f"Best-available closure keeps '{decision.current_hypothesis}' ahead of "
+                f"'{decision.runner_up_hypothesis or 'unknown'}', but the repeated {action_label} local limitation "
+                f"shows the remaining gap is not shrinking under the current route: {main_gap}"
+            )
+            if trailing_rationale:
+                decision.final_hypothesis_rationale += f" {trailing_rationale}"
+            return decision
+
+        if decision.pairwise_task_outcome in {"decisive", "inconclusive", "failed"} or decision.closure_justification_status in {
+            "collecting",
+            "blocked",
+            "sufficient",
+        }:
+            decision.action = "finalize"
+            decision.needs_verifier = False
+            decision.finalize = True
+            decision.task_instruction = None
+            decision.agent_task_instructions = {}  # type: ignore[assignment]
+            decision.planned_agents = []
+            decision.finalization_mode = "best_available"
+            decision.decision_gate_status = "ready_to_finalize_best_available"
+            trailing_rationale = (decision.final_hypothesis_rationale or "").strip()
+            decision.final_hypothesis_rationale = (
+                f"Best-available closure keeps '{decision.current_hypothesis}' ahead of "
+                f"'{decision.runner_up_hypothesis or 'unknown'}', but repeated verifier-local limitations prevented "
+                f"further external shrinkage of the unresolved gap: {main_gap}"
+            )
+            if trailing_rationale:
+                decision.final_hypothesis_rationale += f" {trailing_rationale}"
+            return decision
+
+        redirected = self._require_closure_justification_task(
+            decision=decision,
+            main_gap=main_gap,
+        )
+        redirected.stagnation_detected = True
+        redirected.stagnation_assessment = _append_unique_detail(
+            redirected.stagnation_assessment,
+            stagnation_note,
+        )
+        redirected.capability_assessment = _append_unique_detail(
+            redirected.capability_assessment,
+            stagnation_note,
+        )
+        redirected.contraction_reason = _append_unique_detail(
+            redirected.contraction_reason,
+            stagnation_note,
+        )
+        return redirected
 
     def _apply_round_budget_gate(
         self,

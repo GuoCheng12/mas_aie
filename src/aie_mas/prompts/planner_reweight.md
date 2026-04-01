@@ -69,6 +69,8 @@ Important rules:
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
 - If top2 changes after verifier reweighting, re-evaluate the current closure pair accordingly.
+- If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
+- When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia; contract to a different next step such as finalization, a different bounded internal task, or a verifier supplement only if it is genuinely new rather than a retry of the same failed route.
 - If `rounds_remaining_including_current` is 1, you must finalize in this round. Use `decisive` when the decisive conditions are met; otherwise use `best_available` and state the unresolved gap explicitly.
 - Do not ask specialized agents to decide the global mechanism.
 

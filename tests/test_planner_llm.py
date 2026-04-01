@@ -4,7 +4,12 @@ from pathlib import Path
 
 from aie_mas.agents.planner import PlannerAgent, PlannerInitialResponse
 from aie_mas.config import AieMasConfig
-from aie_mas.graph.state import AieMasState, SharedStructureContext, WorkingMemoryEntry
+from aie_mas.graph.state import (
+    AieMasState,
+    SharedStructureContext,
+    WorkingMemoryAgentEntry,
+    WorkingMemoryEntry,
+)
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
 from aie_mas.utils.prompts import PromptRepository
 
@@ -164,6 +169,39 @@ def _microscopic_structure_blocked_report(code: str = "embedding_failed") -> dic
         "status": "failed",
         "planner_readable_report": "microscopic planner readable report",
     }
+
+
+def _working_memory_entry_with_agent_uncertainty(
+    *,
+    round_id: int,
+    action_taken: str,
+    uncertainty: str,
+    current_hypothesis: str = "ICT",
+    confidence: float = 0.6,
+    main_gap: str = "Need one more ICT-vs-TICT discriminator.",
+) -> WorkingMemoryEntry:
+    agent_name = "verifier" if action_taken == "verifier" else "microscopic"
+    return WorkingMemoryEntry(
+        round_id=round_id,
+        current_hypothesis=current_hypothesis,
+        confidence=confidence,
+        action_taken=action_taken,
+        evidence_summary="Existing evidence summary.",
+        diagnosis_summary="Existing diagnosis summary.",
+        main_gap=main_gap,
+        conflict_status="none",
+        next_action=action_taken,
+        agent_reports=[
+            WorkingMemoryAgentEntry(
+                agent_name=agent_name,  # type: ignore[arg-type]
+                task_received=f"{agent_name} task",
+                task_understanding=f"{agent_name} understanding",
+                execution_plan=f"{agent_name} execution plan",
+                result_summary=f"{agent_name} result summary",
+                remaining_local_uncertainty=uncertainty,
+            )
+        ],
+    )
 
 
 def test_openai_planner_backend_invokes_chat_completions_with_configured_model(tmp_path: Path) -> None:
@@ -1214,3 +1252,179 @@ def test_planner_diagnosis_forces_finalize_on_last_allowed_round(tmp_path: Path)
     assert result["decision"].finalization_mode == "best_available"
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
     assert "Round-budget closure at round 4/4" in (result["decision"].final_hypothesis_rationale or "")
+
+
+def test_planner_diagnosis_redirects_repeated_microscopic_local_uncertainty_to_verifier(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.63},
+                {"name": "TICT", "confidence": 0.24},
+                {"name": "neutral aromatic", "confidence": 0.08},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "diagnosis": "One more microscopic parse-only pass would normally be the next step.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.63,
+              "needs_verifier": false,
+              "task_instruction": "Collect additional microscopic evidence for the current working hypothesis 'ICT'.",
+              "evidence_summary": "The same artifact-backed route remains available.",
+              "main_gap": "Need one more ICT-vs-TICT discriminator.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual uncertainty remains.",
+              "capability_assessment": "Microscopic can usually provide one bounded follow-up.",
+              "stagnation_assessment": "No stagnation yet."
+            }
+            """
+        ],
+    )
+    repeated_uncertainty = (
+        "Microscopic local uncertainty after this Amesp run: this bounded Amesp route "
+        "'artifact_parse_only' does not adjudicate the global mechanism. it only parses existing artifacts "
+        "and cannot create new microscopic evidence."
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            microscopic_reports=[
+                {
+                    "agent_name": "microscopic",
+                    "task_received": "microscopic task",
+                    "task_understanding": "microscopic understanding",
+                    "reasoning_summary": "microscopic reasoning summary",
+                    "execution_plan": "microscopic execution plan",
+                    "result_summary": "microscopic result summary",
+                    "remaining_local_uncertainty": repeated_uncertainty,
+                    "tool_calls": [],
+                    "raw_results": {},
+                    "structured_results": {},
+                    "status": "success",
+                    "planner_readable_report": "microscopic planner readable report",
+                }
+            ],
+            working_memory=[
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=1,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                ),
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=2,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                ),
+            ],
+        )
+    )
+
+    assert result["decision"].action == "verifier"
+    assert result["decision"].needs_verifier is True
+    assert result["decision"].stagnation_detected is True
+    assert "repeats the same microscopic local uncertainty" in (result["decision"].contraction_reason or "")
+    assert "high-confidence external verification" in (result["decision"].task_instruction or "")
+
+
+def test_planner_reweight_finalizes_when_repeated_microscopic_local_uncertainty_persists_after_verifier(
+    tmp_path: Path,
+) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ESIPT", "confidence": 0.66},
+                {"name": "TICT", "confidence": 0.24},
+                {"name": "ICT", "confidence": 0.05},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "neutral aromatic", "confidence": 0.02}
+              ],
+              "diagnosis": "Another microscopic parse-only pass might still clarify the remaining CT-like gap.",
+              "action": "microscopic",
+              "current_hypothesis": "ESIPT",
+              "confidence": 0.66,
+              "needs_verifier": false,
+              "task_instruction": "Collect additional microscopic evidence for the current working hypothesis 'ESIPT'.",
+              "evidence_summary": "Verifier already ran, but the remaining gap still looks internal.",
+              "main_gap": "Need the CT-localization character of the 90-degree brightened state.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual ESIPT-vs-TICT uncertainty remains.",
+              "capability_assessment": "Microscopic can parse existing artifact bundles.",
+              "stagnation_assessment": "No stagnation yet."
+            }
+            """
+        ],
+    )
+    repeated_uncertainty = (
+        "Microscopic local uncertainty after this Amesp run: this bounded Amesp route "
+        "'artifact_parse_only' does not adjudicate the global mechanism. it only parses existing artifacts "
+        "and cannot create new microscopic evidence."
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            current_hypothesis="ESIPT",
+            confidence=0.66,
+            runner_up_hypothesis="TICT",
+            runner_up_confidence=0.24,
+            decision_pair=["ESIPT", "TICT"],
+            hypothesis_pool=[
+                {"name": "ESIPT", "confidence": 0.66},
+                {"name": "TICT", "confidence": 0.24},
+                {"name": "ICT", "confidence": 0.05},
+                {"name": "unknown", "confidence": 0.03},
+                {"name": "neutral aromatic", "confidence": 0.02},
+            ],
+            pairwise_task_agent="microscopic",
+            pairwise_task_completed_for_pair="ESIPT__vs__TICT",
+            pairwise_task_outcome="inconclusive",
+            pairwise_task_rationale="Existing torsion and geometry evidence narrowed ESIPT versus TICT but did not close the gap.",
+            microscopic_reports=[
+                {
+                    "agent_name": "microscopic",
+                    "task_received": "microscopic task",
+                    "task_understanding": "microscopic understanding",
+                    "reasoning_summary": "microscopic reasoning summary",
+                    "execution_plan": "microscopic execution plan",
+                    "result_summary": "microscopic result summary",
+                    "remaining_local_uncertainty": repeated_uncertainty,
+                    "tool_calls": [],
+                    "raw_results": {},
+                    "structured_results": {},
+                    "status": "success",
+                    "planner_readable_report": "microscopic planner readable report",
+                }
+            ],
+            verifier_reports=[_verifier_report_for_pair("ESIPT__vs__TICT", "close_family")],
+            working_memory=[
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=4,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                    current_hypothesis="ESIPT",
+                    confidence=0.64,
+                    main_gap="Need the CT-localization character of the 90-degree brightened state.",
+                ),
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=5,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                    current_hypothesis="ESIPT",
+                    confidence=0.65,
+                    main_gap="Need the CT-localization character of the 90-degree brightened state.",
+                ),
+            ],
+        )
+    )
+
+    assert result["decision"].action == "finalize"
+    assert result["decision"].finalize is True
+    assert result["decision"].finalization_mode == "best_available"
+    assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+    assert result["decision"].closure_justification_status == "blocked"
+    assert "repeated microscopic local limitation" in (result["decision"].final_hypothesis_rationale or "")
