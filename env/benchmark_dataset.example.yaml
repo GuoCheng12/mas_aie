@@ -5,7 +5,8 @@ output_dir: ../benchmark_runs/example
 user_query: Assess the likely AIE mechanism for this molecule.
 execution_profile: linux-prod
 tool_backend: real
-disable_long_term_memory: true
+enable_long_term_memory: true
+memory_dir: ../var/data/benchmark_memory
 amesp_npara: 22
 amesp_maxcore_mb: 16000
 show_case_progress: true

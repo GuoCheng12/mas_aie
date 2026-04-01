@@ -213,7 +213,8 @@ def test_benchmark_cli_reads_config_file(tmp_path: Path, monkeypatch: pytest.Mon
         "output_dir: outputs\n"
         "execution_profile: linux-prod\n"
         "tool_backend: real\n"
-        "disable_long_term_memory: true\n"
+        "enable_long_term_memory: true\n"
+        "memory_dir: memory_store\n"
         "amesp_npara: 22\n"
         "amesp_maxcore_mb: 16000\n"
         "show_case_progress: false\n"
@@ -256,9 +257,75 @@ def test_benchmark_cli_reads_config_file(tmp_path: Path, monkeypatch: pytest.Mon
     assert captured_kwargs[0]["smiles"] == "C"
     assert captured_kwargs[0]["execution_profile"] == "linux-prod"
     assert captured_kwargs[0]["tool_backend"] == "real"
-    assert captured_kwargs[0]["enable_long_term_memory"] is False
+    assert captured_kwargs[0]["enable_long_term_memory"] is True
+    assert captured_kwargs[0]["memory_dir"] == (tmp_path / "memory_store").resolve()
     assert captured_kwargs[0]["amesp_npara"] == 22
     assert captured_kwargs[0]["amesp_maxcore_mb"] == 16000
     assert captured_kwargs[0]["show_progress"] is True
     assert (tmp_path / "outputs" / "metrics.json").exists()
     assert (tmp_path / "outputs" / "summary.md").exists()
+    assert "enable_long_term_memory: True" in result.output
+    assert f"memory_dir: {(tmp_path / 'memory_store').resolve()}" in result.output
+
+
+def test_benchmark_cli_allows_memory_dir_override_via_cli(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataset_path = tmp_path / "dataset.csv"
+    dataset_path.write_text(
+        "id,code,SMILES,mechanism_id\n"
+        "1,a,C,ICT\n",
+        encoding="utf-8",
+    )
+
+    captured_kwargs: list[dict[str, object]] = []
+
+    def _fake_runner(*, smiles: str, user_query: str, show_progress: bool, **kwargs) -> WorkflowRunArtifacts:
+        del user_query
+        captured_kwargs.append({"smiles": smiles, "show_progress": show_progress, **kwargs})
+        report_dir = tmp_path / "reports" / "case-1"
+        report_dir.mkdir(parents=True, exist_ok=True)
+        return WorkflowRunArtifacts(
+            state=AieMasState(
+                user_query="benchmark",
+                smiles=smiles,
+                current_hypothesis="ICT",
+                confidence=0.9,
+                finalize=True,
+            ),
+            report_paths={
+                "report_dir": report_dir,
+                "summary_path": report_dir / "summary.json",
+                "full_state_path": report_dir / "full_state.json",
+                "live_trace_path": report_dir / "live_trace.jsonl",
+                "live_status_path": report_dir / "live_status.md",
+            },
+            runtime_context={},
+        )
+
+    monkeypatch.setattr(benchmark_cli, "run_case_workflow_with_reporting", _fake_runner)
+    runner = CliRunner()
+    memory_dir = tmp_path / "shared_memory"
+    result = runner.invoke(
+        benchmark_cli.app,
+        [
+            "--dataset-path",
+            str(dataset_path),
+            "--n",
+            "1",
+            "--seed",
+            "7",
+            "--enable-long-term-memory",
+            "--memory-dir",
+            str(memory_dir),
+            "--hide-case-progress",
+            "--hide-workflow-progress",
+        ],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert captured_kwargs[0]["enable_long_term_memory"] is True
+    assert captured_kwargs[0]["memory_dir"] == memory_dir.resolve()
+    assert "enable_long_term_memory: True" in result.output
+    assert f"memory_dir: {memory_dir.resolve()}" in result.output

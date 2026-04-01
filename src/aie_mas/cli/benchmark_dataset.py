@@ -27,6 +27,8 @@ BENCHMARK_CONFIG_KEYS = {
     "output_dir",
     "user_query",
     "execution_profile",
+    "enable_long_term_memory",
+    "memory_dir",
     "show_case_progress",
     "show_workflow_progress",
 }
@@ -189,6 +191,16 @@ def main(
         "--execution-profile",
         help="Optional execution profile override. Otherwise use environment/default config.",
     ),
+    enable_long_term_memory: Optional[bool] = typer.Option(
+        None,
+        "--enable-long-term-memory/--disable-long-term-memory",
+        help="Enable or disable long-term memory for benchmark case runs.",
+    ),
+    memory_dir: Optional[Path] = typer.Option(
+        None,
+        "--memory-dir",
+        help="Directory for the long-term memory store. Reuse the same path across benchmark runs to keep prior memory.",
+    ),
     show_case_progress: Optional[bool] = typer.Option(
         None,
         "--show-case-progress/--hide-case-progress",
@@ -209,6 +221,8 @@ def main(
         "output_dir": output_dir,
         "user_query": user_query,
         "execution_profile": execution_profile,
+        "enable_long_term_memory": enable_long_term_memory,
+        "memory_dir": memory_dir,
         "show_case_progress": show_case_progress,
         "show_workflow_progress": show_workflow_progress,
     }
@@ -318,6 +332,8 @@ def main(
     if resolved_config_file is not None:
         typer.echo(f"config_file: {resolved_config_file}")
     typer.echo(f"dataset_path: {dataset_path}")
+    typer.echo(f"enable_long_term_memory: {runtime_kwargs.get('enable_long_term_memory', False)}")
+    typer.echo(f"memory_dir: {runtime_kwargs.get('memory_dir') or '-'}")
     typer.echo(f"dataset_rows: {metrics['dataset_row_count']}")
     typer.echo(f"sampled_rows: {metrics['sampled_row_count']}")
     typer.echo(f"evaluated_rows: {metrics['evaluated_row_count']}")
