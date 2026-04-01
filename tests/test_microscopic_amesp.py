@@ -78,6 +78,35 @@ Final Energy:      -55.7914717877
 Normal termination of Amesp!
 """
 
+S0_AOP_GEOMETRY_TEXT = """
+HOMO-LUMO gap:      0.4010000 AU    =      10.9116660 eV
+
+Mulliken charges:
+
+     1   O        -0.481000
+     2   H         0.312000
+     3   C         0.141000
+     4   N        -0.221000
+     5   C         0.249000
+Sum of Mulliken charges =      0.00000
+
+Dipole moment (field-independent basis, Debye):
+
+  X=     2.1400    Y=     0.1800    Z=     0.0000    Tot=     2.1476
+
+Final Geometry(angstroms):
+
+  5
+  O            0.00000000    0.00000000    0.00000000
+  H            0.98000000    0.00000000    0.00000000
+  C           -1.32000000    0.00000000    0.00000000
+  N            2.55000000    0.20000000    0.00000000
+  C            3.72000000    0.20000000    0.00000000
+
+Final Energy:      -210.1234567890
+Normal termination of Amesp!
+"""
+
 
 class _FakePositions:
     def __init__(self, rows):
@@ -188,6 +217,52 @@ def _fake_torsion_snapshot_bundle(*, smiles, prepared, max_total, target_angles,
     return snapshots
 
 
+def _fake_geometry_structure_preparer(request):
+    request.workdir.mkdir(parents=True, exist_ok=True)
+    atoms = _FakeAtoms(
+        symbols=["O", "H", "C", "N", "C"],
+        positions=[
+            [0.0, 0.0, 0.0],
+            [0.98, 0.0, 0.0],
+            [-1.32, 0.0, 0.0],
+            [2.55, 0.2, 0.0],
+            [3.72, 0.2, 0.0],
+        ],
+    )
+    xyz_path = request.workdir / "prepared_structure.xyz"
+    sdf_path = request.workdir / "prepared_structure.sdf"
+    summary_path = request.workdir / "structure_prep_summary.json"
+    xyz_path.write_text(
+        "5\nfake_geometry_structure\n"
+        "O 0.0 0.0 0.0\n"
+        "H 0.98 0.0 0.0\n"
+        "C -1.32 0.0 0.0\n"
+        "N 2.55 0.2 0.0\n"
+        "C 3.72 0.2 0.0\n",
+        encoding="utf-8",
+    )
+    sdf_path.write_text("fake geometry sdf\n", encoding="utf-8")
+    prepared = PreparedStructure(
+        input_smiles=request.smiles,
+        canonical_smiles=request.smiles,
+        charge=0,
+        multiplicity=1,
+        heavy_atom_count=4,
+        atom_count=5,
+        conformer_count=1,
+        selected_conformer_id=0,
+        force_field="MMFF94",
+        xyz_path=xyz_path,
+        sdf_path=sdf_path,
+        summary_path=summary_path,
+    )
+    summary_path.write_text(
+        json.dumps(prepared.model_dump(mode="json"), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    return atoms, prepared
+
+
 def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
     del env, capture_output, text
     workdir = Path(cwd)
@@ -196,6 +271,21 @@ def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
     label = Path(aip_name).stem
     if label.endswith("_s0"):
         aop_text = S0_AOP_TEXT
+    else:
+        aop_text = S1_AOP_TEXT
+    (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+    (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+    return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+
+def _fake_geometry_subprocess_success(cmd, cwd, env, capture_output, text):
+    del env, capture_output, text
+    workdir = Path(cwd)
+    aip_name = Path(cmd[1]).name
+    aop_name = Path(cmd[2]).name
+    label = Path(aip_name).stem
+    if label.endswith("_s0"):
+        aop_text = S0_AOP_GEOMETRY_TEXT
     else:
         aop_text = S1_AOP_TEXT
     (workdir / aop_name).write_text(aop_text, encoding="utf-8")
@@ -986,6 +1076,89 @@ def test_amesp_inspect_raw_artifact_bundle_reuses_baseline_bundle_artifacts(
     assert "vertical_excitation_energies" in inspect_result.route_summary["extractable_observables"]
     assert "dominant_transitions" in inspect_result.route_summary["extractable_observables"]
     assert inspect_result.missing_deliverables == []
+
+
+def test_amesp_extract_geometry_descriptors_from_bundle_reuses_baseline_bundle_artifacts(
+    tmp_path: Path,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_geometry_structure_preparer,
+        subprocess_runner=_fake_geometry_subprocess_success,
+    )
+
+    baseline_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate a baseline bundle for later geometry-descriptor extraction.",
+            requested_deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+            capability_route="baseline_bundle",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                optimize_ground_state=True,
+                state_window=[1, 2],
+                deliverables=["S0 optimized geometry", "vertical excited-state manifold"],
+                requested_route_summary="Run the default baseline bundle.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="OCC=N",
+        label="baseline_geometry_source",
+        workdir=tmp_path / "baseline_geometry_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    geometry_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Extract bounded intramolecular geometry descriptors from the reusable baseline bundle.",
+            requested_deliverables=[
+                "geometry-descriptor availability summary",
+                "bounded geometry descriptor records",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="extract_geometry_descriptors_from_bundle",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_02_baseline_bundle",
+                artifact_source_round=2,
+                artifact_scope="baseline_bundle",
+                descriptor_scope=["intramolecular_hbond_candidates", "local_planarity_proxy"],
+                deliverables=[
+                    "geometry-descriptor availability summary",
+                    "bounded geometry descriptor records",
+                ],
+                requested_route_summary="Inspect the reusable baseline bundle for bounded intramolecular geometry descriptors.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if parsing fails.",
+        ),
+        smiles="OCC=N",
+        label="baseline_geometry_extract",
+        workdir=tmp_path / "baseline_geometry_extract_workdir",
+        available_artifacts={**baseline_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert geometry_result.executed_capability == "extract_geometry_descriptors_from_bundle"
+    assert geometry_result.route == "artifact_parse_only"
+    assert geometry_result.performed_new_calculations is False
+    assert geometry_result.reused_existing_artifacts is True
+    assert geometry_result.route_summary["artifact_scope"] == "baseline_bundle"
+    assert geometry_result.route_summary["geometry_proxy_availability"] == "available"
+    assert "intramolecular_hbond_candidates" in geometry_result.route_summary["available_geometry_descriptors"]
+    assert len(geometry_result.parsed_snapshot_records) == 1
+    record = geometry_result.parsed_snapshot_records[0]
+    assert record["donor_atom_count"] == 1
+    assert record["acceptor_atom_count"] >= 2
+    assert record["best_intramolecular_hbond"] is not None
+    assert record["has_hbond_like_candidate"] is True
+    assert record["local_planarity_proxy"] is not None
+    assert geometry_result.missing_deliverables == []
 
 
 def test_amesp_partial_torsion_bundle_is_discoverable_for_raw_inspection(

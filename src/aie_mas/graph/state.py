@@ -44,6 +44,7 @@ MicroscopicCapabilityName = Literal[
     "run_torsion_snapshots",
     "parse_snapshot_outputs",
     "extract_ct_descriptors_from_bundle",
+    "extract_geometry_descriptors_from_bundle",
     "inspect_raw_artifact_bundle",
     "unsupported_excited_state_relaxation",
 ]

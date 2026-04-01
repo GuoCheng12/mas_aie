@@ -335,7 +335,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         return (
             "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
             "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, parse_snapshot_outputs, "
-            "extract_ct_descriptors_from_bundle, and inspect_raw_artifact_bundle. "
+            "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and inspect_raw_artifact_bundle. "
             "unsupported_excited_state_relaxation is a fail-fast unsupported capability and does not execute."
         )
 
@@ -397,9 +397,17 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         if registry_validation_errors:
             return "registry_validation_failed"
         missing_lower = [item.lower() for item in missing_deliverables]
-        if any("ct/localization proxy" in item or "dominant transition" in item for item in missing_lower):
+        if any(
+            "ct/localization proxy" in item
+            or "dominant transition" in item
+            or "intramolecular h-bond" in item
+            or "local planarity proxy" in item
+            for item in missing_lower
+        ):
             return "required_registry_observables_unavailable"
         if isinstance(route_summary, dict) and route_summary.get("ct_proxy_availability") == "not_available":
+            return "required_registry_observables_unavailable"
+        if isinstance(route_summary, dict) and route_summary.get("geometry_proxy_availability") == "not_available":
             return "required_registry_observables_unavailable"
         return None
 
@@ -435,6 +443,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         if executed_capability in {
             "parse_snapshot_outputs",
             "extract_ct_descriptors_from_bundle",
+            "extract_geometry_descriptors_from_bundle",
             "inspect_raw_artifact_bundle",
         }:
             parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []

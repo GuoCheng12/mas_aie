@@ -290,6 +290,20 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         unsupported_requests_note="Some requested CT descriptors may remain unavailable even when raw Amesp artifacts exist.",
         default_budget_behavior="Reuse only existing artifact bundles and return partial observables when raw-file coverage is insufficient.",
     ),
+    "extract_geometry_descriptors_from_bundle": AmespCapabilityDefinition(
+        name="extract_geometry_descriptors_from_bundle",
+        purpose="Inspect a reusable artifact bundle and extract bounded intramolecular geometry descriptors without launching new calculations.",
+        requires_new_calculation=False,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "descriptor_scope"],
+        supported_deliverables=[
+            "geometry-descriptor availability summary",
+            "bounded geometry descriptor records",
+            "artifact-backed geometry summary",
+        ],
+        unsupported_requests_note="Geometry extraction is limited to descriptors measurable from reusable optimized or prepared coordinates already present in the artifact bundle.",
+        default_budget_behavior="Reuse only existing artifact bundles and return partial observables when coordinate coverage is insufficient.",
+    ),
     "inspect_raw_artifact_bundle": AmespCapabilityDefinition(
         name="inspect_raw_artifact_bundle",
         purpose="Inspect a reusable artifact bundle and report which raw Amesp files and observable families are available.",
@@ -648,6 +662,46 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         ],
         unsupported_note="Unavailable CT descriptors must be reported explicitly rather than inferred from unsupported raw-file parsing.",
     ),
+    "extract_geometry_descriptors_from_bundle": AmespActionDefinition(
+        action_name="extract_geometry_descriptors_from_bundle",
+        action_kind="execution",
+        purpose="Extract bounded intramolecular geometry descriptors from an existing artifact bundle without launching new calculations.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "descriptor_scope",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for bundle-based geometry extraction.", default=False),
+            "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "descriptor_scope": _action_param("descriptor_scope", "text_list", "Requested geometry-descriptor families to inspect from available artifacts."),
+        },
+        defaults={
+            "perform_new_calculation": False,
+            "reuse_existing_artifacts_only": True,
+            "source_round_selector": "latest_available",
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "geometry-descriptor availability summary",
+            "bounded geometry descriptor records",
+            "artifact-backed geometry summary",
+        ],
+        unsupported_note="Unavailable geometry descriptors must be reported explicitly rather than inferred from unsupported chemistry-specific heuristics.",
+    ),
     "inspect_raw_artifact_bundle": AmespActionDefinition(
         action_name="inspect_raw_artifact_bundle",
         action_kind="execution",
@@ -749,7 +803,7 @@ def render_amesp_interface_catalog() -> str:
         "Current worker boundary rules:",
         "- Microscopic may execute only registry-backed actions listed above",
         "- If the Planner task depends on a manual-level Amesp feature not exposed by the worker registry, return unsupported",
-        "- Current parse_snapshot_outputs does not guarantee explicit CT descriptors or raw-file inspection semantics by itself; use the dedicated artifact-analysis actions when appropriate",
+        "- Current parse_snapshot_outputs does not guarantee explicit CT descriptors, geometry descriptors, or raw-file inspection semantics by itself; use the dedicated artifact-analysis actions when appropriate",
     ]
     return "\n".join(lines)
 
@@ -1074,6 +1128,11 @@ class AmespMicroscopicTool:
                 request=request,
                 available_artifacts=available_artifacts,
             )
+        if request.capability_name == "extract_geometry_descriptors_from_bundle":
+            return self._execute_extract_geometry_descriptors_from_bundle_route(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
         if request.capability_name == "inspect_raw_artifact_bundle":
             return self._execute_inspect_raw_artifact_bundle_route(
                 request=request,
@@ -1217,6 +1276,7 @@ class AmespMicroscopicTool:
         if request.capability_name in {
             "parse_snapshot_outputs",
             "extract_ct_descriptors_from_bundle",
+            "extract_geometry_descriptors_from_bundle",
             "inspect_raw_artifact_bundle",
         } and not resolved_request.artifact_bundle_id:
             bundle_items = self._collect_discovery_items(discovery_results, "list_artifact_bundles")
@@ -2144,6 +2204,129 @@ class AmespMicroscopicTool:
             route_summary=route_summary,
             raw_step_results={
                 "extract_ct_descriptors_from_bundle": {
+                    "artifact_scope": artifact_scope,
+                    "artifact_source_round": source_round,
+                    "descriptor_scope": descriptor_scope,
+                    "parsed_record_count": len(parsed_records),
+                }
+            },
+            generated_artifacts={
+                "prepared_xyz_path": str(primary_structure.xyz_path),
+                "prepared_sdf_path": str(primary_structure.sdf_path),
+                "prepared_summary_path": str(primary_structure.summary_path),
+                "source_round": source_round,
+                "artifact_bundle_id": request.artifact_bundle_id,
+                "artifact_bundle_kind": artifact_scope,
+                "parsed_snapshot_record_count": len(parsed_records),
+                "reused_snapshot_artifacts": artifact_records,
+            },
+        )
+
+    def _execute_extract_geometry_descriptors_from_bundle_route(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> AmespBaselineRunResult:
+        selected_artifacts, artifact_scope, source_round, artifact_records = (
+            self._resolve_artifact_bundle_records_for_analysis(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+        )
+
+        descriptor_scope = list(request.descriptor_scope) or [
+            "intramolecular_hbond_candidates",
+            "local_planarity_proxy",
+        ]
+        parsed_records: list[dict[str, Any]] = []
+        available_geometry_descriptors: set[str] = set()
+        primary_structure: PreparedStructure | None = None
+        geometry_source_families: set[str] = set()
+        source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
+
+        for artifact in artifact_records:
+            prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
+            geometry_payload = _geometry_payload_from_artifact_record(artifact, prepared)
+            geometry_source_families.add(str(geometry_payload["geometry_source"]))
+            geometry_record = _extract_intramolecular_geometry_record(
+                prepared=prepared,
+                symbols=geometry_payload["symbols"],
+                coordinates=geometry_payload["coordinates"],
+            )
+            available_geometry_descriptors.update(geometry_record["available_geometry_descriptors"])
+            parsed_records.append(
+                {
+                    "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
+                    "target_angle_deg": artifact.get("target_angle_deg"),
+                    "dihedral_atoms": artifact.get("dihedral_atoms"),
+                    "conformer_rank": artifact.get("conformer_rank"),
+                    "source_snapshot_status": artifact.get("snapshot_status") or "success",
+                    "geometry_source": geometry_payload["geometry_source"],
+                    "donor_atom_count": geometry_record["donor_atom_count"],
+                    "acceptor_atom_count": geometry_record["acceptor_atom_count"],
+                    "intramolecular_hbond_candidates": geometry_record["intramolecular_hbond_candidates"],
+                    "best_intramolecular_hbond": geometry_record["best_intramolecular_hbond"],
+                    "local_planarity_proxy": geometry_record["local_planarity_proxy"],
+                    "has_hbond_like_candidate": geometry_record["has_hbond_like_candidate"],
+                    "available_geometry_descriptors": geometry_record["available_geometry_descriptors"],
+                }
+            )
+            if primary_structure is None:
+                primary_structure = prepared
+
+        if primary_structure is None:
+            raise AmespExecutionError(
+                "parse_failed",
+                "Geometry-descriptor extraction could not load any reusable prepared structure from the selected bundle.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "extract_geometry_descriptors_from_bundle",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        missing_geometry_descriptors = []
+        for descriptor in descriptor_scope:
+            normalized = descriptor.strip().lower().replace("-", "_").replace(" ", "_")
+            if normalized in available_geometry_descriptors:
+                continue
+            missing_geometry_descriptors.append(descriptor)
+        missing_geometry_descriptors = list(dict.fromkeys(missing_geometry_descriptors))
+        missing_deliverables = [_humanize_descriptor_name(item) for item in missing_geometry_descriptors]
+        hbond_like_records = sum(1 for record in parsed_records if record.get("has_hbond_like_candidate"))
+        total_candidates = sum(
+            len(list(record.get("intramolecular_hbond_candidates") or []))
+            for record in parsed_records
+        )
+        route_summary = {
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "source_bundle_completion_status": source_bundle_completion_status,
+            "descriptor_scope": descriptor_scope,
+            "geometry_proxy_availability": "available" if available_geometry_descriptors else "not_available",
+            "available_geometry_descriptors": sorted(available_geometry_descriptors),
+            "missing_geometry_descriptors": missing_geometry_descriptors,
+            "geometry_source_families": sorted(geometry_source_families),
+            "records_with_hbond_like_candidate": hbond_like_records,
+            "intramolecular_hbond_candidate_count": total_candidates,
+            "artifact_reuse_note": "Inspected an existing artifact bundle for bounded intramolecular geometry descriptors without generating new Amesp inputs.",
+        }
+        return AmespBaselineRunResult(
+            route="artifact_parse_only",
+            executed_capability="extract_geometry_descriptors_from_bundle",
+            performed_new_calculations=False,
+            reused_existing_artifacts=True,
+            missing_deliverables=missing_deliverables,
+            structure=primary_structure,
+            s0=None,
+            s1=None,
+            parsed_snapshot_records=parsed_records,
+            route_records=parsed_records,
+            route_summary=route_summary,
+            raw_step_results={
+                "extract_geometry_descriptors_from_bundle": {
                     "artifact_scope": artifact_scope,
                     "artifact_source_round": source_round,
                     "descriptor_scope": descriptor_scope,
@@ -3346,6 +3529,325 @@ def _record_has_dominant_transitions(record: dict[str, Any]) -> bool:
     return bool(value and value != "not_available")
 
 
+_COVALENT_RADII_ANGSTROM: dict[str, float] = {
+    "H": 0.31,
+    "B": 0.85,
+    "C": 0.76,
+    "N": 0.71,
+    "O": 0.66,
+    "F": 0.57,
+    "P": 1.07,
+    "S": 1.05,
+    "Cl": 1.02,
+    "Br": 1.2,
+    "I": 1.39,
+}
+
+
+def _geometry_payload_from_artifact_record(
+    artifact_record: dict[str, Any],
+    prepared: PreparedStructure,
+) -> dict[str, Any]:
+    s0_aop_path_raw = artifact_record.get("s0_aop_path")
+    if s0_aop_path_raw:
+        aop_path = Path(str(s0_aop_path_raw))
+        if aop_path.exists():
+            s0_text = aop_path.read_text(encoding="utf-8", errors="replace")
+            symbols, coordinates = _parse_final_geometry(s0_text)
+            if symbols and coordinates:
+                return {
+                    "symbols": symbols,
+                    "coordinates": coordinates,
+                    "geometry_source": "s0_optimized_aop",
+                }
+    symbols, coordinates = _read_xyz_symbols_and_coordinates(prepared.xyz_path)
+    if symbols and coordinates:
+        return {
+            "symbols": symbols,
+            "coordinates": coordinates,
+            "geometry_source": "prepared_xyz",
+        }
+    raise AmespExecutionError(
+        "parse_failed",
+        "Reusable geometry-descriptor extraction could not load parseable coordinates from the selected artifact record.",
+        status="failed",
+    )
+
+
+def _extract_intramolecular_geometry_record(
+    *,
+    prepared: PreparedStructure,
+    symbols: Sequence[str],
+    coordinates: Sequence[Sequence[float]],
+) -> dict[str, Any]:
+    del prepared
+    adjacency = _infer_bond_adjacency(symbols, coordinates)
+    donor_indices = [
+        atom_index
+        for atom_index, symbol in enumerate(symbols)
+        if symbol == "O" and any(symbols[neighbor] == "H" for neighbor in adjacency.get(atom_index, set()))
+    ]
+    acceptor_indices = [
+        atom_index
+        for atom_index, symbol in enumerate(symbols)
+        if symbol in {"N", "O"}
+    ]
+
+    candidates: list[dict[str, Any]] = []
+    for donor_index in donor_indices:
+        hydrogen_neighbors = [neighbor for neighbor in adjacency.get(donor_index, set()) if symbols[neighbor] == "H"]
+        for hydrogen_index in hydrogen_neighbors:
+            for acceptor_index in acceptor_indices:
+                if acceptor_index in {donor_index, hydrogen_index}:
+                    continue
+                path_length = _shortest_path_length(adjacency, donor_index, acceptor_index)
+                if path_length is not None and path_length < 3:
+                    continue
+                donor_acceptor_distance = _distance(
+                    coordinates[donor_index],
+                    coordinates[acceptor_index],
+                )
+                hydrogen_acceptor_distance = _distance(
+                    coordinates[hydrogen_index],
+                    coordinates[acceptor_index],
+                )
+                dha_angle = _angle_degrees(
+                    coordinates[donor_index],
+                    coordinates[hydrogen_index],
+                    coordinates[acceptor_index],
+                )
+                local_planarity_rmsd = _local_fragment_planarity_rmsd(
+                    symbols=symbols,
+                    coordinates=coordinates,
+                    adjacency=adjacency,
+                    donor_index=donor_index,
+                    hydrogen_index=hydrogen_index,
+                    acceptor_index=acceptor_index,
+                )
+                hbond_like_geometry = (
+                    hydrogen_acceptor_distance <= 2.5
+                    and donor_acceptor_distance <= 3.2
+                    and dha_angle >= 110.0
+                )
+                candidates.append(
+                    {
+                        "donor_atom_index": donor_index,
+                        "hydrogen_atom_index": hydrogen_index,
+                        "acceptor_atom_index": acceptor_index,
+                        "topological_separation_bonds": path_length,
+                        "donor_acceptor_distance_angstrom": round(donor_acceptor_distance, 6),
+                        "hydrogen_acceptor_distance_angstrom": round(hydrogen_acceptor_distance, 6),
+                        "donor_hydrogen_acceptor_angle_deg": round(dha_angle, 6),
+                        "local_planarity_rmsd_angstrom": (
+                            round(local_planarity_rmsd, 6) if local_planarity_rmsd is not None else None
+                        ),
+                        "hbond_like_geometry": hbond_like_geometry,
+                    }
+                )
+
+    candidates.sort(
+        key=lambda item: (
+            0 if item["hbond_like_geometry"] else 1,
+            float(item["hydrogen_acceptor_distance_angstrom"]),
+            float(item["donor_acceptor_distance_angstrom"]),
+        )
+    )
+    best_candidate = candidates[0] if candidates else None
+    available_geometry_descriptors = [
+        "geometry_source",
+        "intramolecular_hbond_candidates",
+        "best_intramolecular_hbond",
+    ]
+    if best_candidate is not None and best_candidate.get("local_planarity_rmsd_angstrom") is not None:
+        available_geometry_descriptors.append("local_planarity_proxy")
+    return {
+        "donor_atom_count": len(donor_indices),
+        "acceptor_atom_count": len(acceptor_indices),
+        "intramolecular_hbond_candidates": candidates,
+        "best_intramolecular_hbond": best_candidate,
+        "local_planarity_proxy": (
+            best_candidate.get("local_planarity_rmsd_angstrom")
+            if isinstance(best_candidate, dict)
+            else None
+        ),
+        "has_hbond_like_candidate": bool(best_candidate and best_candidate.get("hbond_like_geometry")),
+        "available_geometry_descriptors": available_geometry_descriptors,
+    }
+
+
+def _infer_bond_adjacency(
+    symbols: Sequence[str],
+    coordinates: Sequence[Sequence[float]],
+) -> dict[int, set[int]]:
+    adjacency = {index: set() for index in range(len(symbols))}
+    for left_index in range(len(symbols)):
+        for right_index in range(left_index + 1, len(symbols)):
+            cutoff = _bond_cutoff_angstrom(symbols[left_index], symbols[right_index])
+            if cutoff is None:
+                continue
+            if _distance(coordinates[left_index], coordinates[right_index]) <= cutoff:
+                adjacency[left_index].add(right_index)
+                adjacency[right_index].add(left_index)
+    return adjacency
+
+
+def _bond_cutoff_angstrom(left_symbol: str, right_symbol: str) -> float | None:
+    left_radius = _COVALENT_RADII_ANGSTROM.get(left_symbol)
+    right_radius = _COVALENT_RADII_ANGSTROM.get(right_symbol)
+    if left_radius is None or right_radius is None:
+        return None
+    return 1.25 * (left_radius + right_radius) + 0.15
+
+
+def _shortest_path_length(
+    adjacency: dict[int, set[int]],
+    start_index: int,
+    end_index: int,
+) -> int | None:
+    if start_index == end_index:
+        return 0
+    frontier = [(start_index, 0)]
+    visited = {start_index}
+    while frontier:
+        current_index, depth = frontier.pop(0)
+        for neighbor in adjacency.get(current_index, set()):
+            if neighbor == end_index:
+                return depth + 1
+            if neighbor in visited:
+                continue
+            visited.add(neighbor)
+            frontier.append((neighbor, depth + 1))
+    return None
+
+
+def _distance(left: Sequence[float], right: Sequence[float]) -> float:
+    return math.sqrt(
+        (float(left[0]) - float(right[0])) ** 2
+        + (float(left[1]) - float(right[1])) ** 2
+        + (float(left[2]) - float(right[2])) ** 2
+    )
+
+
+def _angle_degrees(
+    left: Sequence[float],
+    vertex: Sequence[float],
+    right: Sequence[float],
+) -> float:
+    vector_a = [
+        float(left[0]) - float(vertex[0]),
+        float(left[1]) - float(vertex[1]),
+        float(left[2]) - float(vertex[2]),
+    ]
+    vector_b = [
+        float(right[0]) - float(vertex[0]),
+        float(right[1]) - float(vertex[1]),
+        float(right[2]) - float(vertex[2]),
+    ]
+    norm_a = math.sqrt(sum(component * component for component in vector_a))
+    norm_b = math.sqrt(sum(component * component for component in vector_b))
+    if norm_a == 0.0 or norm_b == 0.0:
+        return 0.0
+    cosine = sum(a * b for a, b in zip(vector_a, vector_b)) / (norm_a * norm_b)
+    cosine = max(-1.0, min(1.0, cosine))
+    return math.degrees(math.acos(cosine))
+
+
+def _local_fragment_planarity_rmsd(
+    *,
+    symbols: Sequence[str],
+    coordinates: Sequence[Sequence[float]],
+    adjacency: dict[int, set[int]],
+    donor_index: int,
+    hydrogen_index: int,
+    acceptor_index: int,
+) -> float | None:
+    donor_neighbor = _nearest_heavy_neighbor(
+        atom_index=donor_index,
+        excluded_indices={hydrogen_index, acceptor_index},
+        symbols=symbols,
+        coordinates=coordinates,
+        adjacency=adjacency,
+    )
+    acceptor_neighbor = _nearest_heavy_neighbor(
+        atom_index=acceptor_index,
+        excluded_indices={donor_index, hydrogen_index},
+        symbols=symbols,
+        coordinates=coordinates,
+        adjacency=adjacency,
+    )
+    fragment_indices: list[int] = []
+    for atom_index in (donor_neighbor, donor_index, acceptor_index, acceptor_neighbor):
+        if atom_index is None or atom_index in fragment_indices:
+            continue
+        fragment_indices.append(atom_index)
+    if len(fragment_indices) < 3:
+        return None
+    plane_points = [coordinates[index] for index in fragment_indices[:3]]
+    normal = _plane_normal(plane_points[0], plane_points[1], plane_points[2])
+    if normal is None:
+        return None
+    distances = [_point_to_plane_distance(coordinates[index], plane_points[0], normal) for index in fragment_indices]
+    return math.sqrt(sum(distance * distance for distance in distances) / len(distances))
+
+
+def _nearest_heavy_neighbor(
+    *,
+    atom_index: int,
+    excluded_indices: set[int],
+    symbols: Sequence[str],
+    coordinates: Sequence[Sequence[float]],
+    adjacency: dict[int, set[int]],
+) -> int | None:
+    best_index: int | None = None
+    best_distance: float | None = None
+    for neighbor in adjacency.get(atom_index, set()):
+        if neighbor in excluded_indices or symbols[neighbor] == "H":
+            continue
+        distance = _distance(coordinates[atom_index], coordinates[neighbor])
+        if best_distance is None or distance < best_distance:
+            best_index = neighbor
+            best_distance = distance
+    return best_index
+
+
+def _plane_normal(
+    left: Sequence[float],
+    middle: Sequence[float],
+    right: Sequence[float],
+) -> tuple[float, float, float] | None:
+    vector_a = (
+        float(middle[0]) - float(left[0]),
+        float(middle[1]) - float(left[1]),
+        float(middle[2]) - float(left[2]),
+    )
+    vector_b = (
+        float(right[0]) - float(left[0]),
+        float(right[1]) - float(left[1]),
+        float(right[2]) - float(left[2]),
+    )
+    normal = (
+        vector_a[1] * vector_b[2] - vector_a[2] * vector_b[1],
+        vector_a[2] * vector_b[0] - vector_a[0] * vector_b[2],
+        vector_a[0] * vector_b[1] - vector_a[1] * vector_b[0],
+    )
+    norm = math.sqrt(sum(component * component for component in normal))
+    if norm <= 1e-8:
+        return None
+    return (normal[0] / norm, normal[1] / norm, normal[2] / norm)
+
+
+def _point_to_plane_distance(
+    point: Sequence[float],
+    plane_point: Sequence[float],
+    plane_normal: Sequence[float],
+) -> float:
+    return abs(
+        (float(point[0]) - float(plane_point[0])) * float(plane_normal[0])
+        + (float(point[1]) - float(plane_point[1])) * float(plane_normal[1])
+        + (float(point[2]) - float(plane_point[2])) * float(plane_normal[2])
+    )
+
+
 def _compute_rmsd(
     reference_coordinates: Sequence[Sequence[float]],
     new_coordinates: Sequence[Sequence[float]],
@@ -3484,6 +3986,13 @@ def _extractable_observables_from_artifact(artifact_record: dict[str, Any]) -> l
                 "optimized_geometry",
             }
         )
+    if availability.get("prepared_xyz_path"):
+        observables.update(
+            {
+                "intramolecular_hbond_geometry",
+                "local_planarity_proxy",
+            }
+        )
     if availability.get("s1_aop_path"):
         observables.update(
             {
@@ -3524,6 +4033,9 @@ def _humanize_descriptor_name(name: str) -> str:
         "dominant_transitions": "dominant transitions",
         "ct_localization_proxy": "CT/localization proxy",
         "delta_dipole": "delta dipole",
+        "intramolecular_hbond_candidates": "intramolecular H-bond candidates",
+        "best_intramolecular_hbond": "best intramolecular H-bond",
+        "local_planarity_proxy": "local planarity proxy",
     }
     return mapping.get(normalized, name.replace("_", " "))
 
@@ -3677,6 +4189,7 @@ def _artifact_bundle_entry_from_generated_artifacts(
     parse_capabilities_supported = [
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
     ]
 
@@ -4019,21 +4532,29 @@ def _write_rdkit_xyz(mol: Any, xyz_path: Path, label: str) -> None:
     xyz_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _read_xyz_coordinates(xyz_path: Path) -> list[list[float]]:
+def _read_xyz_symbols_and_coordinates(xyz_path: Path) -> tuple[list[str], list[list[float]]]:
     if not xyz_path.exists():
-        return []
+        return ([], [])
     lines = xyz_path.read_text(encoding="utf-8", errors="replace").splitlines()
     if len(lines) < 3:
-        return []
+        return ([], [])
+    symbols: list[str] = []
     coordinates: list[list[float]] = []
     for line in lines[2:]:
         parts = line.split()
         if len(parts) < 4:
             continue
         try:
-            coordinates.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            xyz = [float(parts[1]), float(parts[2]), float(parts[3])]
         except ValueError:
-            return []
+            return ([], [])
+        symbols.append(parts[0])
+        coordinates.append(xyz)
+    return (symbols, coordinates)
+
+
+def _read_xyz_coordinates(xyz_path: Path) -> list[list[float]]:
+    _, coordinates = _read_xyz_symbols_and_coordinates(xyz_path)
     return coordinates
 
 

@@ -83,6 +83,7 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
     if capability_name in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
     }:
         return "artifact_parse_only"
@@ -318,6 +319,7 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_torsion_snapshots",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
         "unsupported_excited_state_relaxation",
     ]
@@ -340,6 +342,7 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_torsion_snapshots",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
         "unsupported_excited_state_relaxation",
     ]
@@ -696,6 +699,7 @@ def _structure_source_for_semantic_capability(
     if capability_name in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
     }:
         return None
@@ -1163,6 +1167,22 @@ def _semantic_contract_from_action_card(
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
+    elif execution_action == "extract_geometry_descriptors_from_bundle":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        for key in (
+            "perform_new_calculation",
+            "reuse_existing_artifacts_only",
+            "descriptor_scope",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
     elif execution_action == "inspect_raw_artifact_bundle":
         target_object_kind = "artifact_bundle"
         if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
@@ -1291,6 +1311,11 @@ def _closest_supported_actions_for_unsupported_parts(
     unsupported_parts: list[str],
 ) -> list[AmespCapabilityName]:
     lowered = " ".join(part.lower() for part in unsupported_parts)
+    if any(
+        token in lowered
+        for token in ("h-bond", "hbond", "distance", "angle", "planarity", "geometry descriptor")
+    ):
+        return ["extract_geometry_descriptors_from_bundle", "inspect_raw_artifact_bundle"]
     if any(token in lowered for token in ("raw artifact", "raw file", ".aop", ".mo", "stdout")):
         return ["inspect_raw_artifact_bundle"]
     if any(token in lowered for token in ("ct observable", "ct proxy", "charge transfer", "dominant transition")):
@@ -1459,6 +1484,7 @@ def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft)
     if contract.primary_capability in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
     }:
         return "artifact_bundles"
@@ -1621,6 +1647,7 @@ def compile_semantic_contract_to_tool_plan(
             if effective_capability in {
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
             }
             else None
@@ -1630,13 +1657,14 @@ def compile_semantic_contract_to_tool_plan(
             if effective_capability in {
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
             }
             else None
         ),
         descriptor_scope=(
             list(contract.constraints.descriptor_scope)
-            if effective_capability == "extract_ct_descriptors_from_bundle"
+            if effective_capability in {"extract_ct_descriptors_from_bundle", "extract_geometry_descriptors_from_bundle"}
             else []
         ),
         requested_observable_scope=(
@@ -1649,6 +1677,7 @@ def compile_semantic_contract_to_tool_plan(
             if effective_capability in {
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
             }
             else None
@@ -1659,6 +1688,7 @@ def compile_semantic_contract_to_tool_plan(
             in {
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
                 "list_artifact_bundles",
             }
@@ -1752,6 +1782,12 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
             "bounded CT descriptor records",
             "artifact-backed CT surrogate summary",
         ]
+    if capability_name == "extract_geometry_descriptors_from_bundle":
+        return [
+            "geometry-descriptor availability summary",
+            "bounded geometry descriptor records",
+            "artifact-backed geometry summary",
+        ]
     if capability_name == "inspect_raw_artifact_bundle":
         return [
             "raw artifact file inventory",
@@ -1800,6 +1836,13 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
             "artifact-backed CT surrogate summary",
             "artifact reuse note",
         ]
+    if capability_name == "extract_geometry_descriptors_from_bundle":
+        return [
+            "intramolecular H-bond candidate records",
+            "best-candidate geometry summary",
+            "local planarity proxy",
+            "artifact reuse note",
+        ]
     if capability_name == "inspect_raw_artifact_bundle":
         return [
             "raw artifact file inventory",
@@ -1821,6 +1864,8 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
         return "Reuse an existing artifact bundle and parse snapshot outputs without new calculations."
     if capability_name == "extract_ct_descriptors_from_bundle":
         return "Reuse an existing artifact bundle and extract bounded CT-descriptor surrogates without new calculations."
+    if capability_name == "extract_geometry_descriptors_from_bundle":
+        return "Reuse an existing artifact bundle and extract bounded intramolecular geometry descriptors without new calculations."
     if capability_name == "inspect_raw_artifact_bundle":
         return "Inspect an existing artifact bundle and report raw-file coverage plus extractable observables without new calculations."
     return "Use the unsupported excited-state-relaxation placeholder route."
@@ -1838,6 +1883,7 @@ def _default_optimize_ground_state_for_capability(capability_name: AmespCapabili
     return capability_name not in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
         "inspect_raw_artifact_bundle",
     }
 
@@ -2030,6 +2076,7 @@ def _insert_required_discovery_calls(
             in {
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
             }
             and not call.request.artifact_bundle_id
@@ -2145,7 +2192,11 @@ def _build_execution_steps(
         ]
     elif capability_name == "parse_snapshot_outputs":
         step_types = ["artifact_parse"]
-    elif capability_name in {"extract_ct_descriptors_from_bundle", "inspect_raw_artifact_bundle"}:
+    elif capability_name in {
+        "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }:
         step_types = ["artifact_parse"]
     else:
         step_types = ["structure_prep"]
@@ -2263,6 +2314,7 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
         "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
         "extract_ct_descriptors_from_bundle: inspect reusable artifacts for bounded CT-descriptor surrogates",
+        "extract_geometry_descriptors_from_bundle: inspect reusable artifacts for bounded intramolecular geometry descriptors",
         "inspect_raw_artifact_bundle: inspect reusable artifact bundles for raw-file coverage and extractable observables",
         f"runtime budget_profile default: {config.microscopic_budget_profile or 'balanced'}",
     ]
