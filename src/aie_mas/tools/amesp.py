@@ -262,6 +262,28 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         ],
         default_budget_behavior="Use configured torsion snapshot cap unless the request explicitly supplies a smaller count or angle set.",
     ),
+    "run_targeted_state_characterization": AmespCapabilityDefinition(
+        name="run_targeted_state_characterization",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted fixed-geometry state characterization.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=[
+            "artifact_source_round",
+            "artifact_scope",
+            "artifact_bundle_id",
+            "state_window",
+            "descriptor_scope",
+            "target_count",
+            "optimize_ground_state",
+        ],
+        supported_deliverables=[
+            "targeted state-characterization records",
+            "state-family overlap summary",
+            "bounded CT/state-character proxy summary",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
     "parse_snapshot_outputs": AmespCapabilityDefinition(
         name="parse_snapshot_outputs",
         purpose="Parse existing snapshot artifacts and return per-snapshot excited-state summaries without new calculations.",
@@ -580,6 +602,51 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "torsion sensitivity summary",
         ],
     ),
+    "run_targeted_state_characterization": AmespActionDefinition(
+        action_name="run_targeted_state_characterization",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry state characterization on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "descriptor_scope",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new targeted state-characterization calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before vertical excitation. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for targeted state characterization."),
+            "descriptor_scope": _action_param("descriptor_scope", "text_list", "Requested state-character descriptor families to extract from the bounded follow-up."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted state-characterization records",
+            "state-family overlap summary",
+            "bounded CT/state-character proxy summary",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
     "parse_snapshot_outputs": AmespActionDefinition(
         action_name="parse_snapshot_outputs",
         action_kind="execution",
@@ -853,6 +920,35 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             ensure_ascii=False,
             indent=2,
         ),
+        "targeted_state_characterization": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_state_characterization",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "descriptor_scope": [
+                        "dominant_transitions",
+                        "state_family_overlap",
+                        "ground_state_dipole",
+                        "mulliken_charges",
+                        "molecular_orbital_files",
+                    ],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry state characterization on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
     }
 
 
@@ -879,6 +975,17 @@ def render_reasoned_microscopic_examples() -> dict[str, str]:
             "</reasoning_summary>\n"
             "<action_decision_json>\n"
             f"{action_examples['torsion']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_state_characterization": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry state-character follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted state-characterization route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_state_characterization']}\n"
             "</action_decision_json>"
         ),
     }
@@ -1117,6 +1224,17 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
             )
+        if request.capability_name == "run_targeted_state_characterization":
+            return self._execute_run_targeted_state_characterization_route(
+                request=request,
+                label=label,
+                workdir=workdir,
+                available_artifacts=available_artifacts,
+                progress_callback=progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+            )
 
         if request.capability_name == "parse_snapshot_outputs":
             return self._execute_parse_snapshot_outputs_route(
@@ -1223,6 +1341,7 @@ class AmespMicroscopicTool:
         if not resolved_request.optimize_ground_state and request.capability_name in {
             "run_torsion_snapshots",
             "run_conformer_bundle",
+            "run_targeted_state_characterization",
         }:
             honored_constraints.append(
                 "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
@@ -1274,6 +1393,7 @@ class AmespMicroscopicTool:
             )
 
         if request.capability_name in {
+            "run_targeted_state_characterization",
             "parse_snapshot_outputs",
             "extract_ct_descriptors_from_bundle",
             "extract_geometry_descriptors_from_bundle",
@@ -1288,7 +1408,7 @@ class AmespMicroscopicTool:
                     status="failed",
                     structured_results={
                         "executed_capability": request.capability_name,
-                        "performed_new_calculations": False,
+                        "performed_new_calculations": request.perform_new_calculation,
                         "reused_existing_artifacts": True,
                     },
                 )
@@ -1952,6 +2072,168 @@ class AmespMicroscopicTool:
         primary_result.generated_artifacts["torsion_snapshot_count"] = len(route_records)
         primary_result.generated_artifacts["snapshot_artifacts"] = snapshot_artifacts
         primary_result.generated_artifacts["bundle_completion_status"] = "complete"
+        return primary_result
+
+    def _execute_run_targeted_state_characterization_route(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        label: str,
+        workdir: Path,
+        available_artifacts: dict[str, Any] | None,
+        progress_callback: Optional[Callable[[WorkflowProgressEvent], None]],
+        round_index: int,
+        case_id: Optional[str],
+        current_hypothesis: Optional[str],
+    ) -> AmespBaselineRunResult:
+        if not request.perform_new_calculation:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Targeted state characterization requires bounded new calculations on selected reusable geometries.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "run_targeted_state_characterization",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+        selected_artifacts, artifact_scope, source_round, artifact_records = (
+            self._resolve_artifact_bundle_records_for_analysis(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+        )
+        descriptor_scope = list(request.descriptor_scope) or [
+            "dominant_transitions",
+            "state_family_overlap",
+            "ground_state_dipole",
+            "mulliken_charges",
+            "molecular_orbital_files",
+        ]
+        source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
+        selected_records = _select_targeted_state_characterization_records(
+            artifact_scope=artifact_scope,
+            artifact_records=artifact_records,
+            target_count=request.target_count,
+        )
+        if not selected_records:
+            raise AmespExecutionError(
+                "precondition_missing",
+                "Targeted state characterization could not resolve any reusable geometry records from the selected artifact bundle.",
+                status="failed",
+                structured_results={
+                    "executed_capability": "run_targeted_state_characterization",
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": True,
+                },
+            )
+
+        route_records: list[dict[str, Any]] = []
+        characterization_artifacts: list[dict[str, Any]] = []
+        available_descriptors: set[str] = set()
+        first_state_virtual_sets: list[set[int]] = []
+        first_bright_virtual_sets: list[set[int]] = []
+        primary_result: AmespBaselineRunResult | None = None
+
+        for index, artifact in enumerate(selected_records, start=1):
+            prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
+            geometry_payload = _geometry_payload_from_artifact_record(artifact, prepared)
+            member_label = _artifact_record_label(artifact, fallback=f"member_{index:02d}")
+            member_result = self._run_single_low_cost_bundle(
+                atoms=_in_memory_atoms(
+                    symbols=geometry_payload["symbols"],
+                    coordinates=geometry_payload["coordinates"],
+                ),
+                prepared=prepared,
+                label=f"{label}_{member_label}_char",
+                workdir=workdir / "targeted_state_characterization" / member_label,
+                progress_callback=progress_callback,
+                round_index=round_index,
+                case_id=case_id,
+                current_hypothesis=current_hypothesis,
+                optimize_ground_state=request.optimize_ground_state,
+                route="targeted_state_characterization_follow_up",
+                state_window=request.state_window,
+                executed_capability="run_targeted_state_characterization",
+                performed_new_calculations=True,
+                reused_existing_artifacts=True,
+            )
+            characterization_record = _build_targeted_state_characterization_record(
+                artifact_record=artifact,
+                geometry_source=str(geometry_payload["geometry_source"]),
+                run_result=member_result,
+            )
+            route_records.append(characterization_record)
+            available_descriptors.update(characterization_record["available_state_character_descriptors"])
+            first_state_virtual_sets.append(set(characterization_record.get("first_state_virtual_orbitals") or []))
+            first_bright_virtual_sets.append(set(characterization_record.get("first_bright_state_virtual_orbitals") or []))
+            characterization_artifacts.append(
+                {
+                    "member_label": member_label,
+                    "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
+                    "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
+                    "s0_aop_path": member_result.generated_artifacts.get("s0_aop_path")
+                    or member_result.generated_artifacts.get("s0_singlepoint_aop_path"),
+                    "s1_aop_path": member_result.generated_artifacts.get("s1_aop_path"),
+                    "s0_stdout_path": member_result.generated_artifacts.get("s0_stdout_path")
+                    or member_result.generated_artifacts.get("s0_singlepoint_stdout_path"),
+                    "s1_stdout_path": member_result.generated_artifacts.get("s1_stdout_path"),
+                    "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path")
+                    or member_result.generated_artifacts.get("s0_singlepoint_mo_path"),
+                    "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                }
+            )
+            if primary_result is None or member_result.s0.final_energy_hartree < primary_result.s0.final_energy_hartree:
+                primary_result = member_result
+
+        assert primary_result is not None
+        missing_descriptors = []
+        for descriptor in descriptor_scope:
+            normalized = _normalize_descriptor_name(descriptor)
+            if normalized in available_descriptors:
+                continue
+            missing_descriptors.append(descriptor)
+        missing_descriptors = list(dict.fromkeys(missing_descriptors))
+        route_summary = {
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "source_bundle_completion_status": source_bundle_completion_status,
+            "descriptor_scope": descriptor_scope,
+            "selected_target_members": [
+                _artifact_record_label(record, fallback=f"member_{index:02d}")
+                for index, record in enumerate(selected_records, start=1)
+            ],
+            "selected_target_count": len(selected_records),
+            "state_characterization_availability": "proxy_only" if available_descriptors else "not_available",
+            "available_state_character_descriptors": sorted(available_descriptors),
+            "missing_state_character_descriptors": missing_descriptors,
+            "shared_first_state_virtual_orbitals": _intersect_int_sets(first_state_virtual_sets),
+            "shared_first_bright_state_virtual_orbitals": _intersect_int_sets(first_bright_virtual_sets),
+            "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry state characterization on that subset.",
+            "optimize_ground_state": bool(request.optimize_ground_state),
+            "state_window": list(request.state_window),
+        }
+        primary_result.route = "targeted_state_characterization_follow_up"
+        primary_result.executed_capability = "run_targeted_state_characterization"
+        primary_result.performed_new_calculations = True
+        primary_result.reused_existing_artifacts = True
+        primary_result.missing_deliverables = [_humanize_descriptor_name(item) for item in missing_descriptors]
+        primary_result.parsed_snapshot_records = route_records
+        primary_result.route_records = route_records
+        primary_result.route_summary = route_summary
+        primary_result.raw_step_results["run_targeted_state_characterization"] = {
+            "artifact_scope": artifact_scope,
+            "artifact_source_round": source_round,
+            "descriptor_scope": descriptor_scope,
+            "selected_target_count": len(selected_records),
+        }
+        primary_result.generated_artifacts["source_round"] = source_round
+        primary_result.generated_artifacts["artifact_bundle_id"] = request.artifact_bundle_id
+        primary_result.generated_artifacts["artifact_bundle_kind"] = artifact_scope
+        primary_result.generated_artifacts["selected_target_count"] = len(selected_records)
+        primary_result.generated_artifacts["selected_target_members"] = route_summary["selected_target_members"]
+        primary_result.generated_artifacts["characterization_artifacts"] = characterization_artifacts
+        primary_result.generated_artifacts["reused_snapshot_artifacts"] = selected_records
         return primary_result
 
     def _execute_parse_snapshot_outputs_route(
@@ -3287,6 +3569,30 @@ def _write_amesp_input(
     aip_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+class _InMemoryPositions:
+    def __init__(self, rows: Sequence[Sequence[float]]) -> None:
+        self._rows = [[float(value) for value in row] for row in rows]
+
+    def tolist(self) -> list[list[float]]:
+        return [list(row) for row in self._rows]
+
+
+class _InMemoryAtoms:
+    def __init__(self, *, symbols: Sequence[str], coordinates: Sequence[Sequence[float]]) -> None:
+        self._symbols = list(symbols)
+        self._coordinates = [[float(value) for value in row] for row in coordinates]
+
+    def get_chemical_symbols(self) -> list[str]:
+        return list(self._symbols)
+
+    def get_positions(self) -> _InMemoryPositions:
+        return _InMemoryPositions(self._coordinates)
+
+
+def _in_memory_atoms(*, symbols: Sequence[str], coordinates: Sequence[Sequence[float]]) -> _InMemoryAtoms:
+    return _InMemoryAtoms(symbols=symbols, coordinates=coordinates)
+
+
 def _write_xyz(
     xyz_path: Path,
     *,
@@ -4027,12 +4333,20 @@ def _ct_surrogate_observables_from_artifact(artifact_record: dict[str, Any]) -> 
     return sorted(surrogates)
 
 
+def _normalize_descriptor_name(name: str) -> str:
+    return name.strip().lower().replace("-", "_").replace(" ", "_")
+
+
 def _humanize_descriptor_name(name: str) -> str:
-    normalized = name.strip().lower().replace("-", "_").replace(" ", "_")
+    normalized = _normalize_descriptor_name(name)
     mapping = {
         "dominant_transitions": "dominant transitions",
         "ct_localization_proxy": "CT/localization proxy",
         "delta_dipole": "delta dipole",
+        "state_family_overlap": "state-family overlap",
+        "ground_state_dipole": "ground-state dipole",
+        "mulliken_charges": "Mulliken charges",
+        "molecular_orbital_files": "molecular-orbital files",
         "intramolecular_hbond_candidates": "intramolecular H-bond candidates",
         "best_intramolecular_hbond": "best intramolecular H-bond",
         "local_planarity_proxy": "local planarity proxy",
@@ -4082,6 +4396,216 @@ def _snapshot_artifact_record_from_generated_artifacts(
         "s0_mo_path": generated_artifacts.get("s0_mo_path") or generated_artifacts.get("s0_singlepoint_mo_path"),
         "s1_mo_path": generated_artifacts.get("s1_mo_path"),
     }
+
+
+def _artifact_record_label(
+    artifact_record: dict[str, Any],
+    *,
+    fallback: str,
+) -> str:
+    for key in ("snapshot_label", "member_label", "conformer_id"):
+        value = artifact_record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    conformer_rank = artifact_record.get("conformer_rank")
+    if conformer_rank is not None:
+        return f"conformer_{int(conformer_rank):02d}"
+    return fallback
+
+
+def _select_targeted_state_characterization_records(
+    *,
+    artifact_scope: str,
+    artifact_records: list[dict[str, Any]],
+    target_count: Optional[int],
+) -> list[dict[str, Any]]:
+    successful_records = [
+        item
+        for item in artifact_records
+        if str(item.get("snapshot_status") or "success").strip().lower() == "success"
+    ]
+    candidates = successful_records or list(artifact_records)
+    if not candidates:
+        return []
+    limit = max(1, min(int(target_count or 3), len(candidates)))
+    if artifact_scope == "baseline_bundle":
+        return candidates[:1]
+    if artifact_scope == "conformer_bundle":
+        ordered = sorted(
+            candidates,
+            key=lambda item: (
+                int(item.get("conformer_rank") or 9999),
+                _artifact_record_label(item, fallback="conformer"),
+            ),
+        )
+        return ordered[:limit]
+    if artifact_scope == "torsion_snapshots":
+        ordered = sorted(
+            candidates,
+            key=lambda item: (
+                abs(float(item.get("target_angle_deg") or 0.0)),
+                float(item.get("target_angle_deg") or 0.0),
+                _artifact_record_label(item, fallback="snapshot"),
+            ),
+        )
+        selected: list[dict[str, Any]] = []
+        if ordered:
+            selected.append(ordered[0])
+        remaining = [
+            item
+            for item in sorted(
+                candidates,
+                key=lambda item: (
+                    -abs(float(item.get("target_angle_deg") or 0.0)),
+                    float(item.get("target_angle_deg") or 0.0),
+                    _artifact_record_label(item, fallback="snapshot"),
+                ),
+            )
+            if item not in selected
+        ]
+        for item in remaining:
+            if len(selected) >= limit:
+                break
+            selected.append(item)
+        return selected
+    return candidates[:limit]
+
+
+def _top_transition_signature(transitions: Sequence[dict[str, Any]]) -> Optional[str]:
+    if not transitions:
+        return None
+    top = transitions[0]
+    occupied = top.get("occupied_orbital")
+    virtual = top.get("virtual_orbital")
+    if occupied is None or virtual is None:
+        return None
+    return f"{occupied}->{virtual}"
+
+
+def _state_character_rows(s1_result: AmespExcitedStateResult) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for state in s1_result.excited_states:
+        transitions = list(state.dominant_transitions or [])
+        occupied_orbitals = sorted(
+            {
+                int(item["occupied_orbital"])
+                for item in transitions
+                if item.get("occupied_orbital") is not None
+            }
+        )
+        virtual_orbitals = sorted(
+            {
+                int(item["virtual_orbital"])
+                for item in transitions
+                if item.get("virtual_orbital") is not None
+            }
+        )
+        rows.append(
+            {
+                "state_index": state.state_index,
+                "excitation_energy_ev": state.excitation_energy_ev,
+                "oscillator_strength": state.oscillator_strength,
+                "dominant_transition_signature": _top_transition_signature(transitions),
+                "occupied_orbitals": occupied_orbitals,
+                "virtual_orbitals": virtual_orbitals,
+                "dominant_transitions": transitions or "not_available",
+            }
+        )
+    return rows
+
+
+def _state_family_overlap_summary(
+    state_rows: Sequence[dict[str, Any]],
+    *,
+    first_bright_state_index: Optional[int],
+) -> dict[str, Any]:
+    if not state_rows:
+        return {"available": False}
+    first_state = state_rows[0]
+    bright_state = next(
+        (row for row in state_rows if row.get("state_index") == first_bright_state_index),
+        None,
+    )
+    if bright_state is None:
+        return {"available": False}
+    first_occ = set(int(item) for item in first_state.get("occupied_orbitals") or [])
+    first_virt = set(int(item) for item in first_state.get("virtual_orbitals") or [])
+    bright_occ = set(int(item) for item in bright_state.get("occupied_orbitals") or [])
+    bright_virt = set(int(item) for item in bright_state.get("virtual_orbitals") or [])
+    return {
+        "available": True,
+        "first_state_signature": first_state.get("dominant_transition_signature"),
+        "first_bright_state_signature": bright_state.get("dominant_transition_signature"),
+        "shared_occupied_orbitals": sorted(first_occ & bright_occ),
+        "shared_virtual_orbitals": sorted(first_virt & bright_virt),
+        "same_primary_virtual_orbital": bool(
+            (first_state.get("virtual_orbitals") or [])
+            and (bright_state.get("virtual_orbitals") or [])
+            and int((first_state.get("virtual_orbitals") or [])[0]) == int((bright_state.get("virtual_orbitals") or [])[0])
+        ),
+    }
+
+
+def _build_targeted_state_characterization_record(
+    *,
+    artifact_record: dict[str, Any],
+    geometry_source: str,
+    run_result: AmespBaselineRunResult,
+) -> dict[str, Any]:
+    manifold = _build_vertical_state_manifold_summary(run_result.s1)
+    state_rows = _state_character_rows(run_result.s1)
+    family_overlap = _state_family_overlap_summary(
+        state_rows,
+        first_bright_state_index=manifold.get("first_bright_state_index"),
+    )
+    available_descriptors = {"state_ordering"}
+    if any(row.get("dominant_transition_signature") for row in state_rows):
+        available_descriptors.add("dominant_transitions")
+    if family_overlap.get("available"):
+        available_descriptors.add("state_family_overlap")
+    if run_result.s0.dipole_debye is not None:
+        available_descriptors.add("ground_state_dipole")
+    if run_result.s0.mulliken_charges:
+        available_descriptors.add("mulliken_charges")
+    if run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path"):
+        available_descriptors.add("molecular_orbital_files")
+    first_state_virtual_orbitals = state_rows[0].get("virtual_orbitals") if state_rows else []
+    bright_state = next(
+        (row for row in state_rows if row.get("state_index") == manifold.get("first_bright_state_index")),
+        None,
+    )
+    return {
+        "snapshot_label": artifact_record.get("snapshot_label") or artifact_record.get("member_label"),
+        "target_angle_deg": artifact_record.get("target_angle_deg"),
+        "dihedral_atoms": artifact_record.get("dihedral_atoms"),
+        "conformer_rank": artifact_record.get("conformer_rank"),
+        "source_snapshot_status": artifact_record.get("snapshot_status") or "success",
+        "geometry_source": geometry_source,
+        "final_energy_hartree": run_result.s0.final_energy_hartree,
+        "ground_state_dipole_debye": (
+            run_result.s0.dipole_debye[3] if run_result.s0.dipole_debye is not None else None
+        ),
+        "mulliken_charge_count": len(run_result.s0.mulliken_charges),
+        "state_count": run_result.s1.state_count,
+        "state_ordering": manifold,
+        "state_character_rows": state_rows,
+        "state_family_overlap": family_overlap,
+        "first_state_virtual_orbitals": first_state_virtual_orbitals,
+        "first_bright_state_virtual_orbitals": (
+            list(bright_state.get("virtual_orbitals") or []) if bright_state is not None else []
+        ),
+        "available_state_character_descriptors": sorted(available_descriptors),
+        "molecular_orbital_files_available": bool(
+            run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path")
+        ),
+    }
+
+
+def _intersect_int_sets(values: Sequence[set[int]]) -> list[int]:
+    sets = [set(item) for item in values if item]
+    if not sets:
+        return []
+    return sorted(set.intersection(*sets))
 
 
 def _snapshot_artifact_record_from_partial_error(

@@ -33,6 +33,7 @@ MicroscopicCapabilityRoute = Literal[
     "conformer_bundle_follow_up",
     "torsion_snapshot_follow_up",
     "artifact_parse_only",
+    "targeted_state_characterization_follow_up",
     "excited_state_relaxation_follow_up",
 ]
 MicroscopicCapabilityName = Literal[
@@ -46,6 +47,7 @@ MicroscopicCapabilityName = Literal[
     "extract_ct_descriptors_from_bundle",
     "extract_geometry_descriptors_from_bundle",
     "inspect_raw_artifact_bundle",
+    "run_targeted_state_characterization",
     "unsupported_excited_state_relaxation",
 ]
 AmespCapabilityName = MicroscopicCapabilityName
@@ -374,6 +376,7 @@ class MicroscopicToolRequest(BaseModel):
     conformer_ids: list[str] = Field(default_factory=list)
     max_conformers: Optional[int] = None
     snapshot_count: Optional[int] = None
+    target_count: Optional[int] = None
     angle_offsets_deg: list[float] = Field(default_factory=list)
     state_window: list[int] = Field(default_factory=list)
     honor_exact_target: bool = True

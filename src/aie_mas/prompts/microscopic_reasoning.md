@@ -22,6 +22,7 @@ The human message contains a JSON object named `context_json`. Use these fields 
 - `action_registry`
 - `baseline_reasoned_action_example`
 - `torsion_reasoned_action_example`
+- `targeted_state_characterization_reasoned_action_example`
 - `available_structure_context`
 - `shared_structure_context`
 - `recent_rounds_context`
@@ -72,6 +73,7 @@ Unsupported examples:
 Decision examples:
 - Read `baseline_reasoned_action_example` in `context_json` for the required round-1 baseline pattern.
 - Read `torsion_reasoned_action_example` in `context_json` for a supported bounded torsion follow-up pattern.
+- Read `targeted_state_characterization_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry state-character follow-up pattern.
 
 Remember:
 - This is local operational task translation only.

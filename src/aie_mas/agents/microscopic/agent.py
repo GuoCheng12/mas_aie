@@ -104,8 +104,10 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "action_registry": render_amesp_action_registry(),
             "baseline_action_card_example": registry_examples["baseline"],
             "torsion_action_card_example": registry_examples["torsion"],
+            "targeted_state_characterization_action_card_example": registry_examples["targeted_state_characterization"],
             "baseline_reasoned_action_example": reasoned_examples["baseline"],
             "torsion_reasoned_action_example": reasoned_examples["torsion"],
+            "targeted_state_characterization_reasoned_action_example": reasoned_examples["targeted_state_characterization"],
             "capability_registry": render_amesp_capability_registry(),
             "recent_rounds_context": recent_rounds_context,
             "available_structure_context": self._available_structure_context(
@@ -334,7 +336,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
     def _capability_scope_text(self) -> str:
         return (
             "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
-            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, parse_snapshot_outputs, "
+            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, run_targeted_state_characterization, parse_snapshot_outputs, "
             "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and inspect_raw_artifact_bundle. "
             "unsupported_excited_state_relaxation is a fail-fast unsupported capability and does not execute."
         )
@@ -440,6 +442,13 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         route = structured_results.get("attempted_route") or "baseline_bundle"
         executed_capability = structured_results.get("executed_capability") or "run_baseline_bundle"
         route_summary = structured_results.get("route_summary") or {}
+        if executed_capability == "run_targeted_state_characterization":
+            parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []
+            return (
+                f"Amesp capability '{executed_capability}' reused one existing artifact bundle, ran bounded fixed-geometry "
+                f"follow-up calculations for {len(parsed_records)} selected target geometries, and returned state-characterization records. "
+                f"Route summary={route_summary}."
+            )
         if executed_capability in {
             "parse_snapshot_outputs",
             "extract_ct_descriptors_from_bundle",

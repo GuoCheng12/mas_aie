@@ -113,6 +113,7 @@ _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
     "run_baseline_bundle",
     "run_conformer_bundle",
     "run_torsion_snapshots",
+    "run_targeted_state_characterization",
     "parse_snapshot_outputs",
     "extract_ct_descriptors_from_bundle",
     "inspect_raw_artifact_bundle",
@@ -321,6 +322,14 @@ def _single_action_microscopic_task_instruction(
         return (
             f"Execute ONLY `extract_ct_descriptors_from_bundle`{bundle_note} using reusable artifacts only. "
             f"{gap_note} Return bounded CT-surrogate availability and any available local CT-related summary fields without launching new calculations."
+        )
+    if capability_name == "run_targeted_state_characterization":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `run_targeted_state_characterization`{bundle_note} as one bounded microscopic action. "
+            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry state characterization on that subset, and return raw state-character observables only."
         )
     if capability_name == "inspect_raw_artifact_bundle":
         bundle_note = (

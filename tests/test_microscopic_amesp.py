@@ -747,6 +747,124 @@ def test_amesp_torsion_capability_can_skip_ground_state_reoptimization(
     )
 
 
+def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounded_follow_up(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+        follow_up_max_torsion_snapshots_total=6,
+    )
+
+    torsion_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate torsion snapshots for later targeted state characterization.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2, 3],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate two torsion snapshots for targeted state characterization reuse.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="targeted_state_source",
+        workdir=tmp_path / "targeted_state_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+    targeted_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Reuse the torsion bundle and run bounded state characterization on representative geometries.",
+            requested_deliverables=[
+                "targeted state-characterization records",
+                "state-family overlap summary",
+                "bounded CT/state-character proxy summary",
+            ],
+            capability_route="targeted_state_characterization_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_targeted_state_characterization",
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_bundle_id="round_02_torsion_snapshots",
+                artifact_source_round=2,
+                artifact_scope="torsion_snapshots",
+                state_window=[1, 2, 3],
+                descriptor_scope=[
+                    "dominant_transitions",
+                    "state_family_overlap",
+                    "ground_state_dipole",
+                    "mulliken_charges",
+                    "molecular_orbital_files",
+                ],
+                target_count=2,
+                deliverables=[
+                    "targeted state-characterization records",
+                    "state-family overlap summary",
+                    "bounded CT/state-character proxy summary",
+                ],
+                requested_route_summary="Reuse the torsion bundle and rerun fixed-geometry state characterization on two representative geometries.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="targeted_state_follow_up",
+        workdir=tmp_path / "targeted_state_follow_up_workdir",
+        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert targeted_result.executed_capability == "run_targeted_state_characterization"
+    assert targeted_result.route == "targeted_state_characterization_follow_up"
+    assert targeted_result.performed_new_calculations is True
+    assert targeted_result.reused_existing_artifacts is True
+    assert targeted_result.honored_constraints[-1] == "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
+    assert len(targeted_result.route_records) == 2
+    assert len(targeted_result.parsed_snapshot_records) == 2
+    assert targeted_result.route_summary["artifact_scope"] == "torsion_snapshots"
+    assert targeted_result.route_summary["artifact_source_round"] == 2
+    assert targeted_result.route_summary["selected_target_count"] == 2
+    assert set(targeted_result.route_summary["selected_target_members"]) == {"torsion_01", "torsion_02"}
+    assert targeted_result.route_summary["state_characterization_availability"] == "proxy_only"
+    assert "state_family_overlap" in targeted_result.route_summary["available_state_character_descriptors"]
+    assert "dominant_transitions" in targeted_result.route_summary["available_state_character_descriptors"]
+    assert "ground_state_dipole" in targeted_result.route_summary["available_state_character_descriptors"]
+    assert targeted_result.route_summary["shared_first_state_virtual_orbitals"] == [5]
+    assert targeted_result.route_summary["shared_first_bright_state_virtual_orbitals"] == [5]
+    assert targeted_result.missing_deliverables == []
+    assert targeted_result.generated_artifacts["artifact_bundle_id"] == "round_02_torsion_snapshots"
+    assert targeted_result.generated_artifacts["artifact_bundle_kind"] == "torsion_snapshots"
+    assert targeted_result.generated_artifacts["selected_target_count"] == 2
+    assert len(targeted_result.generated_artifacts["characterization_artifacts"]) == 2
+    assert len(targeted_result.generated_artifacts["reused_snapshot_artifacts"]) == 2
+    assert "artifact_bundle_registry_entries" not in targeted_result.generated_artifacts
+
+    first_record = targeted_result.route_records[0]
+    assert first_record["state_family_overlap"]["available"] is True
+    assert "state_family_overlap" in first_record["available_state_character_descriptors"]
+    assert "ground_state_dipole" in first_record["available_state_character_descriptors"]
+    assert "mulliken_charges" in first_record["available_state_character_descriptors"]
+    assert "molecular_orbital_files" in first_record["available_state_character_descriptors"]
+    assert first_record["molecular_orbital_files_available"] is True
+
+
 def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calculations(
     tmp_path: Path, monkeypatch
 ) -> None:

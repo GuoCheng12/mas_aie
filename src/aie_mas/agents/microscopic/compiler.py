@@ -80,6 +80,8 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
         return "conformer_bundle_follow_up"
     if capability_name == "run_torsion_snapshots":
         return "torsion_snapshot_follow_up"
+    if capability_name == "run_targeted_state_characterization":
+        return "targeted_state_characterization_follow_up"
     if capability_name in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -99,6 +101,8 @@ def _capability_name_for_compatibility_route(
         return "run_conformer_bundle"
     if capability_route == "torsion_snapshot_follow_up":
         return "run_torsion_snapshots"
+    if capability_route == "targeted_state_characterization_follow_up":
+        return "run_targeted_state_characterization"
     if capability_route == "artifact_parse_only":
         return "parse_snapshot_outputs"
     if capability_route == "excited_state_relaxation_follow_up":
@@ -162,6 +166,7 @@ class MicroscopicReasoningPlanDraft(BaseModel):
             "run_baseline_bundle",
             "run_conformer_bundle",
             "run_torsion_snapshots",
+            "run_targeted_state_characterization",
             "parse_snapshot_outputs",
             "unsupported_excited_state_relaxation",
         }:
@@ -191,6 +196,7 @@ class MicroscopicToolRequestDraft(BaseModel):
     conformer_ids: list[str] = Field(default_factory=list)
     max_conformers: Optional[int] = None
     snapshot_count: Optional[int] = None
+    target_count: Optional[int] = None
     angle_offsets_deg: list[float] = Field(default_factory=list)
     state_window: list[int] = Field(default_factory=list)
     honor_exact_target: Optional[bool] = None
@@ -250,6 +256,7 @@ class MicroscopicSemanticConstraintsDraft(BaseModel):
     allow_fallback: Optional[bool] = None
     descriptor_scope: list[str] = Field(default_factory=list)
     requested_observable_scope: list[str] = Field(default_factory=list)
+    target_count: Optional[int] = None
 
 
 class MicroscopicSemanticSelectionDraft(BaseModel):
@@ -317,6 +324,7 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -340,6 +348,7 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -697,6 +706,7 @@ def _structure_source_for_semantic_capability(
     has_reusable_structure: bool,
 ) -> Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]]:
     if capability_name in {
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -1167,6 +1177,24 @@ def _semantic_contract_from_action_card(
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
+    elif execution_action == "run_targeted_state_characterization":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        for key in (
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "state_window",
+            "descriptor_scope",
+            "target_count",
+        ):
+            if key in params:
+                constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
     elif execution_action == "extract_geometry_descriptors_from_bundle":
         target_object_kind = "artifact_bundle"
         if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
@@ -1318,8 +1346,23 @@ def _closest_supported_actions_for_unsupported_parts(
         return ["extract_geometry_descriptors_from_bundle", "inspect_raw_artifact_bundle"]
     if any(token in lowered for token in ("raw artifact", "raw file", ".aop", ".mo", "stdout")):
         return ["inspect_raw_artifact_bundle"]
-    if any(token in lowered for token in ("ct observable", "ct proxy", "charge transfer", "dominant transition")):
-        return ["extract_ct_descriptors_from_bundle", "inspect_raw_artifact_bundle"]
+    if any(
+        token in lowered
+        for token in (
+            "ct observable",
+            "ct proxy",
+            "charge transfer",
+            "electron-hole",
+            "state character",
+            "dark state identity",
+            "dominant transition",
+        )
+    ):
+        return [
+            "run_targeted_state_characterization",
+            "extract_ct_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        ]
     return []
 
 
@@ -1482,6 +1525,7 @@ def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft)
     if contract.primary_capability == "run_conformer_bundle":
         return "conformers"
     if contract.primary_capability in {
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -1645,6 +1689,7 @@ def compile_semantic_contract_to_tool_plan(
         artifact_bundle_id=(
             contract.target.artifact_bundle_id
             if effective_capability in {
+                "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
                 "extract_geometry_descriptors_from_bundle",
@@ -1655,6 +1700,7 @@ def compile_semantic_contract_to_tool_plan(
         artifact_kind=(
             selection_policy.artifact_kind
             if effective_capability in {
+                "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
                 "extract_geometry_descriptors_from_bundle",
@@ -1664,7 +1710,12 @@ def compile_semantic_contract_to_tool_plan(
         ),
         descriptor_scope=(
             list(contract.constraints.descriptor_scope)
-            if effective_capability in {"extract_ct_descriptors_from_bundle", "extract_geometry_descriptors_from_bundle"}
+            if effective_capability
+            in {
+                "run_targeted_state_characterization",
+                "extract_ct_descriptors_from_bundle",
+                "extract_geometry_descriptors_from_bundle",
+            }
             else []
         ),
         requested_observable_scope=(
@@ -1675,6 +1726,7 @@ def compile_semantic_contract_to_tool_plan(
         artifact_source_round=(
             selection_policy.source_round_preference
             if effective_capability in {
+                "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
                 "extract_geometry_descriptors_from_bundle",
@@ -1686,6 +1738,7 @@ def compile_semantic_contract_to_tool_plan(
             selection_policy.source_round_preference
             if effective_capability
             in {
+                "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
                 "extract_geometry_descriptors_from_bundle",
@@ -1702,6 +1755,7 @@ def compile_semantic_contract_to_tool_plan(
         conformer_ids=list(contract.target.conformer_ids) if effective_capability == "run_conformer_bundle" else [],
         max_conformers=contract.constraints.max_conformers,
         snapshot_count=contract.constraints.snapshot_count if effective_capability in {"run_torsion_snapshots", "run_conformer_bundle"} else None,
+        target_count=contract.constraints.target_count if effective_capability == "run_targeted_state_characterization" else None,
         angle_offsets_deg=list(contract.constraints.angle_offsets_deg) if effective_capability == "run_torsion_snapshots" else [],
         state_window=list(contract.constraints.state_window),
         honor_exact_target=contract.constraints.honor_exact_target if contract.constraints.honor_exact_target is not None else True,
@@ -1770,6 +1824,12 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
         return ["conformer-sensitivity summary"]
     if capability_name == "run_torsion_snapshots":
         return ["torsion-sensitivity summary", "vertical excited-state manifold characterization"]
+    if capability_name == "run_targeted_state_characterization":
+        return [
+            "targeted state-characterization records",
+            "state-family overlap summary",
+            "bounded CT/state-character proxy summary",
+        ]
     if capability_name == "parse_snapshot_outputs":
         return [
             "per-snapshot excitation energies",
@@ -1822,6 +1882,14 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
             "snapshot vertical-state proxies",
             "torsion sensitivity summary",
         ]
+    if capability_name == "run_targeted_state_characterization":
+        return [
+            "selected target geometry labels",
+            "targeted state-characterization records",
+            "state-family overlap summary",
+            "bounded CT/state-character proxy summary",
+            "artifact reuse note",
+        ]
     if capability_name == "parse_snapshot_outputs":
         return [
             "per-snapshot excitation energies",
@@ -1860,6 +1928,8 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
         return "Use the bounded conformer-bundle follow-up route."
     if capability_name == "run_torsion_snapshots":
         return "Use the bounded torsion-snapshot follow-up route."
+    if capability_name == "run_targeted_state_characterization":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted state characterization on those geometries."
     if capability_name == "parse_snapshot_outputs":
         return "Reuse an existing artifact bundle and parse snapshot outputs without new calculations."
     if capability_name == "extract_ct_descriptors_from_bundle":
@@ -1881,6 +1951,7 @@ def _default_call_kind_for_capability(
 
 def _default_optimize_ground_state_for_capability(capability_name: AmespCapabilityName) -> bool:
     return capability_name not in {
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -1910,6 +1981,7 @@ def _normalize_tool_request_from_draft(
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
     } and not state_window:
@@ -1971,6 +2043,7 @@ def _normalize_tool_request_from_draft(
         conformer_ids=list(draft.conformer_ids),
         max_conformers=draft.max_conformers,
         snapshot_count=snapshot_count,
+        target_count=draft.target_count,
         angle_offsets_deg=list(draft.angle_offsets_deg),
         state_window=state_window,
         honor_exact_target=draft.honor_exact_target if draft.honor_exact_target is not None else True,
@@ -2074,6 +2147,7 @@ def _insert_required_discovery_calls(
             call.call_kind == "execution"
             and call.request.capability_name
             in {
+                "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
                 "extract_geometry_descriptors_from_bundle",
@@ -2092,7 +2166,7 @@ def _insert_required_discovery_calls(
                         source_round_preference=call.request.source_round_preference or selection_policy.source_round_preference,
                         perform_new_calculation=False,
                         reuse_existing_artifacts_only=True,
-                        requested_route_summary="Discover canonical artifact bundles before parse-only microscopic execution.",
+                        requested_route_summary="Discover canonical artifact bundles before artifact-backed microscopic execution.",
                     ),
                 )
             )
@@ -2187,6 +2261,12 @@ def _build_execution_steps(
     elif capability_name == "run_torsion_snapshots":
         step_types = [
             "torsion_snapshot_generation",
+            "s0_optimization" if optimize_ground_state else "s0_singlepoint",
+            "s1_vertical_excitation",
+        ]
+    elif capability_name == "run_targeted_state_characterization":
+        step_types = [
+            "artifact_parse",
             "s0_optimization" if optimize_ground_state else "s0_singlepoint",
             "s1_vertical_excitation",
         ]
@@ -2312,6 +2392,7 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
+        "run_targeted_state_characterization: bounded fixed-geometry state-character follow-up on a small representative subset of existing artifact geometries",
         "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
         "extract_ct_descriptors_from_bundle: inspect reusable artifacts for bounded CT-descriptor surrogates",
         "extract_geometry_descriptors_from_bundle: inspect reusable artifacts for bounded intramolecular geometry descriptors",
