@@ -3377,7 +3377,6 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
                 analysis_ope_lines=analysis_ope_lines,
-                ground_state_profile=ground_state_profile,
             )
         else:
             s0_result, s0_coordinates, s0_raw_results, s0_artifacts = self._run_ground_state_singlepoint(
