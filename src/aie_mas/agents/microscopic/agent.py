@@ -496,6 +496,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         unsupported_requests: list[str],
         task_mode: str,
         capability_route: MicroscopicCapabilityRoute,
+        executed_capability: str | None = None,
     ) -> str:
         limitation_bits = [
             f"this bounded Amesp route '{capability_route}' does not adjudicate the global mechanism",
@@ -508,9 +509,14 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "it also leaves unsupported local requests unresolved: " + "; ".join(unsupported_requests)
             )
         if task_mode == "targeted_follow_up":
-            limitation_bits.append(
-                "targeted follow-up remains bounded by current Amesp route availability and resource limits"
-            )
+            if executed_capability:
+                limitation_bits.append(
+                    f"targeted follow-up for microscopic capability '{executed_capability}' remains bounded by current Amesp route availability and resource limits"
+                )
+            else:
+                limitation_bits.append(
+                    "targeted follow-up remains bounded by current Amesp route availability and resource limits"
+                )
         return ". ".join(limitation_bits) + "."
 
     def _plan_steps_text(self, plan: MicroscopicExecutionPlan) -> str:

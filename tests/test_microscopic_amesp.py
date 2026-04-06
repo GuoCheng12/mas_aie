@@ -1029,9 +1029,11 @@ def test_amesp_targeted_localized_orbital_analysis_writes_lmo_and_returns_locali
     first_record = result.route_records[0]
     assert first_record["localized_orbital_analysis"]["localization_method"] == "pm"
     assert first_record["localized_orbital_analysis"]["localized_orbitals_available"] is True
-    aip_text = captured_inputs["run_targeted_localized_orbital_analysis_follow_up_torsion_01_char_s0sp"]
+    aip_text = captured_inputs["run_targeted_localized_orbital_analysis_follow_up_torsion_01_char_s0sp"].lower()
+    assert aip_text.startswith("! b3lyp sto-3g")
     assert "lmo pm" in aip_text
     assert "mofile on" in aip_text
+    assert "! atb force" not in aip_text
 
 
 def test_amesp_targeted_natural_orbital_analysis_writes_natorb_and_returns_natural_orbital_records(
@@ -1063,9 +1065,11 @@ def test_amesp_targeted_natural_orbital_analysis_writes_natorb_and_returns_natur
     first_record = result.route_records[0]
     assert first_record["natural_orbital_analysis"]["natural_orbital_kind"] == "no"
     assert first_record["natural_orbital_analysis"]["natural_orbitals_available"] is True
-    aip_text = captured_inputs["run_targeted_natural_orbital_analysis_follow_up_torsion_01_char_s0sp"]
+    aip_text = captured_inputs["run_targeted_natural_orbital_analysis_follow_up_torsion_01_char_s0sp"].lower()
+    assert aip_text.startswith("! b3lyp sto-3g")
     assert "natorb no" in aip_text
     assert "mofile on" in aip_text
+    assert "! atb force" not in aip_text
 
 
 def test_amesp_targeted_density_population_analysis_writes_out2_and_returns_density_population_records(

@@ -239,6 +239,7 @@ class MicroscopicExecutorMixin:
                 plan.unsupported_requests,
                 task_spec.mode,
                 plan.capability_route,
+                plan.microscopic_tool_request.capability_name,
             ),
         }
         draft = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
@@ -481,4 +482,3 @@ class MicroscopicExecutorMixin:
             status=status,  # type: ignore[arg-type]
             planner_readable_report=rendered["planner_readable_report"],
         )
-

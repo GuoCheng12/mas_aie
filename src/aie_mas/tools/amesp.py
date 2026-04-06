@@ -2723,6 +2723,7 @@ class AmespMicroscopicTool:
                 performed_new_calculations=True,
                 reused_existing_artifacts=True,
                 analysis_ope_lines=profile["analysis_ope_lines"],
+                ground_state_profile=profile.get("ground_state_profile"),
                 excitation_profile=profile.get("excitation_profile"),
             )
             characterization_record = _build_targeted_property_record(
@@ -3352,6 +3353,7 @@ class AmespMicroscopicTool:
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
         analysis_ope_lines: Sequence[str] | None = None,
+        ground_state_profile: dict[str, Any] | None = None,
         excitation_profile: dict[str, Any] | None = None,
     ) -> AmespBaselineRunResult:
         generated_artifacts: dict[str, Any] = {
@@ -3375,6 +3377,7 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
                 analysis_ope_lines=analysis_ope_lines,
+                ground_state_profile=ground_state_profile,
             )
         else:
             s0_result, s0_coordinates, s0_raw_results, s0_artifacts = self._run_ground_state_singlepoint(
@@ -3547,14 +3550,21 @@ class AmespMicroscopicTool:
         case_id: Optional[str],
         current_hypothesis: Optional[str],
         analysis_ope_lines: Sequence[str] | None = None,
+        ground_state_profile: dict[str, Any] | None = None,
     ) -> tuple[AmespGroundStateResult, list[list[float]], dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
         generated_artifacts: dict[str, Any] = {}
+        method_profile = dict(ground_state_profile or {})
+        method_mode = str(method_profile.get("mode") or "atb_singlepoint").strip()
+        if method_mode == "dft_singlepoint":
+            keywords = ["b3lyp", "sto-3g"]
+        else:
+            keywords = ["atb", "force"]
         s0_outcome, s0_text = self._run_step(
             step_id="s0_singlepoint",
             label=f"{label}_s0sp",
             workdir=workdir,
-            keywords=["atb", "force"],
+            keywords=keywords,
             block_lines=_build_ground_state_singlepoint_block_lines(analysis_ope_lines=analysis_ope_lines),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
@@ -5028,6 +5038,7 @@ def _targeted_property_profile_for_capability(
             "availability_key": "localized_orbital_availability",
             "available_key": "available_localized_orbital_observables",
             "missing_key": "missing_localized_orbital_observables",
+            "ground_state_profile": {"mode": "dft_singlepoint", "method_label": "sp-b3lyp"},
             "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
         }
     if capability_name == "run_targeted_natural_orbital_analysis":
@@ -5037,6 +5048,7 @@ def _targeted_property_profile_for_capability(
             "availability_key": "natural_orbital_availability",
             "available_key": "available_natural_orbital_observables",
             "missing_key": "missing_natural_orbital_observables",
+            "ground_state_profile": {"mode": "dft_singlepoint", "method_label": "sp-b3lyp"},
             "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
         }
     if capability_name == "run_targeted_density_population_analysis":
@@ -5088,6 +5100,7 @@ def _targeted_property_profile_for_capability(
         "availability_key": "state_characterization_availability",
         "available_key": "available_state_character_descriptors",
         "missing_key": "missing_state_character_descriptors",
+        "ground_state_profile": {"mode": "atb_singlepoint", "method_label": "sp-atb"},
         "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
     }
 

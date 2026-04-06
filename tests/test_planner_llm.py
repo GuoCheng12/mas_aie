@@ -1502,3 +1502,111 @@ def test_planner_reweight_finalizes_when_repeated_microscopic_local_uncertainty_
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
     assert result["decision"].closure_justification_status == "blocked"
     assert "repeated microscopic local limitation" in (result["decision"].final_hypothesis_rationale or "")
+
+
+def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_capability(
+    tmp_path: Path,
+) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.46},
+                {"name": "neutral aromatic", "confidence": 0.27},
+                {"name": "unknown", "confidence": 0.14},
+                {"name": "TICT", "confidence": 0.11},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "diagnosis": "The localized-orbital route failed; switch to a different microscopic observable family.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.46,
+              "needs_verifier": false,
+              "task_instruction": "Microscopic (single registry-backed action): run `run_targeted_natural_orbital_analysis` using artifact_bundle_id='round_01_baseline_bundle'.",
+              "agent_task_instructions": {
+                "microscopic": "Run exactly one Amesp action: `run_targeted_natural_orbital_analysis` using artifact_bundle_id='round_01_baseline_bundle'."
+              },
+              "evidence_summary": "The latest localized-orbital action failed because the backend rejected the lmo keyword.",
+              "main_gap": "Need a molecule-specific ICT-vs-LE localization discriminator.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Still missing molecule-specific CT-localization observables.",
+              "capability_assessment": "Localized-orbital analysis is blocked, but natural-orbital and density routes remain available.",
+              "stagnation_assessment": "The failing localized-orbital route should not be repeated.",
+              "contraction_reason": "Pivot to run_targeted_natural_orbital_analysis instead of repeating the failing localized-orbital path.",
+              "verifier_supplement_status": "sufficient",
+              "verifier_information_gain": "high",
+              "verifier_evidence_relation": "mixed",
+              "verifier_supplement_summary": "Close-family verifier evidence remains sufficient for ICT vs neutral aromatic.",
+              "closure_justification_status": "blocked",
+              "closure_justification_evidence_source": "internal",
+              "closure_justification_basis": "existing_evidence",
+              "closure_justification_summary": "Need one more internal molecule-specific discriminator after the localized-orbital route failed.",
+              "pairwise_task_agent": "microscopic",
+              "pairwise_task_completed_for_pair": "ICT__vs__neutral aromatic",
+              "pairwise_task_outcome": "not_run",
+              "pairwise_task_rationale": "Switch to a different microscopic capability rather than repeating the same failing one.",
+              "finalization_mode": "best_available"
+            }
+            """
+        ],
+    )
+    repeated_uncertainty = (
+        "Microscopic local uncertainty after this Amesp run: this bounded Amesp route "
+        "'targeted_property_follow_up' does not adjudicate the global mechanism. it does not execute full-DFT "
+        "or heavy excited-state optimization. it also leaves unsupported local requests unresolved: excited-state "
+        "relaxation; relaxed scan; solvent response. targeted follow-up remains bounded by current Amesp route "
+        "availability and resource limits."
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            current_hypothesis="ICT",
+            confidence=0.46,
+            runner_up_hypothesis="neutral aromatic",
+            runner_up_confidence=0.27,
+            decision_pair=["ICT", "neutral aromatic"],
+            microscopic_reports=[
+                {
+                    "agent_name": "microscopic",
+                    "task_received": "Run localized orbital analysis.",
+                    "task_understanding": "localized orbital analysis",
+                    "reasoning_summary": "localized orbital reasoning summary",
+                    "execution_plan": "localized orbital execution plan",
+                    "result_summary": "localized orbital result summary",
+                    "remaining_local_uncertainty": repeated_uncertainty,
+                    "tool_calls": [],
+                    "raw_results": {},
+                    "structured_results": {
+                        "executed_capability": "run_targeted_localized_orbital_analysis",
+                    },
+                    "status": "failed",
+                    "planner_readable_report": "microscopic planner readable report",
+                }
+            ],
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__neutral aromatic", "close_family")],
+            working_memory=[
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=4,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                    current_hypothesis="ICT",
+                    confidence=0.47,
+                    main_gap="Need a molecule-specific ICT-vs-LE localization discriminator.",
+                ),
+                _working_memory_entry_with_agent_uncertainty(
+                    round_id=5,
+                    action_taken="microscopic",
+                    uncertainty=repeated_uncertainty,
+                    current_hypothesis="ICT",
+                    confidence=0.48,
+                    main_gap="Need a molecule-specific ICT-vs-LE localization discriminator.",
+                ),
+            ],
+        )
+    )
+
+    assert result["decision"].action == "microscopic"
+    assert result["decision"].finalize is False
+    assert "run_targeted_natural_orbital_analysis" in (result["decision"].task_instruction or "")

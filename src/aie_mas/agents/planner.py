@@ -254,6 +254,44 @@ def _report_local_uncertainty(report: dict[str, Any]) -> str:
     return str(report.get("remaining_local_uncertainty") or "").strip()
 
 
+def _microscopic_capability_from_report(report: dict[str, Any]) -> str | None:
+    if not isinstance(report, dict):
+        return None
+    structured = _structured_results_from_report(report)
+    for key in ("executed_capability", "requested_capability"):
+        value = str(structured.get(key) or "").strip()
+        if value in _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES:
+            return value
+    raw = _raw_results_from_report(report)
+    execution_plan = raw.get("execution_plan")
+    if isinstance(execution_plan, dict):
+        request = execution_plan.get("microscopic_tool_request")
+        if isinstance(request, dict):
+            value = str(request.get("capability_name") or "").strip()
+            if value in _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES:
+                return value
+    return None
+
+
+def _planned_microscopic_capability(decision: Any) -> str | None:
+    if getattr(decision, "action", None) != "microscopic":
+        return None
+    candidate_texts: list[str] = []
+    agent_task_instructions = getattr(decision, "agent_task_instructions", {}) or {}
+    if isinstance(agent_task_instructions, dict):
+        microscopic_instruction = agent_task_instructions.get("microscopic")
+        if isinstance(microscopic_instruction, str) and microscopic_instruction.strip():
+            candidate_texts.append(microscopic_instruction)
+    task_instruction = getattr(decision, "task_instruction", None)
+    if isinstance(task_instruction, str) and task_instruction.strip():
+        candidate_texts.append(task_instruction)
+    for text in candidate_texts:
+        mentioned = _mentioned_microscopic_capabilities(text)
+        if mentioned:
+            return mentioned[0]
+    return None
+
+
 def _repeated_local_uncertainty_for_action(
     payload: dict[str, Any],
     action: str,
@@ -1346,6 +1384,12 @@ class OpenAIPlannerBackend:
         repeated_uncertainty = _repeated_local_uncertainty_for_action(payload, decision.action)
         if repeated_uncertainty is None or decision.action not in {"macro", "microscopic", "verifier"}:
             return decision
+
+        if decision.action == "microscopic":
+            latest_capability = _microscopic_capability_from_report(_latest_report_for_action(payload, "microscopic"))
+            next_capability = _planned_microscopic_capability(decision)
+            if latest_capability and next_capability and latest_capability != next_capability:
+                return decision
 
         action_label = decision.action
         stagnation_note = (
