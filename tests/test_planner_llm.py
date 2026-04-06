@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aie_mas.agents.planner import PlannerAgent, PlannerInitialResponse
+from aie_mas.agents.planner import (
+    PlannerAgent,
+    PlannerInitialResponse,
+    _mentioned_microscopic_capabilities,
+    _single_action_microscopic_task_instruction,
+)
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AieMasState,
@@ -118,6 +123,75 @@ def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review"
         "status": "success",
         "planner_readable_report": "verifier planner readable report",
     }
+
+
+def test_mentioned_microscopic_capabilities_includes_new_targeted_interfaces() -> None:
+    instruction = (
+        "First try run_targeted_charge_analysis on the current torsion bundle, then if needed "
+        "run_targeted_density_population_analysis on the same bundle, followed by "
+        "run_targeted_transition_dipole_analysis and run_ris_state_characterization."
+    )
+
+    assert _mentioned_microscopic_capabilities(instruction) == [
+        "run_targeted_charge_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
+    ]
+
+
+def test_single_action_microscopic_task_instruction_for_new_targeted_interface_is_neutral() -> None:
+    instruction = _single_action_microscopic_task_instruction(
+        capability_name="run_targeted_localized_orbital_analysis",
+        current_hypothesis="ICT",
+        main_gap="Need one more LE-vs-CT discriminator.",
+        original_task_instruction=(
+            "Use run_targeted_localized_orbital_analysis for bundle_id=`round_05_torsion_snapshots` "
+            "and return localized-orbital observables."
+        ),
+    )
+
+    assert instruction.startswith(
+        "Execute ONLY `run_targeted_localized_orbital_analysis` for bundle_id=`round_05_torsion_snapshots`"
+    )
+    assert "localized-orbital observables only" in instruction
+    assert "ESIPT" not in instruction
+    assert "TICT" not in instruction
+
+
+def test_single_action_microscopic_task_instruction_for_phase2_targeted_interfaces_is_neutral() -> None:
+    transition_instruction = _single_action_microscopic_task_instruction(
+        capability_name="run_targeted_transition_dipole_analysis",
+        current_hypothesis="ICT",
+        main_gap="Need one more dark-state discriminator.",
+        original_task_instruction=(
+            "Use run_targeted_transition_dipole_analysis for bundle_id=`round_07_torsion_snapshots` "
+            "and return transition-dipole observables."
+        ),
+    )
+    ris_instruction = _single_action_microscopic_task_instruction(
+        capability_name="run_ris_state_characterization",
+        current_hypothesis="ICT",
+        main_gap="Need one more state-character discriminator.",
+        original_task_instruction=(
+            "Use run_ris_state_characterization for bundle_id=`round_07_torsion_snapshots` "
+            "and return RIS state-character observables."
+        ),
+    )
+
+    assert transition_instruction.startswith(
+        "Execute ONLY `run_targeted_transition_dipole_analysis` for bundle_id=`round_07_torsion_snapshots`"
+    )
+    assert "transition-dipole observables only" in transition_instruction
+    assert "ESIPT" not in transition_instruction
+    assert "TICT" not in transition_instruction
+
+    assert ris_instruction.startswith(
+        "Execute ONLY `run_ris_state_characterization` for bundle_id=`round_07_torsion_snapshots`"
+    )
+    assert "raw state-character observables only" in ris_instruction
+    assert "ESIPT" not in ris_instruction
+    assert "TICT" not in ris_instruction
 
 
 def _microscopic_registry_blocked_report() -> dict[str, object]:

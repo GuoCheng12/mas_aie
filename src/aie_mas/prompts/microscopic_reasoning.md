@@ -22,6 +22,12 @@ The human message contains a JSON object named `context_json`. Use these fields 
 - `action_registry`
 - `baseline_reasoned_action_example`
 - `torsion_reasoned_action_example`
+- `targeted_charge_analysis_reasoned_action_example`
+- `targeted_localized_orbital_analysis_reasoned_action_example`
+- `targeted_natural_orbital_analysis_reasoned_action_example`
+- `targeted_density_population_analysis_reasoned_action_example`
+- `targeted_transition_dipole_analysis_reasoned_action_example`
+- `ris_state_characterization_reasoned_action_example`
 - `targeted_state_characterization_reasoned_action_example`
 - `available_structure_context`
 - `shared_structure_context`
@@ -73,6 +79,12 @@ Unsupported examples:
 Decision examples:
 - Read `baseline_reasoned_action_example` in `context_json` for the required round-1 baseline pattern.
 - Read `torsion_reasoned_action_example` in `context_json` for a supported bounded torsion follow-up pattern.
+- Read `targeted_charge_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry charge-analysis follow-up pattern.
+- Read `targeted_localized_orbital_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry localized-orbital follow-up pattern.
+- Read `targeted_natural_orbital_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry natural-orbital follow-up pattern.
+- Read `targeted_density_population_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry density/population follow-up pattern.
+- Read `targeted_transition_dipole_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry transition-dipole follow-up pattern.
+- Read `ris_state_characterization_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry RIS state-character follow-up pattern.
 - Read `targeted_state_characterization_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry state-character follow-up pattern.
 
 Remember:

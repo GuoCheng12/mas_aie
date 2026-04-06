@@ -78,6 +78,19 @@ Final Energy:      -55.7914717877
 Normal termination of Amesp!
 """
 
+S1_TRANSITION_DIPOLE_AOP_TEXT = """
+Ground to excited state transition electric dipole moments(Au):
+  state-state      X         Y        Z         Dip       Osc
+    0     1     0.1200    0.0000    0.0100    0.1204    0.1234
+    0     2     0.0500    0.0100    0.0000    0.0510    0.0100
+
+Excited to excited state transition electric dipole moments(Au):
+  state-state        X            Y            Z          Osc
+    1     1      -0.0000      -0.0000      -0.0075      0.0000
+    1     2      -0.0000       0.0000       0.7309      0.0082
+
+""" + S1_AOP_TEXT
+
 S0_AOP_GEOMETRY_TEXT = """
 HOMO-LUMO gap:      0.4010000 AU    =      10.9116660 eV
 
@@ -269,7 +282,7 @@ def _fake_subprocess_success(cmd, cwd, env, capture_output, text):
     aip_name = Path(cmd[1]).name
     aop_name = Path(cmd[2]).name
     label = Path(aip_name).stem
-    if label.endswith("_s0"):
+    if label.endswith("_s0") or label.endswith("_s0sp"):
         aop_text = S0_AOP_TEXT
     else:
         aop_text = S1_AOP_TEXT
@@ -284,7 +297,7 @@ def _fake_geometry_subprocess_success(cmd, cwd, env, capture_output, text):
     aip_name = Path(cmd[1]).name
     aop_name = Path(cmd[2]).name
     label = Path(aip_name).stem
-    if label.endswith("_s0"):
+    if label.endswith("_s0") or label.endswith("_s0sp"):
         aop_text = S0_AOP_GEOMETRY_TEXT
     else:
         aop_text = S1_AOP_TEXT
@@ -301,7 +314,7 @@ def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
         aop_name = Path(cmd[2]).name
         label = Path(aip_name).stem
         captured_inputs[label] = (workdir / aip_name).read_text(encoding="utf-8")
-        if label.endswith("_s0"):
+        if label.endswith("_s0") or label.endswith("_s0sp"):
             aop_text = S0_AOP_TEXT
         else:
             aop_text = S1_AOP_TEXT
@@ -310,6 +323,147 @@ def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
         return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
 
     return _runner
+
+
+def _build_fake_subprocess_with_targeted_analysis_capture(captured_inputs: dict[str, str]):
+    hirshfeld_section = (
+        "Hirshfeld charges:\n\n"
+        "     1   N        -0.390000\n"
+        "     2   H         0.130000\n"
+        "     3   H         0.130000\n"
+        "     4   H         0.130000\n"
+        "Sum of Hirshfeld charges =      0.00000\n\n"
+    )
+    density_population_section = (
+        "Density matrix:\n\n"
+        "  1  1   1.9800\n"
+        "  1  2   0.1200\n\n"
+        "Gross orbital populations:\n\n"
+        "  1   N    1.7500\n"
+        "  2   H    0.2500\n\n"
+        "Mayer bond order:\n\n"
+        "  1  2  0.9100\n"
+        "  1  3  0.9050\n"
+        "  1  4  0.9040\n\n"
+    )
+
+    def _runner(cmd, cwd, env, capture_output, text):
+        del env, capture_output, text
+        workdir = Path(cwd)
+        aip_name = Path(cmd[1]).name
+        aop_name = Path(cmd[2]).name
+        label = Path(aip_name).stem
+        aip_text = (workdir / aip_name).read_text(encoding="utf-8")
+        captured_inputs[label] = aip_text
+        lowered = aip_text.lower()
+        if label.endswith("_s0") or label.endswith("_s0sp"):
+            aop_text = S0_AOP_TEXT
+            if "charge hirshfeld" in lowered:
+                aop_text = aop_text.replace(
+                    "Dipole moment (field-independent basis, Debye):\n",
+                    hirshfeld_section + "Dipole moment (field-independent basis, Debye):\n",
+                )
+            if "out 2" in lowered:
+                aop_text = aop_text.replace(
+                    "Final Geometry(angstroms):\n",
+                    density_population_section + "Final Geometry(angstroms):\n",
+                )
+        else:
+            aop_text = S1_TRANSITION_DIPOLE_AOP_TEXT if "excdip on" in lowered else S1_AOP_TEXT
+        (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+        (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+    return _runner
+
+
+def _build_targeted_follow_up_tool(
+    *,
+    tmp_path: Path,
+    monkeypatch,
+    subprocess_runner,
+) -> AmespBaselineMicroscopicTool:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    return AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=subprocess_runner,
+        follow_up_max_torsion_snapshots_total=6,
+    )
+
+
+def _run_torsion_source_bundle(
+    *,
+    tool: AmespBaselineMicroscopicTool,
+    tmp_path: Path,
+) -> AmespBaselineRunResult:
+    return tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Generate torsion snapshots for later targeted property reuse.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_torsion_snapshots",
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_scope="torsion_snapshots",
+                dihedral_id="dih_0_1_2_3",
+                dihedral_atom_indices=[0, 1, 2, 3],
+                snapshot_count=2,
+                angle_offsets_deg=[25.0, -25.0],
+                state_window=[1, 2, 3],
+                deliverables=["torsion sensitivity summary"],
+                requested_route_summary="Generate two torsion snapshots for targeted property reuse.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="targeted_property_source",
+        workdir=tmp_path / "targeted_property_source_workdir",
+        available_artifacts={},
+        round_index=2,
+    )
+
+
+def _run_targeted_property_follow_up(
+    *,
+    tool: AmespBaselineMicroscopicTool,
+    tmp_path: Path,
+    torsion_result: AmespBaselineRunResult,
+    capability_name: str,
+    deliverables: list[str],
+    descriptor_scope: list[str] | None = None,
+) -> AmespBaselineRunResult:
+    return tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal=f"Reuse the torsion bundle and run {capability_name} on representative geometries.",
+            requested_deliverables=deliverables,
+            capability_route="targeted_property_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name=capability_name,
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_bundle_id="round_02_torsion_snapshots",
+                artifact_source_round=2,
+                artifact_scope="torsion_snapshots",
+                state_window=[1, 2, 3],
+                descriptor_scope=descriptor_scope or [],
+                target_count=2,
+                deliverables=deliverables,
+                requested_route_summary=f"Reuse the torsion bundle and rerun {capability_name} on two representative geometries.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label=f"{capability_name}_follow_up",
+        workdir=tmp_path / f"{capability_name}_follow_up_workdir",
+        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
 
 
 def _fake_subprocess_partial_torsion_s1(cmd, cwd, env, capture_output, text):
@@ -751,88 +905,33 @@ def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounde
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    amesp_bin = tmp_path / "amesp"
-    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
-    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
-    tool = AmespBaselineMicroscopicTool(
-        amesp_bin=amesp_bin,
-        structure_preparer=_fake_structure_preparer,
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
         subprocess_runner=_fake_subprocess_success,
-        follow_up_max_torsion_snapshots_total=6,
     )
-
-    torsion_result = tool.execute(
-        plan=MicroscopicExecutionPlan(
-            local_goal="Generate torsion snapshots for later targeted state characterization.",
-            requested_deliverables=["torsion sensitivity summary"],
-            capability_route="torsion_snapshot_follow_up",
-            microscopic_tool_request=MicroscopicToolRequest(
-                capability_name="run_torsion_snapshots",
-                perform_new_calculation=True,
-                optimize_ground_state=False,
-                artifact_scope="torsion_snapshots",
-                dihedral_id="dih_0_1_2_3",
-                dihedral_atom_indices=[0, 1, 2, 3],
-                snapshot_count=2,
-                angle_offsets_deg=[25.0, -25.0],
-                state_window=[1, 2, 3],
-                deliverables=["torsion sensitivity summary"],
-                requested_route_summary="Generate two torsion snapshots for targeted state characterization reuse.",
-            ),
-            structure_source="prepared_from_smiles",
-            failure_reporting="Return partial or failed if Amesp fails.",
-        ),
-        smiles="N",
-        label="targeted_state_source",
-        workdir=tmp_path / "targeted_state_source_workdir",
-        available_artifacts={},
-        round_index=2,
-    )
-
-    targeted_result = tool.execute(
-        plan=MicroscopicExecutionPlan(
-            local_goal="Reuse the torsion bundle and run bounded state characterization on representative geometries.",
-            requested_deliverables=[
-                "targeted state-characterization records",
-                "state-family overlap summary",
-                "bounded CT/state-character proxy summary",
-            ],
-            capability_route="targeted_state_characterization_follow_up",
-            microscopic_tool_request=MicroscopicToolRequest(
-                capability_name="run_targeted_state_characterization",
-                perform_new_calculation=True,
-                optimize_ground_state=False,
-                artifact_bundle_id="round_02_torsion_snapshots",
-                artifact_source_round=2,
-                artifact_scope="torsion_snapshots",
-                state_window=[1, 2, 3],
-                descriptor_scope=[
-                    "dominant_transitions",
-                    "state_family_overlap",
-                    "ground_state_dipole",
-                    "mulliken_charges",
-                    "molecular_orbital_files",
-                ],
-                target_count=2,
-                deliverables=[
-                    "targeted state-characterization records",
-                    "state-family overlap summary",
-                    "bounded CT/state-character proxy summary",
-                ],
-                requested_route_summary="Reuse the torsion bundle and rerun fixed-geometry state characterization on two representative geometries.",
-            ),
-            structure_source="existing_prepared_structure",
-            failure_reporting="Return partial or failed if Amesp fails.",
-        ),
-        smiles="N",
-        label="targeted_state_follow_up",
-        workdir=tmp_path / "targeted_state_follow_up_workdir",
-        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
-        round_index=4,
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    targeted_result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_state_characterization",
+        deliverables=[
+            "targeted state-characterization records",
+            "state-family overlap summary",
+            "bounded CT/state-character proxy summary",
+        ],
+        descriptor_scope=[
+            "dominant_transitions",
+            "state_family_overlap",
+            "ground_state_dipole",
+            "mulliken_charges",
+            "molecular_orbital_files",
+        ],
     )
 
     assert targeted_result.executed_capability == "run_targeted_state_characterization"
-    assert targeted_result.route == "targeted_state_characterization_follow_up"
+    assert targeted_result.route == "targeted_property_follow_up"
     assert targeted_result.performed_new_calculations is True
     assert targeted_result.reused_existing_artifacts is True
     assert targeted_result.honored_constraints[-1] == "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
@@ -863,6 +962,226 @@ def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounde
     assert "mulliken_charges" in first_record["available_state_character_descriptors"]
     assert "molecular_orbital_files" in first_record["available_state_character_descriptors"]
     assert first_record["molecular_orbital_files_available"] is True
+
+
+def test_amesp_targeted_charge_analysis_writes_hirshfeld_and_returns_charge_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_charge_analysis",
+        deliverables=[
+            "targeted charge-analysis records",
+            "charge availability summary",
+            "bounded raw charge observables",
+        ],
+    )
+
+    assert result.executed_capability == "run_targeted_charge_analysis"
+    assert result.route == "targeted_property_follow_up"
+    assert result.route_summary["charge_availability"] == "proxy_only"
+    assert "hirshfeld_charges" in result.route_summary["available_charge_observables"]
+    assert "mulliken_charges" in result.route_summary["available_charge_observables"]
+    assert "ground_state_dipole" in result.route_summary["available_charge_observables"]
+    first_record = result.route_records[0]
+    assert first_record["charge_analysis"]["charge_scheme"] == "hirshfeld"
+    assert first_record["charge_analysis"]["charge_availability"] == "available"
+    assert len(first_record["charge_analysis"]["charge_table"]) == 4
+    assert "charge hirshfeld" in captured_inputs["run_targeted_charge_analysis_follow_up_torsion_01_char_s0sp"]
+
+
+def test_amesp_targeted_localized_orbital_analysis_writes_lmo_and_returns_localized_orbital_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_localized_orbital_analysis",
+        deliverables=[
+            "targeted localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "bounded raw localized-orbital observables",
+        ],
+    )
+
+    assert result.route_summary["localized_orbital_availability"] == "proxy_only"
+    assert "localized_orbitals_pm" in result.route_summary["available_localized_orbital_observables"]
+    assert "molecular_orbital_files" in result.route_summary["available_localized_orbital_observables"]
+    first_record = result.route_records[0]
+    assert first_record["localized_orbital_analysis"]["localization_method"] == "pm"
+    assert first_record["localized_orbital_analysis"]["localized_orbitals_available"] is True
+    aip_text = captured_inputs["run_targeted_localized_orbital_analysis_follow_up_torsion_01_char_s0sp"]
+    assert "lmo pm" in aip_text
+    assert "mofile on" in aip_text
+
+
+def test_amesp_targeted_natural_orbital_analysis_writes_natorb_and_returns_natural_orbital_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_natural_orbital_analysis",
+        deliverables=[
+            "targeted natural-orbital analysis records",
+            "natural-orbital availability summary",
+            "bounded raw natural-orbital observables",
+        ],
+    )
+
+    assert result.route_summary["natural_orbital_availability"] == "proxy_only"
+    assert "natural_orbitals_no" in result.route_summary["available_natural_orbital_observables"]
+    assert "molecular_orbital_files" in result.route_summary["available_natural_orbital_observables"]
+    first_record = result.route_records[0]
+    assert first_record["natural_orbital_analysis"]["natural_orbital_kind"] == "no"
+    assert first_record["natural_orbital_analysis"]["natural_orbitals_available"] is True
+    aip_text = captured_inputs["run_targeted_natural_orbital_analysis_follow_up_torsion_01_char_s0sp"]
+    assert "natorb no" in aip_text
+    assert "mofile on" in aip_text
+
+
+def test_amesp_targeted_density_population_analysis_writes_out2_and_returns_density_population_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_density_population_analysis",
+        deliverables=[
+            "targeted density/population analysis records",
+            "density/population availability summary",
+            "bounded raw density/population observables",
+        ],
+    )
+
+    assert result.route_summary["density_population_availability"] == "proxy_only"
+    assert set(result.route_summary["available_density_population_observables"]) == {
+        "density_matrix",
+        "gross_orbital_populations",
+        "mayer_bond_order",
+    }
+    first_record = result.route_records[0]
+    density_record = first_record["density_population_analysis"]
+    assert density_record["density_matrix_available"] is True
+    assert density_record["gross_orbital_populations_available"] is True
+    assert density_record["mayer_bond_order_available"] is True
+    assert density_record["top_mayer_pairs"][0]["bond_order"] == 0.91
+    assert "out 2" in captured_inputs["run_targeted_density_population_analysis_follow_up_torsion_01_char_s0sp"]
+
+
+def test_amesp_targeted_transition_dipole_analysis_writes_tda_atb_excdip_and_returns_transition_dipole_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_transition_dipole_analysis",
+        deliverables=[
+            "targeted transition-dipole analysis records",
+            "transition-dipole availability summary",
+            "bounded raw transition-dipole observables",
+        ],
+    )
+
+    assert result.executed_capability == "run_targeted_transition_dipole_analysis"
+    assert result.route == "targeted_property_follow_up"
+    assert result.route_summary["transition_dipole_availability"] == "proxy_only"
+    assert set(result.route_summary["available_transition_dipole_observables"]) == {
+        "ground_to_excited_transition_dipoles",
+        "excited_to_excited_transition_dipoles",
+    }
+    first_record = result.route_records[0]
+    assert first_record["transition_dipole_method"] == "tda-atb-excdip"
+    assert len(first_record["ground_to_excited_transition_dipoles"]) == 2
+    assert len(first_record["excited_to_excited_transition_dipoles"]) == 2
+    assert first_record["transition_dipole_section_presence"]["ground_to_excited_section_present"] is True
+    assert first_record["transition_dipole_section_presence"]["excited_to_excited_section_present"] is True
+    s1_input = captured_inputs["run_targeted_transition_dipole_analysis_follow_up_torsion_01_char_s1"].lower()
+    assert "! atb tda" in s1_input
+    assert ">atb" in s1_input
+    assert "excdip on" in s1_input
+
+
+def test_amesp_ris_state_characterization_writes_tda_ris_and_returns_ris_state_character_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_ris_state_characterization",
+        deliverables=[
+            "RIS state-characterization records",
+            "RIS state-characterization availability summary",
+            "bounded raw RIS state-character observables",
+        ],
+    )
+
+    assert result.executed_capability == "run_ris_state_characterization"
+    assert result.route == "targeted_property_follow_up"
+    assert result.route_summary["ris_state_characterization_availability"] == "proxy_only"
+    assert "state_family_overlap" in result.route_summary["available_ris_state_characterization_observables"]
+    assert "dominant_transitions" in result.route_summary["available_ris_state_characterization_observables"]
+    first_record = result.route_records[0]
+    assert first_record["state_characterization_method"] == "tda-ris"
+    assert first_record["state_family_overlap"]["available"] is True
+    assert first_record["available_ris_state_characterization_observables"]
+    s1_input = captured_inputs["run_ris_state_characterization_follow_up_torsion_01_char_s1"].lower()
+    assert "! b3lyp sto-3g tda-ris" in s1_input
 
 
 def test_amesp_parse_snapshot_outputs_reuses_existing_artifacts_without_new_calculations(

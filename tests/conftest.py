@@ -95,7 +95,7 @@ class TestMicroscopicReasoningBackend:
         structure_context = payload["available_structure_context"]
         task_mode = payload["task_mode"]
         capability_route = _microscopic_capability_route(task_instruction, task_mode)
-        capability_name = _microscopic_capability_name(capability_route)
+        capability_name = _microscopic_capability_name(capability_route, task_instruction)
         lower_instruction = task_instruction.lower()
         no_reoptimization = any(
             token in lower_instruction
@@ -211,6 +211,20 @@ class TestMicroscopicReasoningBackend:
 
 def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
     lower_instruction = task_instruction.lower()
+    if "run_targeted_transition_dipole_analysis" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_ris_state_characterization" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_targeted_charge_analysis" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_targeted_localized_orbital_analysis" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_targeted_natural_orbital_analysis" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_targeted_density_population_analysis" in task_instruction:
+        return "targeted_property_follow_up"
+    if "run_targeted_state_characterization" in task_instruction:
+        return "targeted_property_follow_up"
     if task_mode == "baseline_s0_s1":
         return "baseline_bundle"
     if (
@@ -238,7 +252,18 @@ def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
     return "conformer_bundle_follow_up"
 
 
-def _microscopic_capability_name(capability_route: str) -> str:
+def _microscopic_capability_name(capability_route: str, task_instruction: str = "") -> str:
+    for capability_name in (
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_state_characterization",
+    ):
+        if capability_name in task_instruction:
+            return capability_name
     if capability_route == "baseline_bundle":
         return "run_baseline_bundle"
     if capability_route == "conformer_bundle_follow_up":

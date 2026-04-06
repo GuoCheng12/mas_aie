@@ -262,6 +262,90 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         ],
         default_budget_behavior="Use configured torsion snapshot cap unless the request explicitly supplies a smaller count or angle set.",
     ),
+    "run_targeted_charge_analysis": AmespCapabilityDefinition(
+        name="run_targeted_charge_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost charge analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "targeted charge-analysis records",
+            "charge availability summary",
+            "bounded raw charge observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
+    "run_targeted_localized_orbital_analysis": AmespCapabilityDefinition(
+        name="run_targeted_localized_orbital_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost localized-orbital analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "targeted localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "bounded raw localized-orbital observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
+    "run_targeted_natural_orbital_analysis": AmespCapabilityDefinition(
+        name="run_targeted_natural_orbital_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost natural-orbital analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "targeted natural-orbital analysis records",
+            "natural-orbital availability summary",
+            "bounded raw natural-orbital observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
+    "run_targeted_density_population_analysis": AmespCapabilityDefinition(
+        name="run_targeted_density_population_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost density/population analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "targeted density/population analysis records",
+            "density/population availability summary",
+            "bounded raw density/population observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
+    "run_targeted_transition_dipole_analysis": AmespCapabilityDefinition(
+        name="run_targeted_transition_dipole_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost transition-dipole analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "targeted transition-dipole analysis records",
+            "transition-dipole availability summary",
+            "bounded raw transition-dipole observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
+    "run_ris_state_characterization": AmespCapabilityDefinition(
+        name="run_ris_state_characterization",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost RIS state characterization.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        supported_deliverables=[
+            "RIS state-characterization records",
+            "RIS state-characterization availability summary",
+            "bounded raw RIS state-character observables",
+        ],
+        unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
+    ),
     "run_targeted_state_characterization": AmespCapabilityDefinition(
         name="run_targeted_state_characterization",
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted fixed-geometry state characterization.",
@@ -379,6 +463,16 @@ _DEFAULT_PYTHON_OWNED_ACTION_PARAMS = [
     "source_round_preference",
     "resolved_target_ids",
 ]
+
+_TARGETED_PROPERTY_CAPABILITIES: tuple[MicroscopicCapabilityName, ...] = (
+    "run_targeted_charge_analysis",
+    "run_targeted_localized_orbital_analysis",
+    "run_targeted_natural_orbital_analysis",
+    "run_targeted_density_population_analysis",
+    "run_targeted_transition_dipole_analysis",
+    "run_ris_state_characterization",
+    "run_targeted_state_characterization",
+)
 
 
 AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = {
@@ -601,6 +695,264 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "snapshot vertical-state records",
             "torsion sensitivity summary",
         ],
+    ),
+    "run_targeted_charge_analysis": AmespActionDefinition(
+        action_name="run_targeted_charge_analysis",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry charge analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded charge-analysis calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded follow-up."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted charge-analysis records",
+            "charge availability summary",
+            "bounded raw charge observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_targeted_localized_orbital_analysis": AmespActionDefinition(
+        action_name="run_targeted_localized_orbital_analysis",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry localized-orbital analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded localized-orbital calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded follow-up."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "bounded raw localized-orbital observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_targeted_natural_orbital_analysis": AmespActionDefinition(
+        action_name="run_targeted_natural_orbital_analysis",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry natural-orbital analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded natural-orbital calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded follow-up."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted natural-orbital analysis records",
+            "natural-orbital availability summary",
+            "bounded raw natural-orbital observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_targeted_density_population_analysis": AmespActionDefinition(
+        action_name="run_targeted_density_population_analysis",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry density/population analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded density/population calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded follow-up."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted density/population analysis records",
+            "density/population availability summary",
+            "bounded raw density/population observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_targeted_transition_dipole_analysis": AmespActionDefinition(
+        action_name="run_targeted_transition_dipole_analysis",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry transition-dipole analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded transition-dipole calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded transition-dipole analysis."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted transition-dipole analysis records",
+            "transition-dipole availability summary",
+            "bounded raw transition-dipole observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_ris_state_characterization": AmespActionDefinition(
+        action_name="run_ris_state_characterization",
+        action_kind="execution",
+        purpose="Run bounded fixed-geometry RIS state characterization on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded RIS state-characterization calculations. Must remain true.", default=True),
+            "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded RIS state characterization."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": False,
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "RIS state-characterization records",
+            "RIS state-characterization availability summary",
+            "bounded raw RIS state-character observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
     ),
     "run_targeted_state_characterization": AmespActionDefinition(
         action_name="run_targeted_state_characterization",
@@ -949,6 +1301,138 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             ensure_ascii=False,
             indent=2,
         ),
+        "targeted_charge_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_charge_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry charge analysis on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "targeted_localized_orbital_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_localized_orbital_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry localized-orbital analysis on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "targeted_natural_orbital_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_natural_orbital_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry natural-orbital analysis on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "targeted_density_population_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_density_population_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry density/population analysis on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "targeted_transition_dipole_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_transition_dipole_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry transition-dipole analysis on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
+        "ris_state_characterization": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_ris_state_characterization",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "optimize_ground_state": False,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["excited-state relaxation", "relaxed scan", "solvent response"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "and rerun fixed-geometry RIS state characterization on that subset."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
     }
 
 
@@ -986,6 +1470,72 @@ def render_reasoned_microscopic_examples() -> dict[str, str]:
             "</reasoning_summary>\n"
             "<action_decision_json>\n"
             f"{action_examples['targeted_state_characterization']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_charge_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry charge-analysis follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted charge-analysis route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_charge_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_localized_orbital_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry localized-orbital follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted localized-orbital route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_localized_orbital_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_natural_orbital_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry natural-orbital follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted natural-orbital route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_natural_orbital_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_density_population_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry density/population follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted density/population route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_density_population_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_transition_dipole_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry transition-dipole follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the targeted transition-dipole route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_transition_dipole_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "ris_state_characterization": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded fixed-geometry RIS state-character follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the RIS state-characterization route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['ris_state_characterization']}\n"
             "</action_decision_json>"
         ),
     }
@@ -1224,8 +1774,8 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
             )
-        if request.capability_name == "run_targeted_state_characterization":
-            return self._execute_run_targeted_state_characterization_route(
+        if request.capability_name in _TARGETED_PROPERTY_CAPABILITIES:
+            return self._execute_targeted_property_follow_up_route(
                 request=request,
                 label=label,
                 workdir=workdir,
@@ -1341,6 +1891,12 @@ class AmespMicroscopicTool:
         if not resolved_request.optimize_ground_state and request.capability_name in {
             "run_torsion_snapshots",
             "run_conformer_bundle",
+            "run_targeted_charge_analysis",
+            "run_targeted_localized_orbital_analysis",
+            "run_targeted_natural_orbital_analysis",
+            "run_targeted_density_population_analysis",
+            "run_targeted_transition_dipole_analysis",
+            "run_ris_state_characterization",
             "run_targeted_state_characterization",
         }:
             honored_constraints.append(
@@ -1393,6 +1949,12 @@ class AmespMicroscopicTool:
             )
 
         if request.capability_name in {
+            "run_targeted_charge_analysis",
+            "run_targeted_localized_orbital_analysis",
+            "run_targeted_natural_orbital_analysis",
+            "run_targeted_density_population_analysis",
+            "run_targeted_transition_dipole_analysis",
+            "run_ris_state_characterization",
             "run_targeted_state_characterization",
             "parse_snapshot_outputs",
             "extract_ct_descriptors_from_bundle",
@@ -1930,6 +2492,9 @@ class AmespMicroscopicTool:
                     "conformer_rank": member.rank,
                     "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
                     "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
+                    "s0_aip_path": member_result.generated_artifacts.get("s0_aip_path")
+                    or member_result.generated_artifacts.get("s0_singlepoint_aip_path"),
+                    "s1_aip_path": member_result.generated_artifacts.get("s1_aip_path"),
                     "s0_aop_path": member_result.generated_artifacts.get("s0_aop_path"),
                     "s1_aop_path": member_result.generated_artifacts.get("s1_aop_path"),
                     "s0_stdout_path": member_result.generated_artifacts.get("s0_stdout_path"),
@@ -2074,7 +2639,7 @@ class AmespMicroscopicTool:
         primary_result.generated_artifacts["bundle_completion_status"] = "complete"
         return primary_result
 
-    def _execute_run_targeted_state_characterization_route(
+    def _execute_targeted_property_follow_up_route(
         self,
         *,
         request: MicroscopicToolRequest,
@@ -2086,13 +2651,14 @@ class AmespMicroscopicTool:
         case_id: Optional[str],
         current_hypothesis: Optional[str],
     ) -> AmespBaselineRunResult:
+        capability_name = request.capability_name
         if not request.perform_new_calculation:
             raise AmespExecutionError(
                 "precondition_missing",
-                "Targeted state characterization requires bounded new calculations on selected reusable geometries.",
+                f"{capability_name} requires bounded new calculations on selected reusable geometries.",
                 status="failed",
                 structured_results={
-                    "executed_capability": "run_targeted_state_characterization",
+                    "executed_capability": capability_name,
                     "performed_new_calculations": False,
                     "reused_existing_artifacts": True,
                 },
@@ -2103,13 +2669,11 @@ class AmespMicroscopicTool:
                 available_artifacts=available_artifacts,
             )
         )
-        descriptor_scope = list(request.descriptor_scope) or [
-            "dominant_transitions",
-            "state_family_overlap",
-            "ground_state_dipole",
-            "mulliken_charges",
-            "molecular_orbital_files",
-        ]
+        profile = _targeted_property_profile_for_capability(
+            capability_name=capability_name,
+            descriptor_scope=request.descriptor_scope,
+        )
+        descriptor_scope = list(profile["descriptor_scope"])
         source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
         selected_records = _select_targeted_state_characterization_records(
             artifact_scope=artifact_scope,
@@ -2119,10 +2683,10 @@ class AmespMicroscopicTool:
         if not selected_records:
             raise AmespExecutionError(
                 "precondition_missing",
-                "Targeted state characterization could not resolve any reusable geometry records from the selected artifact bundle.",
+                f"{capability_name} could not resolve any reusable geometry records from the selected artifact bundle.",
                 status="failed",
                 structured_results={
-                    "executed_capability": "run_targeted_state_characterization",
+                    "executed_capability": capability_name,
                     "performed_new_calculations": False,
                     "reused_existing_artifacts": True,
                 },
@@ -2131,6 +2695,7 @@ class AmespMicroscopicTool:
         route_records: list[dict[str, Any]] = []
         characterization_artifacts: list[dict[str, Any]] = []
         available_descriptors: set[str] = set()
+        capability_available_descriptors: set[str] = set()
         first_state_virtual_sets: list[set[int]] = []
         first_bright_virtual_sets: list[set[int]] = []
         primary_result: AmespBaselineRunResult | None = None
@@ -2146,32 +2711,47 @@ class AmespMicroscopicTool:
                 ),
                 prepared=prepared,
                 label=f"{label}_{member_label}_char",
-                workdir=workdir / "targeted_state_characterization" / member_label,
+                workdir=workdir / "targeted_property_follow_up" / member_label,
                 progress_callback=progress_callback,
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
                 optimize_ground_state=request.optimize_ground_state,
-                route="targeted_state_characterization_follow_up",
+                route="targeted_property_follow_up",
                 state_window=request.state_window,
-                executed_capability="run_targeted_state_characterization",
+                executed_capability=capability_name,
                 performed_new_calculations=True,
                 reused_existing_artifacts=True,
+                analysis_ope_lines=profile["analysis_ope_lines"],
+                excitation_profile=profile.get("excitation_profile"),
             )
-            characterization_record = _build_targeted_state_characterization_record(
+            characterization_record = _build_targeted_property_record(
+                capability_name=capability_name,
+                profile=profile,
                 artifact_record=artifact,
                 geometry_source=str(geometry_payload["geometry_source"]),
                 run_result=member_result,
             )
             route_records.append(characterization_record)
-            available_descriptors.update(characterization_record["available_state_character_descriptors"])
-            first_state_virtual_sets.append(set(characterization_record.get("first_state_virtual_orbitals") or []))
-            first_bright_virtual_sets.append(set(characterization_record.get("first_bright_state_virtual_orbitals") or []))
+            record_available = list(
+                characterization_record.get("available_state_character_descriptors")
+                or characterization_record.get(profile["available_key"])
+                or []
+            )
+            available_descriptors.update(record_available)
+            capability_available_descriptors.update(
+                item for item in record_available if item in set(profile["descriptor_scope"])
+            )
+            if capability_name == "run_targeted_state_characterization":
+                first_state_virtual_sets.append(set(characterization_record.get("first_state_virtual_orbitals") or []))
+                first_bright_virtual_sets.append(set(characterization_record.get("first_bright_state_virtual_orbitals") or []))
             characterization_artifacts.append(
                 {
                     "member_label": member_label,
                     "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
                     "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
+                    "s0_aip_path": member_result.generated_artifacts.get("s0_aip_path")
+                    or member_result.generated_artifacts.get("s0_singlepoint_aip_path"),
                     "s0_aop_path": member_result.generated_artifacts.get("s0_aop_path")
                     or member_result.generated_artifacts.get("s0_singlepoint_aop_path"),
                     "s1_aop_path": member_result.generated_artifacts.get("s1_aop_path"),
@@ -2194,6 +2774,9 @@ class AmespMicroscopicTool:
                 continue
             missing_descriptors.append(descriptor)
         missing_descriptors = list(dict.fromkeys(missing_descriptors))
+        availability_key = str(profile["availability_key"])
+        available_key = str(profile["available_key"])
+        missing_key = str(profile["missing_key"])
         route_summary = {
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
@@ -2204,24 +2787,25 @@ class AmespMicroscopicTool:
                 for index, record in enumerate(selected_records, start=1)
             ],
             "selected_target_count": len(selected_records),
-            "state_characterization_availability": "proxy_only" if available_descriptors else "not_available",
-            "available_state_character_descriptors": sorted(available_descriptors),
-            "missing_state_character_descriptors": missing_descriptors,
-            "shared_first_state_virtual_orbitals": _intersect_int_sets(first_state_virtual_sets),
-            "shared_first_bright_state_virtual_orbitals": _intersect_int_sets(first_bright_virtual_sets),
-            "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry state characterization on that subset.",
+            availability_key: "proxy_only" if capability_available_descriptors else "not_available",
+            available_key: sorted(capability_available_descriptors),
+            missing_key: missing_descriptors,
+            "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
             "optimize_ground_state": bool(request.optimize_ground_state),
             "state_window": list(request.state_window),
         }
-        primary_result.route = "targeted_state_characterization_follow_up"
-        primary_result.executed_capability = "run_targeted_state_characterization"
+        if capability_name == "run_targeted_state_characterization":
+            route_summary["shared_first_state_virtual_orbitals"] = _intersect_int_sets(first_state_virtual_sets)
+            route_summary["shared_first_bright_state_virtual_orbitals"] = _intersect_int_sets(first_bright_virtual_sets)
+        primary_result.route = "targeted_property_follow_up"
+        primary_result.executed_capability = capability_name
         primary_result.performed_new_calculations = True
         primary_result.reused_existing_artifacts = True
         primary_result.missing_deliverables = [_humanize_descriptor_name(item) for item in missing_descriptors]
         primary_result.parsed_snapshot_records = route_records
         primary_result.route_records = route_records
         primary_result.route_summary = route_summary
-        primary_result.raw_step_results["run_targeted_state_characterization"] = {
+        primary_result.raw_step_results[capability_name] = {
             "artifact_scope": artifact_scope,
             "artifact_source_round": source_round,
             "descriptor_scope": descriptor_scope,
@@ -2767,6 +3351,8 @@ class AmespMicroscopicTool:
         executed_capability: MicroscopicCapabilityName,
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
+        analysis_ope_lines: Sequence[str] | None = None,
+        excitation_profile: dict[str, Any] | None = None,
     ) -> AmespBaselineRunResult:
         generated_artifacts: dict[str, Any] = {
             "prepared_xyz_path": str(prepared.xyz_path),
@@ -2788,6 +3374,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
+                analysis_ope_lines=analysis_ope_lines,
             )
         else:
             s0_result, s0_coordinates, s0_raw_results, s0_artifacts = self._run_ground_state_singlepoint(
@@ -2800,6 +3387,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
+                analysis_ope_lines=analysis_ope_lines,
             )
         raw_results.update(s0_raw_results)
         generated_artifacts.update(s0_artifacts)
@@ -2816,6 +3404,7 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
                 state_window=state_window,
+                excitation_profile=excitation_profile,
             )
         except AmespExecutionError as exc:
             raise AmespExecutionError(
@@ -2854,11 +3443,18 @@ class AmespMicroscopicTool:
     def _build_s0_keywords(self) -> list[str]:
         return ["atb", "opt", "force"]
 
-    def _build_s0_block_lines(self) -> list[tuple[str, list[str]]]:
-        return [
+    def _build_s0_block_lines(
+        self,
+        *,
+        analysis_ope_lines: Sequence[str] | None = None,
+    ) -> list[tuple[str, list[str]]]:
+        block_lines = [
             ("opt", ["maxcyc 2000", "gediis off", "maxstep 0.3"]),
             ("scf", ["maxcyc 2000", "vshift 500"]),
         ]
+        if analysis_ope_lines:
+            block_lines.append(("ope", list(analysis_ope_lines)))
+        return block_lines
 
     def _build_s1_keywords(self) -> list[str]:
         keywords = ["b3lyp", "sto-3g", "td"]
@@ -2878,6 +3474,7 @@ class AmespMicroscopicTool:
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
+        analysis_ope_lines: Sequence[str] | None = None,
     ) -> tuple[AmespGroundStateResult, list[list[float]], dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
         generated_artifacts: dict[str, Any] = {}
@@ -2886,7 +3483,7 @@ class AmespMicroscopicTool:
             label=f"{label}_s0",
             workdir=workdir,
             keywords=self._build_s0_keywords(),
-            block_lines=self._build_s0_block_lines(),
+            block_lines=self._build_s0_block_lines(analysis_ope_lines=analysis_ope_lines),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -2949,6 +3546,7 @@ class AmespMicroscopicTool:
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
+        analysis_ope_lines: Sequence[str] | None = None,
     ) -> tuple[AmespGroundStateResult, list[list[float]], dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
         generated_artifacts: dict[str, Any] = {}
@@ -2957,7 +3555,7 @@ class AmespMicroscopicTool:
             label=f"{label}_s0sp",
             workdir=workdir,
             keywords=["atb", "force"],
-            block_lines=[("scf", ["maxcyc 2000", "vshift 500"])],
+            block_lines=_build_ground_state_singlepoint_block_lines(analysis_ope_lines=analysis_ope_lines),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -3014,19 +3612,38 @@ class AmespMicroscopicTool:
         case_id: Optional[str],
         current_hypothesis: Optional[str],
         state_window: Sequence[int] | None = None,
+        excitation_profile: dict[str, Any] | None = None,
     ) -> tuple[AmespExcitedStateResult, dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
         generated_artifacts: dict[str, Any] = {}
         requested_nstates = max((int(index) for index in state_window), default=self._s1_nstates)
+        method_profile = dict(excitation_profile or {})
+        method_mode = str(method_profile.get("mode") or "default_td").strip()
+        if method_mode == "tda_atb_excdip":
+            keywords = ["atb", "tda"]
+            block_lines = [
+                ("ope", ["out 1"]),
+                ("atb", ["excdip on"]),
+                ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
+            ]
+        elif method_mode == "tda_ris":
+            keywords = ["b3lyp", "sto-3g", "tda-ris"]
+            block_lines = [
+                ("ope", ["out 1"]),
+                ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
+            ]
+        else:
+            keywords = self._build_s1_keywords()
+            block_lines = [
+                ("ope", ["out 1"]),
+                ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
+            ]
         s1_outcome, s1_text = self._run_step(
             step_id="s1_vertical_excitation",
             label=f"{label}_s1",
             workdir=workdir,
-            keywords=self._build_s1_keywords(),
-            block_lines=[
-                ("ope", ["out 1"]),
-                ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
-            ],
+            keywords=keywords,
+            block_lines=block_lines,
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -3044,6 +3661,7 @@ class AmespMicroscopicTool:
                 "s1_stdout_path": s1_outcome.stdout_path,
                 "s1_stderr_path": s1_outcome.stderr_path,
                 "s1_mo_path": s1_outcome.mo_path,
+                "s1_method": str(method_profile.get("method_label") or "td-b3lyp"),
             }
         )
         excited_states = _parse_excited_states(s1_text, reference_energy_hartree=reference_energy)
@@ -3567,6 +4185,16 @@ def _write_amesp_input(
         lines.append(f" {symbol:<2} {x: .8f} {y: .8f} {z: .8f}")
     lines.append("end")
     aip_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _build_ground_state_singlepoint_block_lines(
+    *,
+    analysis_ope_lines: Sequence[str] | None = None,
+) -> list[tuple[str, list[str]]]:
+    block_lines = [("scf", ["maxcyc 2000", "vshift 500"])]
+    if analysis_ope_lines:
+        block_lines.append(("ope", list(analysis_ope_lines)))
+    return block_lines
 
 
 class _InMemoryPositions:
@@ -4259,6 +4887,8 @@ def _artifact_record_file_availability(artifact_record: dict[str, Any]) -> dict[
         "prepared_xyz_path",
         "prepared_sdf_path",
         "prepared_summary_path",
+        "s0_aip_path",
+        "s1_aip_path",
         "s0_aop_path",
         "s1_aop_path",
         "s0_stdout_path",
@@ -4292,6 +4922,15 @@ def _extractable_observables_from_artifact(artifact_record: dict[str, Any]) -> l
                 "optimized_geometry",
             }
         )
+        s0_text = _read_optional_artifact_text(artifact_record.get("s0_aop_path"))
+        if _parse_named_charge_section(s0_text, "Hirshfeld"):
+            observables.add("hirshfeld_charges")
+        if _section_present(s0_text, "density matrix"):
+            observables.add("density_matrix")
+        if _section_present(s0_text, "gross orbital population"):
+            observables.add("gross_orbital_populations")
+        if _section_present(s0_text, "mayer bond order"):
+            observables.add("mayer_bond_order")
     if availability.get("prepared_xyz_path"):
         observables.update(
             {
@@ -4310,6 +4949,11 @@ def _extractable_observables_from_artifact(artifact_record: dict[str, Any]) -> l
         )
     if availability.get("s0_mo_path") or availability.get("s1_mo_path"):
         observables.add("molecular_orbital_files")
+    requested_analysis = _requested_targeted_analysis_from_artifact(artifact_record)
+    if "localized_orbitals_pm" in requested_analysis and (availability.get("s0_mo_path") or availability.get("s1_mo_path")):
+        observables.add("localized_orbitals_pm")
+    if "natural_orbitals_no" in requested_analysis and (availability.get("s0_mo_path") or availability.get("s1_mo_path")):
+        observables.add("natural_orbitals_no")
     if availability.get("s0_stdout_path") or availability.get("s1_stdout_path"):
         observables.add("stdout_logs")
     return sorted(observables)
@@ -4346,12 +4990,290 @@ def _humanize_descriptor_name(name: str) -> str:
         "state_family_overlap": "state-family overlap",
         "ground_state_dipole": "ground-state dipole",
         "mulliken_charges": "Mulliken charges",
+        "hirshfeld_charges": "Hirshfeld charges",
+        "localized_orbitals_pm": "localized orbitals (Pipek-Mezey)",
+        "natural_orbitals_no": "natural orbitals (NO)",
+        "density_matrix": "density matrix",
+        "gross_orbital_populations": "gross orbital populations",
+        "mayer_bond_order": "Mayer bond order",
+        "ground_to_excited_transition_dipoles": "ground-to-excited transition dipoles",
+        "excited_to_excited_transition_dipoles": "excited-to-excited transition dipoles",
         "molecular_orbital_files": "molecular-orbital files",
         "intramolecular_hbond_candidates": "intramolecular H-bond candidates",
         "best_intramolecular_hbond": "best intramolecular H-bond",
         "local_planarity_proxy": "local planarity proxy",
     }
     return mapping.get(normalized, name.replace("_", " "))
+
+
+def _targeted_property_profile_for_capability(
+    *,
+    capability_name: MicroscopicCapabilityName,
+    descriptor_scope: Sequence[str],
+) -> dict[str, Any]:
+    normalized_scope = [_normalize_descriptor_name(item) for item in descriptor_scope if str(item).strip()]
+    if capability_name == "run_targeted_charge_analysis":
+        return {
+            "descriptor_scope": ["hirshfeld_charges", "mulliken_charges", "ground_state_dipole"],
+            "analysis_ope_lines": ["charge hirshfeld"],
+            "availability_key": "charge_availability",
+            "available_key": "available_charge_observables",
+            "missing_key": "missing_charge_observables",
+            "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
+        }
+    if capability_name == "run_targeted_localized_orbital_analysis":
+        return {
+            "descriptor_scope": ["localized_orbitals_pm", "molecular_orbital_files"],
+            "analysis_ope_lines": ["mofile on", "lmo pm"],
+            "availability_key": "localized_orbital_availability",
+            "available_key": "available_localized_orbital_observables",
+            "missing_key": "missing_localized_orbital_observables",
+            "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
+        }
+    if capability_name == "run_targeted_natural_orbital_analysis":
+        return {
+            "descriptor_scope": ["natural_orbitals_no", "molecular_orbital_files"],
+            "analysis_ope_lines": ["mofile on", "natorb no"],
+            "availability_key": "natural_orbital_availability",
+            "available_key": "available_natural_orbital_observables",
+            "missing_key": "missing_natural_orbital_observables",
+            "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
+        }
+    if capability_name == "run_targeted_density_population_analysis":
+        return {
+            "descriptor_scope": ["density_matrix", "gross_orbital_populations", "mayer_bond_order"],
+            "analysis_ope_lines": ["out 2"],
+            "availability_key": "density_population_availability",
+            "available_key": "available_density_population_observables",
+            "missing_key": "missing_density_population_observables",
+            "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
+        }
+    if capability_name == "run_targeted_transition_dipole_analysis":
+        return {
+            "descriptor_scope": [
+                "ground_to_excited_transition_dipoles",
+                "excited_to_excited_transition_dipoles",
+            ],
+            "analysis_ope_lines": [],
+            "availability_key": "transition_dipole_availability",
+            "available_key": "available_transition_dipole_observables",
+            "missing_key": "missing_transition_dipole_observables",
+            "excitation_profile": {"mode": "tda_atb_excdip", "method_label": "tda-atb-excdip"},
+        }
+    if capability_name == "run_ris_state_characterization":
+        return {
+            "descriptor_scope": [
+                "dominant_transitions",
+                "state_family_overlap",
+                "ground_state_dipole",
+                "mulliken_charges",
+                "molecular_orbital_files",
+            ],
+            "analysis_ope_lines": [],
+            "availability_key": "ris_state_characterization_availability",
+            "available_key": "available_ris_state_characterization_observables",
+            "missing_key": "missing_ris_state_characterization_observables",
+            "excitation_profile": {"mode": "tda_ris", "method_label": "tda-ris"},
+        }
+    return {
+        "descriptor_scope": normalized_scope
+        or [
+            "dominant_transitions",
+            "state_family_overlap",
+            "ground_state_dipole",
+            "mulliken_charges",
+            "molecular_orbital_files",
+        ],
+        "analysis_ope_lines": _targeted_state_characterization_ope_lines(normalized_scope),
+        "availability_key": "state_characterization_availability",
+        "available_key": "available_state_character_descriptors",
+        "missing_key": "missing_state_character_descriptors",
+        "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
+    }
+
+
+def _targeted_state_characterization_ope_lines(
+    descriptor_scope: Sequence[str],
+) -> list[str]:
+    scope = {_normalize_descriptor_name(item) for item in descriptor_scope}
+    lines: list[str] = []
+    if "hirshfeld_charges" in scope:
+        lines.append("charge hirshfeld")
+    if "localized_orbitals_pm" in scope:
+        lines.extend(["mofile on", "lmo pm"])
+    if "natural_orbitals_no" in scope:
+        if "mofile on" not in lines:
+            lines.append("mofile on")
+        lines.append("natorb no")
+    if any(item in scope for item in {"density_matrix", "gross_orbital_populations", "mayer_bond_order"}):
+        lines.append("out 2")
+    return list(dict.fromkeys(lines))
+
+
+def _requested_targeted_analysis_from_generated_artifacts(
+    generated_artifacts: dict[str, Any],
+) -> set[str]:
+    s0_aip_path = generated_artifacts.get("s0_aip_path") or generated_artifacts.get("s0_singlepoint_aip_path")
+    return _requested_targeted_analysis_from_artifact({"s0_aip_path": s0_aip_path})
+
+
+def _requested_targeted_analysis_from_artifact(artifact_record: dict[str, Any]) -> set[str]:
+    requested: set[str] = set()
+    s0_aip_path = artifact_record.get("s0_aip_path") or artifact_record.get("s0_singlepoint_aip_path")
+    if _aip_requests_directive(s0_aip_path, "charge", "hirshfeld"):
+        requested.add("hirshfeld_charges")
+    if _aip_requests_directive(s0_aip_path, "lmo", "pm"):
+        requested.add("localized_orbitals_pm")
+    if _aip_requests_directive(s0_aip_path, "natorb", "no"):
+        requested.add("natural_orbitals_no")
+    if _aip_requests_directive(s0_aip_path, "out", "2"):
+        requested.update({"density_matrix", "gross_orbital_populations", "mayer_bond_order"})
+    return requested
+
+
+def _aip_requests_directive(
+    aip_path_raw: Any,
+    directive: str,
+    value: str,
+) -> bool:
+    if not aip_path_raw:
+        return False
+    aip_path = Path(str(aip_path_raw))
+    if not aip_path.exists():
+        return False
+    text = aip_path.read_text(encoding="utf-8", errors="replace").lower()
+    pattern = rf"^\s*{re.escape(directive.lower())}\s+{re.escape(value.lower())}\s*$"
+    return re.search(pattern, text, flags=re.MULTILINE) is not None
+
+
+def _read_optional_artifact_text(path_raw: Any) -> str:
+    if not path_raw:
+        return ""
+    path = Path(str(path_raw))
+    if not path.exists():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _section_present(text: str, phrase: str) -> bool:
+    return phrase.strip().lower() in text.lower()
+
+
+def _parse_transition_dipole_section(
+    text: str,
+    heading: str,
+    *,
+    include_dip_column: bool,
+) -> list[dict[str, Any]]:
+    if not text:
+        return []
+    match = re.search(re.escape(heading), text, flags=re.IGNORECASE)
+    if match is None:
+        return []
+    remainder = text[match.end() :]
+    rows: list[dict[str, Any]] = []
+    for line in remainder.splitlines():
+        stripped = line.strip()
+        lowered = stripped.lower()
+        if not stripped:
+            if rows:
+                break
+            continue
+        if lowered.startswith("state-state"):
+            continue
+        if (
+            "magnetic dipole moments" in lowered
+            or "rotatory strengths" in lowered
+            or "excitation energies and oscillator strengths" in lowered
+            or lowered.startswith("ground to excited state")
+            or lowered.startswith("excited to excited state")
+            or lowered.startswith("time of ")
+            or lowered.startswith("normal termination")
+        ):
+            break
+        parts = stripped.split()
+        minimum_parts = 7 if include_dip_column else 6
+        if len(parts) < minimum_parts:
+            continue
+        try:
+            row = {
+                "state_from": int(parts[0]),
+                "state_to": int(parts[1]),
+                "x": float(parts[2]),
+                "y": float(parts[3]),
+                "z": float(parts[4]),
+            }
+            if include_dip_column:
+                row["dip"] = float(parts[5])
+                row["oscillator_strength"] = float(parts[6])
+            else:
+                row["oscillator_strength"] = float(parts[5])
+        except ValueError:
+            continue
+        rows.append(row)
+    return rows
+
+
+def _parse_named_charge_section(text: str, label: str) -> list[dict[str, Any]]:
+    if not text:
+        return []
+    match = re.search(
+        rf"{re.escape(label)}\s+charges:\s*(.*?)\n\s*(?:Sum of|Dipole moment|Final Geometry|Normal termination|$)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in match.group(1).splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        try:
+            atom_index = int(parts[0])
+            charge_value = float(parts[-1])
+        except ValueError:
+            continue
+        rows.append(
+            {
+                "atom_index": atom_index,
+                "atom_symbol": parts[1],
+                "charge": charge_value,
+            }
+        )
+    return rows
+
+
+def _parse_mayer_bond_order_pairs(text: str) -> list[dict[str, Any]]:
+    if not text:
+        return []
+    match = re.search(
+        r"Mayer bond order(?:s)?\s*:?(.*?)(?:\n\s*(?:Gross orbital populations|Dipole moment|Final Geometry|Normal termination)|$)",
+        text,
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    if match is None:
+        return []
+    rows: list[dict[str, Any]] = []
+    for line in match.group(1).splitlines():
+        numbers = re.findall(r"[-+]?\d+\.\d+|[-+]?\d+", line)
+        if len(numbers) < 3:
+            continue
+        try:
+            left_index = int(numbers[0])
+            right_index = int(numbers[1])
+            bond_order = float(numbers[2])
+        except ValueError:
+            continue
+        rows.append(
+            {
+                "left_atom_index": left_index,
+                "right_atom_index": right_index,
+                "bond_order": bond_order,
+            }
+        )
+    rows.sort(key=lambda item: (-float(item["bond_order"]), int(item["left_atom_index"]), int(item["right_atom_index"])))
+    return rows
 
 
 def _artifact_scope_from_bundle_id(bundle_id: str) -> str:
@@ -4389,6 +5311,8 @@ def _snapshot_artifact_record_from_generated_artifacts(
         "snapshot_status": "success",
         "prepared_xyz_path": generated_artifacts.get("prepared_xyz_path"),
         "prepared_summary_path": generated_artifacts.get("prepared_summary_path"),
+        "s0_aip_path": generated_artifacts.get("s0_aip_path") or generated_artifacts.get("s0_singlepoint_aip_path"),
+        "s1_aip_path": generated_artifacts.get("s1_aip_path"),
         "s0_aop_path": generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s0_singlepoint_aop_path"),
         "s1_aop_path": generated_artifacts.get("s1_aop_path"),
         "s0_stdout_path": generated_artifacts.get("s0_stdout_path") or generated_artifacts.get("s0_singlepoint_stdout_path"),
@@ -4546,35 +5470,36 @@ def _state_family_overlap_summary(
     }
 
 
-def _build_targeted_state_characterization_record(
+def _build_targeted_property_record(
     *,
+    capability_name: MicroscopicCapabilityName,
+    profile: dict[str, Any],
     artifact_record: dict[str, Any],
     geometry_source: str,
     run_result: AmespBaselineRunResult,
 ) -> dict[str, Any]:
+    capability_available_key = str(profile["available_key"])
     manifold = _build_vertical_state_manifold_summary(run_result.s1)
     state_rows = _state_character_rows(run_result.s1)
     family_overlap = _state_family_overlap_summary(
         state_rows,
         first_bright_state_index=manifold.get("first_bright_state_index"),
     )
-    available_descriptors = {"state_ordering"}
-    if any(row.get("dominant_transition_signature") for row in state_rows):
-        available_descriptors.add("dominant_transitions")
-    if family_overlap.get("available"):
-        available_descriptors.add("state_family_overlap")
-    if run_result.s0.dipole_debye is not None:
-        available_descriptors.add("ground_state_dipole")
-    if run_result.s0.mulliken_charges:
-        available_descriptors.add("mulliken_charges")
-    if run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path"):
-        available_descriptors.add("molecular_orbital_files")
-    first_state_virtual_orbitals = state_rows[0].get("virtual_orbitals") if state_rows else []
-    bright_state = next(
-        (row for row in state_rows if row.get("state_index") == manifold.get("first_bright_state_index")),
-        None,
+    s0_aop_path = run_result.generated_artifacts.get("s0_aop_path") or run_result.generated_artifacts.get("s0_singlepoint_aop_path")
+    s0_aip_path = run_result.generated_artifacts.get("s0_aip_path") or run_result.generated_artifacts.get("s0_singlepoint_aip_path")
+    s1_aop_path = run_result.generated_artifacts.get("s1_aop_path")
+    s0_text = _read_optional_artifact_text(s0_aop_path)
+    s1_text = _read_optional_artifact_text(s1_aop_path)
+    requested_analysis = _requested_targeted_analysis_from_generated_artifacts(run_result.generated_artifacts)
+    hirshfeld_table = _parse_named_charge_section(s0_text, "Hirshfeld")
+    density_matrix_present = _section_present(s0_text, "density matrix")
+    gross_population_present = _section_present(s0_text, "gross orbital population")
+    mayer_pairs = _parse_mayer_bond_order_pairs(s0_text)
+    mayer_present = bool(mayer_pairs) or _section_present(s0_text, "mayer bond order")
+    mo_artifacts_available = bool(
+        run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path")
     )
-    return {
+    common_record = {
         "snapshot_label": artifact_record.get("snapshot_label") or artifact_record.get("member_label"),
         "target_angle_deg": artifact_record.get("target_angle_deg"),
         "dihedral_atoms": artifact_record.get("dihedral_atoms"),
@@ -4587,6 +5512,74 @@ def _build_targeted_state_characterization_record(
         ),
         "mulliken_charge_count": len(run_result.s0.mulliken_charges),
         "state_count": run_result.s1.state_count,
+        "molecular_orbital_files_available": mo_artifacts_available,
+    }
+
+    if capability_name == "run_targeted_transition_dipole_analysis":
+        ground_to_excited = _parse_transition_dipole_section(
+            s1_text,
+            "Ground to excited state transition electric dipole moments(Au):",
+            include_dip_column=True,
+        )
+        excited_to_excited = _parse_transition_dipole_section(
+            s1_text,
+            "Excited to excited state transition electric dipole moments(Au):",
+            include_dip_column=False,
+        )
+        available_transition_observables: list[str] = []
+        if ground_to_excited:
+            available_transition_observables.append("ground_to_excited_transition_dipoles")
+        if excited_to_excited:
+            available_transition_observables.append("excited_to_excited_transition_dipoles")
+        record = {
+            **common_record,
+            "transition_dipole_method": "tda-atb-excdip",
+            "ground_to_excited_transition_dipoles": ground_to_excited,
+            "excited_to_excited_transition_dipoles": excited_to_excited,
+            "transition_dipole_section_presence": {
+                "ground_to_excited_section_present": _section_present(
+                    s1_text,
+                    "Ground to excited state transition electric dipole moments(Au):",
+                ),
+                "excited_to_excited_section_present": _section_present(
+                    s1_text,
+                    "Excited to excited state transition electric dipole moments(Au):",
+                ),
+            },
+            capability_available_key: available_transition_observables,
+        }
+        return record
+
+    available_descriptors = {"state_ordering"}
+    if any(row.get("dominant_transition_signature") for row in state_rows):
+        available_descriptors.add("dominant_transitions")
+    if family_overlap.get("available"):
+        available_descriptors.add("state_family_overlap")
+    if run_result.s0.dipole_debye is not None:
+        available_descriptors.add("ground_state_dipole")
+    if run_result.s0.mulliken_charges:
+        available_descriptors.add("mulliken_charges")
+    if mo_artifacts_available:
+        available_descriptors.add("molecular_orbital_files")
+    if hirshfeld_table:
+        available_descriptors.add("hirshfeld_charges")
+    if "localized_orbitals_pm" in requested_analysis and mo_artifacts_available:
+        available_descriptors.add("localized_orbitals_pm")
+    if "natural_orbitals_no" in requested_analysis and mo_artifacts_available:
+        available_descriptors.add("natural_orbitals_no")
+    if density_matrix_present:
+        available_descriptors.add("density_matrix")
+    if gross_population_present:
+        available_descriptors.add("gross_orbital_populations")
+    if mayer_present:
+        available_descriptors.add("mayer_bond_order")
+    first_state_virtual_orbitals = state_rows[0].get("virtual_orbitals") if state_rows else []
+    bright_state = next(
+        (row for row in state_rows if row.get("state_index") == manifold.get("first_bright_state_index")),
+        None,
+    )
+    record = {
+        **common_record,
         "state_ordering": manifold,
         "state_character_rows": state_rows,
         "state_family_overlap": family_overlap,
@@ -4595,10 +5588,71 @@ def _build_targeted_state_characterization_record(
             list(bright_state.get("virtual_orbitals") or []) if bright_state is not None else []
         ),
         "available_state_character_descriptors": sorted(available_descriptors),
-        "molecular_orbital_files_available": bool(
-            run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path")
-        ),
+        "charge_analysis": {
+            "charge_scheme": "hirshfeld",
+            "charge_table": hirshfeld_table,
+            "charge_availability": "available" if hirshfeld_table else "not_available",
+            "section_presence": {
+                "s0_aip_requested_charge_hirshfeld": "hirshfeld_charges" in requested_analysis,
+                "hirshfeld_charge_section_present": bool(hirshfeld_table),
+            },
+        },
+        "localized_orbital_analysis": {
+            "localization_method": "pm",
+            "localized_orbitals_available": bool("localized_orbitals_pm" in requested_analysis and mo_artifacts_available),
+            "mo_artifacts_available": mo_artifacts_available,
+            "section_presence": {
+                "s0_aip_requested_lmo_pm": _aip_requests_directive(s0_aip_path, "lmo", "pm"),
+                "mo_file_present": bool(run_result.generated_artifacts.get("s0_mo_path")),
+            },
+        },
+        "natural_orbital_analysis": {
+            "natural_orbital_kind": "no",
+            "natural_orbitals_available": bool("natural_orbitals_no" in requested_analysis and mo_artifacts_available),
+            "mo_artifacts_available": mo_artifacts_available,
+            "section_presence": {
+                "s0_aip_requested_natorb_no": _aip_requests_directive(s0_aip_path, "natorb", "no"),
+                "mo_file_present": bool(run_result.generated_artifacts.get("s0_mo_path")),
+            },
+        },
+        "density_population_analysis": {
+            "density_matrix_available": density_matrix_present,
+            "gross_orbital_populations_available": gross_population_present,
+            "mayer_bond_order_available": mayer_present,
+            "top_mayer_pairs": mayer_pairs[:5],
+            "section_presence": {
+                "s0_aip_requested_out_2": _aip_requests_directive(s0_aip_path, "out", "2"),
+                "density_matrix_section_present": density_matrix_present,
+                "gross_orbital_populations_section_present": gross_population_present,
+                "mayer_bond_order_section_present": mayer_present,
+            },
+        },
     }
+    if capability_name == "run_ris_state_characterization":
+        record["state_characterization_method"] = "tda-ris"
+    if capability_name != "run_targeted_state_characterization":
+        record[capability_available_key] = sorted(
+            item for item in available_descriptors if item in set(profile["descriptor_scope"])
+        )
+    return record
+
+
+def _build_targeted_state_characterization_record(
+    *,
+    artifact_record: dict[str, Any],
+    geometry_source: str,
+    run_result: AmespBaselineRunResult,
+) -> dict[str, Any]:
+    return _build_targeted_property_record(
+        capability_name="run_targeted_state_characterization",
+        profile=_targeted_property_profile_for_capability(
+            capability_name="run_targeted_state_characterization",
+            descriptor_scope=[],
+        ),
+        artifact_record=artifact_record,
+        geometry_source=geometry_source,
+        run_result=run_result,
+    )
 
 
 def _intersect_int_sets(values: Sequence[set[int]]) -> list[int]:
@@ -4632,6 +5686,8 @@ def _snapshot_artifact_record_from_partial_error(
         "failure_message": failure_message,
         "prepared_xyz_path": generated_artifacts.get("prepared_xyz_path"),
         "prepared_summary_path": generated_artifacts.get("prepared_summary_path"),
+        "s0_aip_path": generated_artifacts.get("s0_aip_path") or generated_artifacts.get("s0_singlepoint_aip_path"),
+        "s1_aip_path": generated_artifacts.get("s1_aip_path"),
         "s0_aop_path": generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s0_singlepoint_aop_path"),
         "s1_aop_path": s1_aop_path,
         "s0_stdout_path": generated_artifacts.get("s0_stdout_path") or generated_artifacts.get("s0_singlepoint_stdout_path"),
@@ -4676,6 +5732,8 @@ def _collect_scalar_artifact_files(
         "prepared_xyz_path",
         "prepared_sdf_path",
         "prepared_summary_path",
+        "s0_aip_path",
+        "s1_aip_path",
         "s0_aop_path",
         "s1_aop_path",
         "s0_stdout_path",

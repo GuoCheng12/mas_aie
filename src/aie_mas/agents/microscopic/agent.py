@@ -104,9 +104,41 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "action_registry": render_amesp_action_registry(),
             "baseline_action_card_example": registry_examples["baseline"],
             "torsion_action_card_example": registry_examples["torsion"],
+            "targeted_charge_analysis_action_card_example": registry_examples["targeted_charge_analysis"],
+            "targeted_localized_orbital_analysis_action_card_example": registry_examples[
+                "targeted_localized_orbital_analysis"
+            ],
+            "targeted_natural_orbital_analysis_action_card_example": registry_examples[
+                "targeted_natural_orbital_analysis"
+            ],
+            "targeted_density_population_analysis_action_card_example": registry_examples[
+                "targeted_density_population_analysis"
+            ],
+            "targeted_transition_dipole_analysis_action_card_example": registry_examples[
+                "targeted_transition_dipole_analysis"
+            ],
+            "ris_state_characterization_action_card_example": registry_examples[
+                "ris_state_characterization"
+            ],
             "targeted_state_characterization_action_card_example": registry_examples["targeted_state_characterization"],
             "baseline_reasoned_action_example": reasoned_examples["baseline"],
             "torsion_reasoned_action_example": reasoned_examples["torsion"],
+            "targeted_charge_analysis_reasoned_action_example": reasoned_examples["targeted_charge_analysis"],
+            "targeted_localized_orbital_analysis_reasoned_action_example": reasoned_examples[
+                "targeted_localized_orbital_analysis"
+            ],
+            "targeted_natural_orbital_analysis_reasoned_action_example": reasoned_examples[
+                "targeted_natural_orbital_analysis"
+            ],
+            "targeted_density_population_analysis_reasoned_action_example": reasoned_examples[
+                "targeted_density_population_analysis"
+            ],
+            "targeted_transition_dipole_analysis_reasoned_action_example": reasoned_examples[
+                "targeted_transition_dipole_analysis"
+            ],
+            "ris_state_characterization_reasoned_action_example": reasoned_examples[
+                "ris_state_characterization"
+            ],
             "targeted_state_characterization_reasoned_action_example": reasoned_examples["targeted_state_characterization"],
             "capability_registry": render_amesp_capability_registry(),
             "recent_rounds_context": recent_rounds_context,
@@ -221,8 +253,31 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             ]
             if "dipole" in lower_instruction:
                 deliverables.append("dipole summary")
+            if any(
+                token in lower_instruction
+                for token in (
+                    "transition dipole",
+                    "transition-dipole",
+                    "excited-to-excited dipole",
+                    "ground-to-excited dipole",
+                    "excdip",
+                )
+            ):
+                deliverables.append("transition-dipole summary")
             if "charge" in lower_instruction:
                 deliverables.append("Mulliken charge summary")
+            if "hirshfeld" in lower_instruction:
+                deliverables.append("Hirshfeld charge summary")
+            if any(token in lower_instruction for token in ("localized orbital", "localized-orbital", "lmo", "pipek-mezey", "pipek mezey")):
+                deliverables.append("localized-orbital summary")
+            if any(token in lower_instruction for token in ("natural orbital", "natural-orbital", "natorb")):
+                deliverables.append("natural-orbital summary")
+            if any(token in lower_instruction for token in ("density matrix", "gross orbital population", "gross orbital populations")):
+                deliverables.append("density/population summary")
+            if any(token in lower_instruction for token in ("bond order", "bond-order", "mayer")):
+                deliverables.append("Mayer bond-order summary")
+            if any(token in lower_instruction for token in ("ris", "tda-ris", "td-ris")):
+                deliverables.append("RIS state-characterization summary")
             if any(token in lower_instruction for token in ("homo-lumo", "homo lumo", "gap")):
                 deliverables.append("HOMO-LUMO gap summary")
             if any(
@@ -250,8 +305,31 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             deliverables.append("vertical excited-state manifold characterization")
         if "dipole" in lower_instruction:
             deliverables.append("dipole summary")
+        if any(
+            token in lower_instruction
+            for token in (
+                "transition dipole",
+                "transition-dipole",
+                "excited-to-excited dipole",
+                "ground-to-excited dipole",
+                "excdip",
+            )
+        ):
+            deliverables.append("transition-dipole summary")
         if "charge" in lower_instruction:
             deliverables.append("Mulliken charge summary")
+        if "hirshfeld" in lower_instruction:
+            deliverables.append("Hirshfeld charge summary")
+        if any(token in lower_instruction for token in ("localized orbital", "localized-orbital", "lmo", "pipek-mezey", "pipek mezey")):
+            deliverables.append("localized-orbital summary")
+        if any(token in lower_instruction for token in ("natural orbital", "natural-orbital", "natorb")):
+            deliverables.append("natural-orbital summary")
+        if any(token in lower_instruction for token in ("density matrix", "gross orbital population", "gross orbital populations")):
+            deliverables.append("density/population summary")
+        if any(token in lower_instruction for token in ("bond order", "bond-order", "mayer")):
+            deliverables.append("Mayer bond-order summary")
+        if any(token in lower_instruction for token in ("ris", "tda-ris", "td-ris")):
+            deliverables.append("RIS state-characterization summary")
         if any(token in lower_instruction for token in ("conformer", "conformational")):
             deliverables.append("conformer-sensitivity summary")
         if torsion_like:
@@ -301,10 +379,6 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 re.compile(r"\baimd\b"),
                 re.compile(r"\bab initio molecular dynamics\b"),
             ),
-            "bond-order analysis": (
-                re.compile(r"\bbond order\b"),
-                re.compile(r"\bmayer\b"),
-            ),
         }
         for label, patterns in keyword_mapping.items():
             if any(pattern.search(lower_instruction) for pattern in patterns):
@@ -336,8 +410,12 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
     def _capability_scope_text(self) -> str:
         return (
             "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
-            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, run_targeted_state_characterization, parse_snapshot_outputs, "
-            "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and inspect_raw_artifact_bundle. "
+            "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, run_targeted_charge_analysis, "
+            "run_targeted_localized_orbital_analysis, run_targeted_natural_orbital_analysis, "
+            "run_targeted_density_population_analysis, run_targeted_transition_dipole_analysis, "
+            "run_ris_state_characterization, run_targeted_state_characterization, parse_snapshot_outputs, "
+            "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and "
+            "inspect_raw_artifact_bundle. "
             "unsupported_excited_state_relaxation is a fail-fast unsupported capability and does not execute."
         )
 
@@ -442,11 +520,28 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         route = structured_results.get("attempted_route") or "baseline_bundle"
         executed_capability = structured_results.get("executed_capability") or "run_baseline_bundle"
         route_summary = structured_results.get("route_summary") or {}
-        if executed_capability == "run_targeted_state_characterization":
+        if executed_capability in {
+            "run_targeted_charge_analysis",
+            "run_targeted_localized_orbital_analysis",
+            "run_targeted_natural_orbital_analysis",
+            "run_targeted_density_population_analysis",
+            "run_targeted_transition_dipole_analysis",
+            "run_ris_state_characterization",
+            "run_targeted_state_characterization",
+        }:
             parsed_records = structured_results.get("parsed_snapshot_records") or structured_results.get("route_records") or []
+            summary_label = {
+                "run_targeted_charge_analysis": "charge-analysis records",
+                "run_targeted_localized_orbital_analysis": "localized-orbital analysis records",
+                "run_targeted_natural_orbital_analysis": "natural-orbital analysis records",
+                "run_targeted_density_population_analysis": "density/population analysis records",
+                "run_targeted_transition_dipole_analysis": "transition-dipole analysis records",
+                "run_ris_state_characterization": "RIS state-characterization records",
+                "run_targeted_state_characterization": "state-characterization records",
+            }[executed_capability]
             return (
                 f"Amesp capability '{executed_capability}' reused one existing artifact bundle, ran bounded fixed-geometry "
-                f"follow-up calculations for {len(parsed_records)} selected target geometries, and returned state-characterization records. "
+                f"follow-up calculations for {len(parsed_records)} selected target geometries, and returned {summary_label}. "
                 f"Route summary={route_summary}."
             )
         if executed_capability in {

@@ -80,8 +80,16 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
         return "conformer_bundle_follow_up"
     if capability_name == "run_torsion_snapshots":
         return "torsion_snapshot_follow_up"
-    if capability_name == "run_targeted_state_characterization":
-        return "targeted_state_characterization_follow_up"
+    if capability_name in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
+        "run_targeted_state_characterization",
+    }:
+        return "targeted_property_follow_up"
     if capability_name in {
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -101,6 +109,8 @@ def _capability_name_for_compatibility_route(
         return "run_conformer_bundle"
     if capability_route == "torsion_snapshot_follow_up":
         return "run_torsion_snapshots"
+    if capability_route == "targeted_property_follow_up":
+        return "run_targeted_state_characterization"
     if capability_route == "targeted_state_characterization_follow_up":
         return "run_targeted_state_characterization"
     if capability_route == "artifact_parse_only":
@@ -166,6 +176,12 @@ class MicroscopicReasoningPlanDraft(BaseModel):
             "run_baseline_bundle",
             "run_conformer_bundle",
             "run_torsion_snapshots",
+            "run_targeted_charge_analysis",
+            "run_targeted_localized_orbital_analysis",
+            "run_targeted_natural_orbital_analysis",
+            "run_targeted_density_population_analysis",
+            "run_targeted_transition_dipole_analysis",
+            "run_ris_state_characterization",
             "run_targeted_state_characterization",
             "parse_snapshot_outputs",
             "unsupported_excited_state_relaxation",
@@ -324,6 +340,12 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -348,6 +370,12 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -706,6 +734,12 @@ def _structure_source_for_semantic_capability(
     has_reusable_structure: bool,
 ) -> Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]]:
     if capability_name in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -1177,7 +1211,15 @@ def _semantic_contract_from_action_card(
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
-    elif execution_action == "run_targeted_state_characterization":
+    elif execution_action in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
+        "run_targeted_state_characterization",
+    }:
         target_object_kind = "artifact_bundle"
         if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
             needs_discovery = "artifact_bundles"
@@ -1187,11 +1229,12 @@ def _semantic_contract_from_action_card(
             "perform_new_calculation",
             "optimize_ground_state",
             "state_window",
-            "descriptor_scope",
             "target_count",
         ):
             if key in params:
                 constraints_payload[key] = params[key]
+        if execution_action == "run_targeted_state_characterization" and "descriptor_scope" in params:
+            constraints_payload["descriptor_scope"] = params["descriptor_scope"]
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
@@ -1359,6 +1402,12 @@ def _closest_supported_actions_for_unsupported_parts(
         )
     ):
         return [
+            "run_targeted_charge_analysis",
+            "run_targeted_localized_orbital_analysis",
+            "run_targeted_natural_orbital_analysis",
+            "run_targeted_density_population_analysis",
+            "run_targeted_transition_dipole_analysis",
+            "run_ris_state_characterization",
             "run_targeted_state_characterization",
             "extract_ct_descriptors_from_bundle",
             "inspect_raw_artifact_bundle",
@@ -1525,6 +1574,12 @@ def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft)
     if contract.primary_capability == "run_conformer_bundle":
         return "conformers"
     if contract.primary_capability in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -1689,6 +1744,12 @@ def compile_semantic_contract_to_tool_plan(
         artifact_bundle_id=(
             contract.target.artifact_bundle_id
             if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
@@ -1700,6 +1761,12 @@ def compile_semantic_contract_to_tool_plan(
         artifact_kind=(
             selection_policy.artifact_kind
             if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
@@ -1726,6 +1793,12 @@ def compile_semantic_contract_to_tool_plan(
         artifact_source_round=(
             selection_policy.source_round_preference
             if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
@@ -1738,6 +1811,12 @@ def compile_semantic_contract_to_tool_plan(
             selection_policy.source_round_preference
             if effective_capability
             in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
@@ -1755,7 +1834,20 @@ def compile_semantic_contract_to_tool_plan(
         conformer_ids=list(contract.target.conformer_ids) if effective_capability == "run_conformer_bundle" else [],
         max_conformers=contract.constraints.max_conformers,
         snapshot_count=contract.constraints.snapshot_count if effective_capability in {"run_torsion_snapshots", "run_conformer_bundle"} else None,
-        target_count=contract.constraints.target_count if effective_capability == "run_targeted_state_characterization" else None,
+        target_count=(
+            contract.constraints.target_count
+            if effective_capability
+            in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
+                "run_targeted_state_characterization",
+            }
+            else None
+        ),
         angle_offsets_deg=list(contract.constraints.angle_offsets_deg) if effective_capability == "run_torsion_snapshots" else [],
         state_window=list(contract.constraints.state_window),
         honor_exact_target=contract.constraints.honor_exact_target if contract.constraints.honor_exact_target is not None else True,
@@ -1824,6 +1916,42 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
         return ["conformer-sensitivity summary"]
     if capability_name == "run_torsion_snapshots":
         return ["torsion-sensitivity summary", "vertical excited-state manifold characterization"]
+    if capability_name == "run_targeted_charge_analysis":
+        return [
+            "targeted charge-analysis records",
+            "charge availability summary",
+            "bounded raw charge observables",
+        ]
+    if capability_name == "run_targeted_localized_orbital_analysis":
+        return [
+            "targeted localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "bounded raw localized-orbital observables",
+        ]
+    if capability_name == "run_targeted_natural_orbital_analysis":
+        return [
+            "targeted natural-orbital analysis records",
+            "natural-orbital availability summary",
+            "bounded raw natural-orbital observables",
+        ]
+    if capability_name == "run_targeted_density_population_analysis":
+        return [
+            "targeted density/population analysis records",
+            "density/population availability summary",
+            "bounded raw density/population observables",
+        ]
+    if capability_name == "run_targeted_transition_dipole_analysis":
+        return [
+            "targeted transition-dipole analysis records",
+            "transition-dipole availability summary",
+            "bounded raw transition-dipole observables",
+        ]
+    if capability_name == "run_ris_state_characterization":
+        return [
+            "RIS state-characterization records",
+            "RIS state-characterization availability summary",
+            "bounded raw RIS state-character observables",
+        ]
     if capability_name == "run_targeted_state_characterization":
         return [
             "targeted state-characterization records",
@@ -1882,6 +2010,48 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
             "snapshot vertical-state proxies",
             "torsion sensitivity summary",
         ]
+    if capability_name == "run_targeted_charge_analysis":
+        return [
+            "selected target geometry labels",
+            "charge-analysis records",
+            "charge availability summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "run_targeted_localized_orbital_analysis":
+        return [
+            "selected target geometry labels",
+            "localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "run_targeted_natural_orbital_analysis":
+        return [
+            "selected target geometry labels",
+            "natural-orbital analysis records",
+            "natural-orbital availability summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "run_targeted_density_population_analysis":
+        return [
+            "selected target geometry labels",
+            "density/population analysis records",
+            "density/population availability summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "run_targeted_transition_dipole_analysis":
+        return [
+            "selected target geometry labels",
+            "transition-dipole analysis records",
+            "transition-dipole availability summary",
+            "artifact reuse note",
+        ]
+    if capability_name == "run_ris_state_characterization":
+        return [
+            "selected target geometry labels",
+            "RIS state-characterization records",
+            "RIS state-characterization availability summary",
+            "artifact reuse note",
+        ]
     if capability_name == "run_targeted_state_characterization":
         return [
             "selected target geometry labels",
@@ -1928,6 +2098,18 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
         return "Use the bounded conformer-bundle follow-up route."
     if capability_name == "run_torsion_snapshots":
         return "Use the bounded torsion-snapshot follow-up route."
+    if capability_name == "run_targeted_charge_analysis":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted charge analysis on those geometries."
+    if capability_name == "run_targeted_localized_orbital_analysis":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted localized-orbital analysis on those geometries."
+    if capability_name == "run_targeted_natural_orbital_analysis":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted natural-orbital analysis on those geometries."
+    if capability_name == "run_targeted_density_population_analysis":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted density/population analysis on those geometries."
+    if capability_name == "run_targeted_transition_dipole_analysis":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted transition-dipole analysis on those geometries."
+    if capability_name == "run_ris_state_characterization":
+        return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run RIS state characterization on those geometries."
     if capability_name == "run_targeted_state_characterization":
         return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted state characterization on those geometries."
     if capability_name == "parse_snapshot_outputs":
@@ -1951,6 +2133,12 @@ def _default_call_kind_for_capability(
 
 def _default_optimize_ground_state_for_capability(capability_name: AmespCapabilityName) -> bool:
     return capability_name not in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -1981,6 +2169,12 @@ def _normalize_tool_request_from_draft(
         "run_baseline_bundle",
         "run_conformer_bundle",
         "run_torsion_snapshots",
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
@@ -2147,6 +2341,12 @@ def _insert_required_discovery_calls(
             call.call_kind == "execution"
             and call.request.capability_name
             in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
                 "extract_ct_descriptors_from_bundle",
@@ -2264,7 +2464,15 @@ def _build_execution_steps(
             "s0_optimization" if optimize_ground_state else "s0_singlepoint",
             "s1_vertical_excitation",
         ]
-    elif capability_name == "run_targeted_state_characterization":
+    elif capability_name in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_ris_state_characterization",
+        "run_targeted_state_characterization",
+    }:
         step_types = [
             "artifact_parse",
             "s0_optimization" if optimize_ground_state else "s0_singlepoint",
@@ -2362,23 +2570,63 @@ def _build_execution_steps(
                 )
             )
         else:
+            if capability_name == "run_targeted_transition_dipole_analysis":
+                description = (
+                    "Run a bounded Amesp TDA-aTB vertical-excitation follow-up with transition-dipole output enabled "
+                    "to collect raw ground-to-excited and excited-to-excited transition-dipole observables on the selected geometries."
+                )
+                keywords = [
+                    "atb",
+                    "tda",
+                    "excdip on",
+                    f"nstates {config.amesp_s1_nstates}",
+                    f"tout {config.amesp_td_tout}",
+                ]
+                expected_outputs = [
+                    "excited-state energies",
+                    "oscillator strengths",
+                    "ground-to-excited transition dipoles",
+                    "excited-to-excited transition dipoles",
+                ]
+            elif capability_name == "run_ris_state_characterization":
+                description = (
+                    "Run a bounded Amesp TDA-RIS vertical-excitation follow-up on the selected geometries "
+                    "to collect stronger raw state-character observables without escalating to relaxed excited-state workflows."
+                )
+                keywords = [
+                    "b3lyp",
+                    "sto-3g",
+                    "tda-ris",
+                    f"nstates {config.amesp_s1_nstates}",
+                    f"tout {config.amesp_td_tout}",
+                ]
+                expected_outputs = [
+                    "excited-state energies",
+                    "oscillator strengths",
+                    "dominant transitions",
+                    "state-character rows",
+                ]
+            else:
+                description = (
+                    "Run a bounded real Amesp vertical excitation calculation at the best available low-cost geometry "
+                    "to characterize the low-lying excited-state manifold without escalating to heavy excited-state optimization."
+                )
+                keywords = [
+                    "b3lyp",
+                    "sto-3g",
+                    "td",
+                    f"nstates {config.amesp_s1_nstates}",
+                    f"tout {config.amesp_td_tout}",
+                ]
+                expected_outputs = ["excited-state energies", "oscillator strengths"]
             steps.append(
                 MicroscopicExecutionStep(
                     step_id="s1_vertical_excitation",
                     step_type="s1_vertical_excitation",
-                    description=(
-                        "Run a bounded real Amesp vertical excitation calculation at the best available low-cost geometry "
-                        "to characterize the low-lying excited-state manifold without escalating to heavy excited-state optimization."
-                    ),
+                    description=description,
                     input_source="S0 optimized geometry",
-                    keywords=[
-                        "b3lyp",
-                        "sto-3g",
-                        "td",
-                        f"nstates {config.amesp_s1_nstates}",
-                        f"tout {config.amesp_td_tout}",
-                    ],
-                    expected_outputs=["excited-state energies", "oscillator strengths"],
+                    keywords=keywords,
+                    expected_outputs=expected_outputs,
                 )
             )
     return steps
@@ -2392,6 +2640,12 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
+        "run_targeted_charge_analysis: bounded fixed-geometry targeted charge analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_localized_orbital_analysis: bounded fixed-geometry targeted localized-orbital analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_natural_orbital_analysis: bounded fixed-geometry targeted natural-orbital analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_density_population_analysis: bounded fixed-geometry targeted density/population analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_transition_dipole_analysis: bounded fixed-geometry targeted transition-dipole analysis on a small representative subset of existing artifact geometries",
+        "run_ris_state_characterization: bounded fixed-geometry RIS state characterization on a small representative subset of existing artifact geometries",
         "run_targeted_state_characterization: bounded fixed-geometry state-character follow-up on a small representative subset of existing artifact geometries",
         "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",
         "extract_ct_descriptors_from_bundle: inspect reusable artifacts for bounded CT-descriptor surrogates",
