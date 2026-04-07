@@ -1,0 +1,679 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "suite_status": "failed",
+  "success_count": 30,
+  "failure_count": 10,
+  "results": [
+    {
+      "case_id": "dft_sp__control_mofile_only",
+      "context_id": "dft_sp",
+      "target_id": "control_mofile_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__control_mofile_only.json"
+    },
+    {
+      "case_id": "dft_sp__control_out2_only",
+      "context_id": "dft_sp",
+      "target_id": "control_out2_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "out 2"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__control_out2_only.json"
+    },
+    {
+      "case_id": "dft_sp__lmo_pm_method_mofile",
+      "context_id": "dft_sp",
+      "target_id": "lmo_pm_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__lmo_pm_method_mofile.json"
+    },
+    {
+      "case_id": "dft_sp__lmo_pm_method_mofile_nlmo_occ",
+      "context_id": "dft_sp",
+      "target_id": "lmo_pm_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__lmo_pm_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "dft_sp__lmo_boys_method_mofile_nlmo_occ",
+      "context_id": "dft_sp",
+      "target_id": "lmo_boys_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo boys"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__lmo_boys_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "dft_sp__natorb_no_method_mofile",
+      "context_id": "dft_sp",
+      "target_id": "natorb_no_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb no"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__natorb_no_method_mofile.json"
+    },
+    {
+      "case_id": "dft_sp__natorb_uno_method_mofile",
+      "context_id": "dft_sp",
+      "target_id": "natorb_uno_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb uno"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__natorb_uno_method_mofile.json"
+    },
+    {
+      "case_id": "dft_sp__natorb_nso_method_mofile",
+      "context_id": "dft_sp",
+      "target_id": "natorb_nso_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb nso"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/dft_sp__natorb_nso_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__control_mofile_only",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "control_mofile_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__control_mofile_only.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__control_out2_only",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "control_out2_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "out 2"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__control_out2_only.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__lmo_pm_method_mofile",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "lmo_pm_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__lmo_pm_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__lmo_pm_method_mofile_nlmo_occ",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "lmo_pm_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__lmo_pm_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__lmo_boys_method_mofile_nlmo_occ",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "lmo_boys_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo boys"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__lmo_boys_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__natorb_no_method_mofile",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "natorb_no_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb no"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__natorb_no_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__natorb_uno_method_mofile",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "natorb_uno_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb uno"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__natorb_uno_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_after_ope__natorb_nso_method_mofile",
+      "context_id": "td_posthf_after_ope",
+      "target_id": "natorb_nso_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb nso"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_after_ope__natorb_nso_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__control_mofile_only",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "control_mofile_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__control_mofile_only.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__control_out2_only",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "control_out2_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "out 2"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__control_out2_only.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__lmo_pm_method_mofile",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "lmo_pm_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__lmo_pm_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__lmo_pm_method_mofile_nlmo_occ",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "lmo_pm_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__lmo_pm_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "lmo_boys_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo boys"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__natorb_no_method_mofile",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "natorb_no_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb no"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__natorb_no_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__natorb_uno_method_mofile",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "natorb_uno_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb uno"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__natorb_uno_method_mofile.json"
+    },
+    {
+      "case_id": "td_posthf_before_ope__natorb_nso_method_mofile",
+      "context_id": "td_posthf_before_ope",
+      "target_id": "natorb_nso_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb nso"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/td_posthf_before_ope__natorb_nso_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__control_mofile_only",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "control_mofile_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__control_mofile_only.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__control_out2_only",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "control_out2_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "out 2"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__control_out2_only.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__lmo_pm_method_mofile",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "lmo_pm_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__lmo_pm_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__lmo_pm_method_mofile_nlmo_occ",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "lmo_pm_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__lmo_pm_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__lmo_boys_method_mofile_nlmo_occ",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "lmo_boys_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo boys"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__lmo_boys_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__natorb_no_method_mofile",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "natorb_no_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb no"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__natorb_no_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__natorb_uno_method_mofile",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "natorb_uno_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb uno"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__natorb_uno_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_after_ope__natorb_nso_method_mofile",
+      "context_id": "tda_ris_posthf_after_ope",
+      "target_id": "natorb_nso_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb nso"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_after_ope__natorb_nso_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__control_mofile_only",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "control_mofile_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__control_mofile_only.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__control_out2_only",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "control_out2_only",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [],
+      "ope_lines": [
+        "out 2"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__control_out2_only.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__lmo_pm_method_mofile",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "lmo_pm_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__lmo_pm_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__lmo_pm_method_mofile_nlmo_occ",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "lmo_pm_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo pm"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__lmo_pm_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "lmo_boys_method_mofile_nlmo_occ",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "lmo boys"
+      ],
+      "ope_lines": [
+        "mofile on",
+        "nlmo occ"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__natorb_no_method_mofile",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "natorb_no_method_mofile",
+      "status": "success",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb no"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__natorb_no_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__natorb_uno_method_mofile",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "natorb_uno_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb uno"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__natorb_uno_method_mofile.json"
+    },
+    {
+      "case_id": "tda_ris_posthf_before_ope__natorb_nso_method_mofile",
+      "context_id": "tda_ris_posthf_before_ope",
+      "target_id": "natorb_nso_method_mofile",
+      "status": "failed",
+      "exit_code": 0,
+      "method_lines": [
+        "natorb nso"
+      ],
+      "ope_lines": [
+        "mofile on"
+      ],
+      "terminated_normally": false,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/tda_ris_posthf_before_ope__natorb_nso_method_mofile.json"
+    }
+  ]
+}

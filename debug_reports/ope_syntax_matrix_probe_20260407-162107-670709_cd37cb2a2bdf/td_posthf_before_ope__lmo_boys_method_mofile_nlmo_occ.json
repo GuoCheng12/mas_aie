@@ -1,0 +1,63 @@
+{
+  "case_id": "td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ",
+  "context_id": "td_posthf_before_ope",
+  "target_id": "lmo_boys_method_mofile_nlmo_occ",
+  "context_title": "TD-DFT with >posthf before >ope",
+  "target_title": "Localized orbital (Boys in >method) with mofile + nlmo occ",
+  "status": "success",
+  "keywords": [
+    "b3lyp",
+    "sto-3g",
+    "td"
+  ],
+  "method_lines": [
+    "lmo boys"
+  ],
+  "pre_ope_blocks": [
+    [
+      "posthf",
+      [
+        "nstates 2",
+        "tout 1"
+      ]
+    ]
+  ],
+  "ope_lines": [
+    "mofile on",
+    "nlmo occ"
+  ],
+  "post_ope_blocks": [],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ/td_posthf_before_ope__lmo_boys_method_mofile_nlmo_occ.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": true,
+  "stdout_stop_lines": [],
+  "stderr_stop_lines": [],
+  "stdout_tail": [],
+  "stderr_tail": [],
+  "aop_tail": [
+    "  E[Eexc] =    -74.883057904",
+    " ",
+    " ----------------------------------------------------------------",
+    " ",
+    " Final Geometry(angstroms):",
+    " ",
+    "  3",
+    "  O            0.00000000    0.00000000    0.00000000",
+    "  H            0.00000000    0.75716000    0.58626000",
+    "  H            0.00000000   -0.75716000    0.58626000",
+    " ",
+    " Final Energy:      -74.8830579040",
+    " ",
+    " ====================================================================",
+    " ",
+    " The program run from  2026-04-07  16:21:20  to  2026-04-07  16:21:21",
+    " Total run time:     0 days,   0  hours,   0 minutes,  0.7072 seconds",
+    " Normal termination of Amesp!",
+    " ",
+    " ===================================================================="
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-162100-342895_035ae145e418",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "cases_requested": [
+    "control_no_ope",
+    "charge_hirshfeld",
+    "density_out2",
+    "mofile_only",
+    "localized_pm_method",
+    "localized_pm_method_nlmo_occ",
+    "localized_boys_method_nlmo_occ",
+    "natural_no_method",
+    "natural_uno_method",
+    "natural_nso_method"
+  ],
+  "npara": 1,
+  "maxcore_mb": 4000,
+  "charge": 0,
+  "multiplicity": 1
+}

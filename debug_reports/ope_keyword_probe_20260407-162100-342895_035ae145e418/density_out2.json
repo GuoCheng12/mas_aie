@@ -1,0 +1,46 @@
+{
+  "case_id": "density_out2",
+  "title": "Density/population out 2 probe",
+  "status": "success",
+  "keywords": [
+    "b3lyp",
+    "sto-3g"
+  ],
+  "method_lines": [],
+  "ope_lines": [
+    "out 2"
+  ],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-162100-342895_035ae145e418/work/density_out2/density_out2.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-162100-342895_035ae145e418/work/density_out2/density_out2.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-162100-342895_035ae145e418/work/density_out2/density_out2.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-162100-342895_035ae145e418/work/density_out2/density_out2.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": true,
+  "stdout_stop_lines": [],
+  "stderr_stop_lines": [],
+  "stdout_tail": [],
+  "stderr_tail": [],
+  "aop_tail": [
+    "  E[DFT]  =    -75.312467577",
+    " ",
+    " ----------------------------------------------------------------",
+    " ",
+    " Final Geometry(angstroms):",
+    " ",
+    "  3",
+    "  O            0.00000000    0.00000000    0.00000000",
+    "  H            0.00000000    0.75716000    0.58626000",
+    "  H            0.00000000   -0.75716000    0.58626000",
+    " ",
+    " Final Energy:      -75.3124675769",
+    " ",
+    " ====================================================================",
+    " ",
+    " The program run from  2026-04-07  16:21:01  to  2026-04-07  16:21:02",
+    " Total run time:     0 days,   0  hours,   0 minutes,  0.3908 seconds",
+    " Normal termination of Amesp!",
+    " ",
+    " ===================================================================="
+  ]
+}

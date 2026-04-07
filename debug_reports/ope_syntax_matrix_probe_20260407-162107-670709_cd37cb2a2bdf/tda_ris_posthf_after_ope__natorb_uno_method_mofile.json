@@ -1,0 +1,65 @@
+{
+  "case_id": "tda_ris_posthf_after_ope__natorb_uno_method_mofile",
+  "context_id": "tda_ris_posthf_after_ope",
+  "target_id": "natorb_uno_method_mofile",
+  "context_title": "TDA-RIS with >posthf after >ope",
+  "target_title": "Natural orbital (UNO in >method) with mofile",
+  "status": "failed",
+  "keywords": [
+    "b3lyp",
+    "sto-3g",
+    "tda-ris"
+  ],
+  "method_lines": [
+    "natorb uno"
+  ],
+  "pre_ope_blocks": [],
+  "ope_lines": [
+    "mofile on"
+  ],
+  "post_ope_blocks": [
+    [
+      "posthf",
+      [
+        "nstates 2",
+        "tout 1"
+      ]
+    ]
+  ],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/tda_ris_posthf_after_ope__natorb_uno_method_mofile/tda_ris_posthf_after_ope__natorb_uno_method_mofile.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/tda_ris_posthf_after_ope__natorb_uno_method_mofile/tda_ris_posthf_after_ope__natorb_uno_method_mofile.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/tda_ris_posthf_after_ope__natorb_uno_method_mofile/tda_ris_posthf_after_ope__natorb_uno_method_mofile.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-162107-670709_cd37cb2a2bdf/work/tda_ris_posthf_after_ope__natorb_uno_method_mofile/tda_ris_posthf_after_ope__natorb_uno_method_mofile.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": false,
+  "stdout_stop_lines": [],
+  "stderr_stop_lines": [],
+  "stdout_tail": [
+    "  STOP: Keyword \"uno\" only works for U!",
+    " "
+  ],
+  "stderr_tail": [],
+  "aop_tail": [
+    " ----------------------------------------------------------------",
+    " ",
+    "                                  Bohr            Angs",
+    "  Max Atomic Distance :         2.861650        1.514320",
+    "  Min Atomic Distance :         1.809596        0.957597",
+    " ",
+    " ----------------------------------------------------------------",
+    " ",
+    "  Centre of gravity [angstrom]:",
+    "      0.00000000          0.00000000          0.06561121",
+    " ",
+    "  Rotational Constants [GHZ]:",
+    "     821.4231412         437.3475844         285.3954412",
+    " ",
+    "  Point Group of Current Geometry:     C2v",
+    " ",
+    "  Max memory used/input in current calculation: 3MB/4000MB",
+    " ",
+    "  STOP: Keyword \"uno\" only works for U!",
+    " "
+  ]
+}

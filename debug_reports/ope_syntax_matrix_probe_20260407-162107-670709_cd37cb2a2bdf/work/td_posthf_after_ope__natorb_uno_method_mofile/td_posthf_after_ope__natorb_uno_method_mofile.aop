@@ -1,0 +1,90 @@
+ **************************************************************** 
+ **              _      __  __   _____   ____    ____          ** 
+ **             / \    |  \/  | | ____| / ___|  |  _ \         ** 
+ **            / _ \   | |\/| | |  _|   \___ \  | |_) |        ** 
+ **           / ___ \  | |  | | | |___   ___) | |  __/         ** 
+ **          /_/   \_\ |_|  |_| |_____| |____/  |_|            ** 
+ **                                                            ** 
+ **     Atomic and molecular electronic structure program      ** 
+ **                                                            ** 
+ **                  Author : Zhang Yingfeng                   ** 
+ **                                                            ** 
+ **         Version 2.1(dev), release date: 2025-10-23         ** 
+ **                                                            ** 
+ **               Amesp website : www.amesp.xyz                ** 
+ **                                                            ** 
+ **************************************************************** 
+ 
+ If Amesp is utilized in your work, cite this work as : 
+ 
+    Yingfeng Zhang 2024 Electron. Struct. 6 037002. 
+    DOI: 10.1088/2516-1075/ad5cb5
+ 
+ ------------------------- Input File ---------------------------
+ 
+ % npara 1
+ % maxcore 4000
+ ! b3lyp sto-3g td
+ >scf
+   maxcyc 2000
+   vshift 500
+ end
+ >method
+   natorb uno
+ end
+ >ope
+   mofile on
+ end
+ >posthf
+   nstates 2
+   tout 1
+ end
+ >xyz 0 1
+  O   0.000000  0.000000  0.000000
+  H   0.000000  0.757160  0.586260
+  H   0.000000 -0.757160  0.586260
+ end
+ 
+ ----------------------------------------------------------------
+ 
+  Method: b3lyp ; Basis Set: sto-3g
+ 
+ ----------------------------------------------------------------
+ 
+  Number of atom type : 2
+  Alpha electrons:      5  Beta electrons:      5
+  Number of Atoms:      3  Number of nuclear charges:     10
+  Number of Shell:      5  Number of basis functions:      7
+  Highest Ang-Mom:      1  Maximum Contraction Depth:      3
+  Number of primitive gaussian functions:      21
+ 
+  Basis Set Information:
+   O              [ 2s 1p | 6s 3p ]
+   H              [ 1s | 3s ]
+ 
+ Current Geometry(angstroms):
+                     x               y               z
+  O              0.0000000       0.0000000       0.0000000
+  H              0.0000000       0.7571600       0.5862600
+  H              0.0000000      -0.7571600       0.5862600
+ 
+ ----------------------------------------------------------------
+ 
+                                  Bohr            Angs
+  Max Atomic Distance :         2.861650        1.514320
+  Min Atomic Distance :         1.809596        0.957597
+ 
+ ----------------------------------------------------------------
+ 
+  Centre of gravity [angstrom]:
+      0.00000000          0.00000000          0.06561121
+ 
+  Rotational Constants [GHZ]:
+     821.4231412         437.3475844         285.3954412
+ 
+  Point Group of Current Geometry:     C2v
+ 
+  Max memory used/input in current calculation: 3MB/4000MB
+ 
+  STOP: Keyword "uno" only works for U!
+ 
