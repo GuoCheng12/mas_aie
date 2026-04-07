@@ -1,0 +1,20 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/amesp_binary_probe_20260407-152818-857911_46f376ac536b",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "timeout_seconds": 10.0,
+  "keywords": [
+    "lmo",
+    "natorb",
+    "hirshfeld",
+    "lowdin",
+    "cm5",
+    "mofile",
+    "boys",
+    "pipek",
+    "mayer",
+    "gross orbital populations",
+    "density matrix"
+  ],
+  "skip_strings": false,
+  "skip_examples": false
+}

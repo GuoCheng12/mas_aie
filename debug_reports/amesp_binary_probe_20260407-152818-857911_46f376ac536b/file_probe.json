@@ -1,0 +1,15 @@
+{
+  "label": "file",
+  "cmd": [
+    "file",
+    "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp"
+  ],
+  "status": "failed",
+  "exit_code": null,
+  "stdout": "",
+  "stderr": "FileNotFoundError(2, 'No such file or directory')",
+  "stdout_tail": [],
+  "stderr_tail": [
+    "FileNotFoundError(2, 'No such file or directory')"
+  ]
+}

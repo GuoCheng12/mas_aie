@@ -1,0 +1,24 @@
+{
+  "status": "completed",
+  "example_root": "/datasets/workspace/mas_aie/third_party/Amesp/Example",
+  "file_count_scanned": 113,
+  "matches": {
+    "lmo": [],
+    "natorb": [],
+    "hirshfeld": [],
+    "lowdin": [],
+    "cm5": [
+      "/datasets/workspace/mas_aie/third_party/Amesp/Example/AIMD/Frozen_BOMD/H2O_4.aop",
+      "/datasets/workspace/mas_aie/third_party/Amesp/Example/SP/aTB/C18.aop"
+    ],
+    "mofile": [],
+    "boys": [],
+    "pipek": [],
+    "mayer": [
+      "/datasets/workspace/mas_aie/third_party/Amesp/Example/EDA/Mayer/CH4.aip",
+      "/datasets/workspace/mas_aie/third_party/Amesp/Example/EDA/Mayer/CH4.aop"
+    ],
+    "gross orbital populations": [],
+    "density matrix": []
+  }
+}

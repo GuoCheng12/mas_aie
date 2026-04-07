@@ -1,0 +1,131 @@
+{
+  "status": "completed",
+  "strings_binary": "/usr/bin/strings",
+  "matches": {
+    "lmo": [
+      "' in LMO!",
+      "nlmo",
+      "' in nlmo!",
+      "finished clmoio",
+      "The matrix is probably (almost) non-positive definite",
+      "no more namespaces available for dlmopen()",
+      "invalid target namespace in dlmopen()",
+      "lmo_close_$format_pack.0.18",
+      "lmo_open_$format_pack.0.19",
+      "clmoio_nsym_..1",
+      "clmoio_nsym_..0",
+      "clmoio_nsym_..2",
+      "dlmopen.o",
+      "dlmopen_doit",
+      "modinput_mp_nlmo_",
+      "clmoio_nsym_",
+      "___dlmopen",
+      "modinput_mp_lmo_",
+      "_Z17kmpc_get_poolmodev",
+      "lmo_open_"
+    ],
+    "natorb": [
+      "natorb",
+      "' in NatOrb!",
+      "modinput_mp_natorb_"
+    ],
+    "hirshfeld": [
+      "hirshfeld",
+      "Hirshfeld charges:",
+      " Sum of Hirshfeld charges  =  ",
+      " Atomic polarizabilities(Tkatchenko-Scheffler,Hirshfeld):",
+      " Atomic dipole moment(Hirshfeld):",
+      " Atomic traceless quadrupole moment(Hirshfeld):",
+      ";unknown;sub_hirshfeld_charge_;415;415;;",
+      ";unknown;sub_hirshfeld_charge_;415;443;;",
+      ";unknown;sub_hirshfeld_charge_;416;442;;",
+      ";unknown;sub_hirshfeld_charge_;442;442;;",
+      ";unknown;hirshfeld_charge_;360;360;;",
+      ";unknown;hirshfeld_charge_;360;360;;",
+      ";unknown;hirshfeld_charge_;360;360;;",
+      ";unknown;hirshfeld_charge_;360;360;;6",
+      "hirshfeld_charge_$format_pack.0.8",
+      "___kmpv_zerosub_hirshfeld_charge__0",
+      "___kmpv_zerohirshfeld_charge__0",
+      "sub_hirshfeld_charge_"
+    ],
+    "lowdin": [
+      "lowdin",
+      "Lowdin charges:",
+      " Sum of Lowdin charges  =  ",
+      "lowdin_charge_$format_pack.0.7",
+      "lowdin_charge_"
+    ],
+    "cm5": [
+      " Sum of CM5 charges  =  ",
+      "CM5 charges:",
+      "Mulliken based CM5 charges:",
+      "cm5_charge_$format_pack.0.9",
+      "sub_cm5_charge_",
+      "sub_cm5_charge_d2_",
+      "sub_cm5_charge_d1_",
+      "get_cm5tval_"
+    ],
+    "mofile": [
+      "mofile",
+      "' in mofile!",
+      " Stop : Unable to read mofile with PADM method!",
+      "modinput_mp_mofile_"
+    ],
+    "boys": [
+      "boys",
+      "     >>>>> Foster-Boys orbital localization <<<<<",
+      "local_foster_boys_$format_pack.0.22",
+      "boys_pada8_",
+      "boys_pada5_",
+      "boys_pada10_",
+      "local_foster_boys_",
+      "boys_pada2_",
+      "boysfunc_gen_",
+      "boys_pada0_",
+      "boys_pada7_",
+      "boys_pada4_",
+      "boys_pada1_",
+      "boys_pada9_",
+      "boys_func_",
+      "boys_func_rs_",
+      "boys_pada6_",
+      "boys_pada3_"
+    ],
+    "pipek": [
+      "     >>>>> Pipek-Mezey orbital localization <<<<<",
+      "local_pipek_mezey_$format_pack.0.20",
+      "local_pipek_mezey_"
+    ],
+    "mayer": [
+      "mayer",
+      "mayerdft",
+      "' in MayerDFT!",
+      "Mayer Bond Order : ",
+      " Starting Mayer's Chemical Energy Component Analysis.",
+      "Mayer's Chemical Energy Component Analysis:",
+      " Total energy part of Mayer's EDA:",
+      "  Time of Mayer's EDA :",
+      " Time of Mayer's EDA :",
+      " The DFT-Exc part of Mayer's EDA is canceled !",
+      "The DFT-Exc part of Mayer's EDA is canceled !",
+      " Calculating one-ints part of Mayer's EDA...",
+      "Calculating one-ints part of Mayer's EDA...",
+      " Calculating two-ints part of Mayer's EDA...",
+      "Calculating two-ints part of Mayer's EDA...",
+      " Calculating DFT-Exc  part of Mayer's EDA...",
+      "Calculating DFT-Exc  part of Mayer's EDA...",
+      " Kinetic energy part of Mayer's EDA:",
+      " Nuc-Ele energy part of Mayer's EDA:",
+      " Nuc-Nuc energy part of Mayer's EDA:"
+    ],
+    "gross orbital populations": [
+      "Gross orbital populations:"
+    ],
+    "density matrix": [
+      "Density Matrix:",
+      "Alpha Density Matrix:",
+      "Beta Density Matrix:"
+    ]
+  }
+}

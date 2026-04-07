@@ -1,0 +1,14 @@
+{
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "exists": true,
+  "is_executable": true,
+  "size_bytes": 38201688,
+  "sha256": "ad53736d01697395372922de265e20a998271ea55183261bab4f826617fc711d",
+  "path_head": [
+    "/datasets/workspace/mas_aie/third_party/Amesp/Bin",
+    "/datasets/condaenv/mas_aie/bin",
+    "/datasets/miniconda3/condabin",
+    "/root/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand",
+    "/root/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli"
+  ]
+}
