@@ -299,7 +299,7 @@ class MicroscopicExecutorMixin:
                 "structure_source": plan.structure_source,
                 "supported_scope": plan.supported_scope,
                 "unsupported_requests": plan.unsupported_requests,
-                "structure": run_result.structure.model_dump(mode="json"),
+                "structure": run_result.structure.model_dump(mode="json") if run_result.structure is not None else None,
                 "s0": run_result.s0.model_dump(mode="json") if run_result.s0 is not None else None,
                 "s1": run_result.s1.model_dump(mode="json") if run_result.s1 is not None else None,
                 "parsed_snapshot_records": list(getattr(run_result, "parsed_snapshot_records", [])),

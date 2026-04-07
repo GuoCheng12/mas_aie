@@ -47,6 +47,9 @@ class PlannerInitialResponse(BaseModel):
     pairwise_task_completed_for_pair: str = ""
     pairwise_task_outcome: str = "not_run"
     pairwise_task_rationale: str = ""
+    pairwise_resolution_mode: str = ""
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: str = ""
     finalization_mode: str = "none"
 
 
@@ -88,6 +91,9 @@ class PlannerRoundResponse(BaseModel):
     pairwise_task_completed_for_pair: str = ""
     pairwise_task_outcome: str = "not_run"
     pairwise_task_rationale: str = ""
+    pairwise_resolution_mode: str = ""
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: str = ""
     finalization_mode: str = "none"
 
 
@@ -114,13 +120,17 @@ _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
     "run_baseline_bundle",
     "run_conformer_bundle",
     "run_torsion_snapshots",
+    "list_artifact_bundle_members",
     "run_targeted_charge_analysis",
+    "run_targeted_localized_orbital_analysis",
+    "run_targeted_natural_orbital_analysis",
     "run_targeted_density_population_analysis",
     "run_targeted_transition_dipole_analysis",
     "run_ris_state_characterization",
     "run_targeted_state_characterization",
     "parse_snapshot_outputs",
     "extract_ct_descriptors_from_bundle",
+    "extract_geometry_descriptors_from_bundle",
     "inspect_raw_artifact_bundle",
 )
 _MICROSCOPIC_STRUCTURE_BLOCK_CODES = {
@@ -172,8 +182,17 @@ def _mentioned_microscopic_capabilities(text: str) -> list[str]:
 
 
 def _extract_first_artifact_bundle_id(text: str) -> str | None:
-    match = re.search(r"\b(round_\d+_(?:baseline_bundle|torsion_snapshots|conformer_bundle))\b", text)
+    match = re.search(r"\b(round_\d+_(?:baseline_bundle|torsion_snapshots|conformer_bundle|run_[a-z0-9_]+_bundle))\b", text)
     return match.group(1) if match is not None else None
+
+
+def _extract_artifact_member_ids(text: str) -> list[str]:
+    matches = re.findall(r"\b(?:torsion|conformer)_\d+\b|\bbaseline_bundle\b", text)
+    seen: list[str] = []
+    for item in matches:
+        if item not in seen:
+            seen.append(item)
+    return seen
 
 
 def _extract_first_dihedral_id(text: str) -> str | None:
@@ -293,6 +312,12 @@ def _planned_microscopic_capability(decision: Any) -> str | None:
     return None
 
 
+def _planned_action_label_for_decision(decision: PlannerDecision) -> str:
+    if decision.action == "microscopic":
+        return _planned_microscopic_capability(decision) or "microscopic"
+    return decision.action
+
+
 def _repeated_local_uncertainty_for_action(
     payload: dict[str, Any],
     action: str,
@@ -328,7 +353,13 @@ def _single_action_microscopic_task_instruction(
 ) -> str:
     artifact_bundle_id = _extract_first_artifact_bundle_id(original_task_instruction)
     dihedral_id = _extract_first_dihedral_id(original_task_instruction)
+    artifact_member_ids = _extract_artifact_member_ids(original_task_instruction)
     gap_note = f"Focus on the current gap: {main_gap}".strip()
+    member_note = (
+        f" Honor exact member ids `{', '.join(artifact_member_ids)}` if they remain available."
+        if artifact_member_ids
+        else ""
+    )
     if capability_name == "run_baseline_bundle":
         return (
             f"Execute ONLY `run_baseline_bundle` as one bounded microscopic action for the current working hypothesis "
@@ -368,13 +399,21 @@ def _single_action_microscopic_task_instruction(
             f"Execute ONLY `extract_ct_descriptors_from_bundle`{bundle_note} using reusable artifacts only. "
             f"{gap_note} Return bounded CT-surrogate availability and any available local CT-related summary fields without launching new calculations."
         )
+    if capability_name == "list_artifact_bundle_members":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `list_artifact_bundle_members`{bundle_note} using reusable artifacts only. "
+            f"{gap_note} Return stable member ids, member labels, parent-child linkage, generated files, and supported parse capabilities only."
+        )
     if capability_name == "run_targeted_charge_analysis":
         bundle_note = (
             f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
         )
         return (
             f"Execute ONLY `run_targeted_charge_analysis`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry charge analysis on that subset, and return raw charge observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry charge analysis on that subset, and return raw charge observables only."
         )
     if capability_name == "run_targeted_localized_orbital_analysis":
         bundle_note = (
@@ -382,7 +421,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_targeted_localized_orbital_analysis`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry localized-orbital analysis on that subset, and return raw localized-orbital observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry localized-orbital analysis on that subset, and return raw localized-orbital observables only."
         )
     if capability_name == "run_targeted_natural_orbital_analysis":
         bundle_note = (
@@ -390,7 +429,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_targeted_natural_orbital_analysis`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry natural-orbital analysis on that subset, and return raw natural-orbital observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry natural-orbital analysis on that subset, and return raw natural-orbital observables only."
         )
     if capability_name == "run_targeted_density_population_analysis":
         bundle_note = (
@@ -398,7 +437,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_targeted_density_population_analysis`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry density/population analysis on that subset, and return raw density/population observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry density/population analysis on that subset, and return raw density/population observables only."
         )
     if capability_name == "run_targeted_transition_dipole_analysis":
         bundle_note = (
@@ -406,7 +445,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_targeted_transition_dipole_analysis`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry transition-dipole analysis on that subset, and return raw transition-dipole observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry transition-dipole analysis on that subset, and return raw transition-dipole observables only."
         )
     if capability_name == "run_ris_state_characterization":
         bundle_note = (
@@ -414,7 +453,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_ris_state_characterization`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry RIS state characterization on that subset, and return raw state-character observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry RIS state characterization on that subset, and return raw state-character observables only."
         )
     if capability_name == "run_targeted_state_characterization":
         bundle_note = (
@@ -422,7 +461,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `run_targeted_state_characterization`{bundle_note} as one bounded microscopic action. "
-            f"{gap_note} Select only a small representative subset of geometries from the reusable bundle, rerun fixed-geometry state characterization on that subset, and return raw state-character observables only."
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry state characterization on that subset, and return raw state-character observables only."
         )
     if capability_name == "inspect_raw_artifact_bundle":
         bundle_note = (
@@ -430,7 +469,7 @@ def _single_action_microscopic_task_instruction(
         )
         return (
             f"Execute ONLY `inspect_raw_artifact_bundle`{bundle_note} using reusable artifacts only. "
-            f"{gap_note} Return raw-file coverage and extractable-observable inventory relevant to the current discriminator without launching new calculations."
+            f"{gap_note}{member_note} Return raw-file coverage and extractable-observable inventory relevant to the current discriminator without launching new calculations."
         )
     return (
         f"Collect additional microscopic evidence for the current working hypothesis '{current_hypothesis}'. "
@@ -594,10 +633,22 @@ def _normalize_pairwise_task_agent(raw_agent: str | None) -> str | None:
     return None
 
 
-def _normalize_pairwise_task_outcome(raw_outcome: str | None) -> str:
+def _normalize_legacy_pairwise_task_outcome(raw_outcome: str | None) -> str:
     if raw_outcome in {"not_run", "decisive", "inconclusive", "failed"}:
         return raw_outcome
     return "not_run"
+
+
+def _normalize_pairwise_resolution_mode(raw_mode: str | None) -> str | None:
+    if raw_mode in {
+        "not_run",
+        "dedicated_pairwise_task_completed",
+        "resolved_by_accumulated_internal_evidence",
+        "resolved_with_verifier_support",
+        "best_available_tool_blocked",
+    }:
+        return raw_mode
+    return None
 
 
 def _normalize_finalization_mode(raw_mode: str | None) -> str:
@@ -750,9 +801,14 @@ def _planner_normalized_payload(
     payload["pairwise_task_completed_for_pair"] = decision.pairwise_task_completed_for_pair
     payload["pairwise_task_outcome"] = decision.pairwise_task_outcome
     payload["pairwise_task_rationale"] = decision.pairwise_task_rationale
+    payload["pairwise_resolution_mode"] = decision.pairwise_resolution_mode
+    payload["pairwise_resolution_evidence_sources"] = list(decision.pairwise_resolution_evidence_sources)
+    payload["pairwise_resolution_summary"] = decision.pairwise_resolution_summary
     payload["finalization_mode"] = decision.finalization_mode
     payload["pairwise_verifier_completed_for_pair"] = decision.pairwise_verifier_completed_for_pair
     payload["pairwise_verifier_evidence_specificity"] = decision.pairwise_verifier_evidence_specificity
+    payload["planned_action_label"] = decision.planned_action_label
+    payload["executed_action_labels"] = list(decision.executed_action_labels)
     return payload
 
 
@@ -969,8 +1025,15 @@ class OpenAIPlannerBackend:
             pairwise_task_completed_for_pair=None,
             pairwise_task_outcome="not_run",
             pairwise_task_rationale=None,
+            pairwise_resolution_mode=_normalize_pairwise_resolution_mode(response.pairwise_resolution_mode.strip() or None),
+            pairwise_resolution_evidence_sources=[
+                item.strip() for item in response.pairwise_resolution_evidence_sources if item.strip()
+            ],
+            pairwise_resolution_summary=response.pairwise_resolution_summary.strip() or None,
             finalization_mode="none",
         )
+        decision.planned_action_label = _planned_action_label_for_decision(decision)
+        decision.executed_action_labels = []
         return {
             "hypothesis_pool": hypothesis_pool,
             "decision": decision,
@@ -978,6 +1041,7 @@ class OpenAIPlannerBackend:
                 **response.model_dump(mode="json"),
                 "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
                 "current_hypothesis": current_hypothesis,
+                "legacy_pairwise_task_outcome": response.pairwise_task_outcome,
             },
             "normalized_response": _planner_normalized_payload(
                 decision=decision,
@@ -1042,10 +1106,10 @@ class OpenAIPlannerBackend:
         pairwise_task_completed_for_pair = response.pairwise_task_completed_for_pair.strip() or str(
             payload.get("pairwise_task_completed_for_pair") or ""
         ).strip() or None
-        pairwise_task_outcome = (
-            _normalize_pairwise_task_outcome(response.pairwise_task_outcome)
+        legacy_pairwise_task_outcome = (
+            _normalize_legacy_pairwise_task_outcome(response.pairwise_task_outcome)
             if response.pairwise_task_outcome != "not_run"
-            else _normalize_pairwise_task_outcome(str(payload.get("pairwise_task_outcome") or "not_run"))
+            else _normalize_legacy_pairwise_task_outcome(str(payload.get("legacy_pairwise_task_outcome") or "not_run"))
         )
         finalization_mode = (
             _normalize_finalization_mode(response.finalization_mode)
@@ -1122,8 +1186,17 @@ class OpenAIPlannerBackend:
             or None,
             pairwise_task_agent=pairwise_task_agent,
             pairwise_task_completed_for_pair=pairwise_task_completed_for_pair,
-            pairwise_task_outcome=pairwise_task_outcome,
+            pairwise_task_outcome="not_run",
             pairwise_task_rationale=pairwise_task_rationale,
+            pairwise_resolution_mode=_normalize_pairwise_resolution_mode(
+                response.pairwise_resolution_mode.strip() or None
+            ),
+            pairwise_resolution_evidence_sources=[
+                item.strip()
+                for item in response.pairwise_resolution_evidence_sources
+                if item.strip()
+            ],
+            pairwise_resolution_summary=response.pairwise_resolution_summary.strip() or None,
             finalization_mode=finalization_mode,
         )
         decision = _contract_microscopic_decision_to_single_action(
@@ -1133,6 +1206,7 @@ class OpenAIPlannerBackend:
         decision = self._hydrate_verifier_and_closure_state(
             decision=decision,
             latest_verifier_report=payload.get("verifier_report") or payload.get("latest_verifier_report"),
+            legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             main_gap=payload.get("main_gap") or response.main_gap,
         )
 
@@ -1145,6 +1219,7 @@ class OpenAIPlannerBackend:
                 decision=decision,
                 main_gap=main_gap,
                 latest_microscopic_report=payload.get("latest_microscopic_report"),
+                legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             )
             decision = self._apply_microscopic_structure_block_gate(
                 decision=decision,
@@ -1154,6 +1229,11 @@ class OpenAIPlannerBackend:
             decision = self._apply_repeated_local_uncertainty_gate(
                 decision=decision,
                 payload=payload,
+                main_gap=main_gap,
+            )
+            decision = self._synchronize_pairwise_resolution_fields(
+                decision=decision,
+                legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
                 main_gap=main_gap,
             )
             decision.planned_agents = self._planned_agents_for_action(decision.action)
@@ -1167,22 +1247,30 @@ class OpenAIPlannerBackend:
                 conflict_status,
                 main_gap,
                 payload,
+                legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             )
             decision = self._apply_microscopic_structure_block_gate(
                 decision=decision,
                 payload=payload,
                 main_gap=main_gap,
             )
-            decision = self._apply_repeated_local_uncertainty_gate(
+            decision = self._synchronize_pairwise_resolution_fields(
                 decision=decision,
-                payload=payload,
+                legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
                 main_gap=main_gap,
             )
+        decision = self._apply_repeated_local_uncertainty_gate(
+            decision=decision,
+            payload=payload,
+            main_gap=main_gap,
+        )
         decision = self._apply_round_budget_gate(
             decision=decision,
             payload=payload,
             main_gap=main_gap,
         )
+        decision.planned_action_label = _planned_action_label_for_decision(decision)
+        decision.executed_action_labels = []
 
         return {
             "hypothesis_pool": hypothesis_pool,
@@ -1201,6 +1289,7 @@ class OpenAIPlannerBackend:
                 **response.model_dump(mode="json"),
                 "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
                 "current_hypothesis": current_hypothesis,
+                "legacy_pairwise_task_outcome": legacy_pairwise_task_outcome,
             },
             "normalized_response": _planner_normalized_payload(
                 decision=decision,
@@ -1224,10 +1313,13 @@ class OpenAIPlannerBackend:
         conflict_status: str,
         main_gap: str,
         payload: dict[str, Any],
+        *,
+        legacy_pairwise_task_outcome: str,
     ) -> tuple[PlannerDecision, str, str]:
         decision = self._hydrate_verifier_and_closure_state(
             decision=decision,
             latest_verifier_report=payload.get("verifier_report"),
+            legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             main_gap=main_gap,
         )
         decision.planned_agents = self._planned_agents_for_action(decision.action)
@@ -1479,7 +1571,7 @@ class OpenAIPlannerBackend:
                 decision.final_hypothesis_rationale += f" {trailing_rationale}"
             return decision
 
-        if decision.pairwise_task_outcome in {"decisive", "inconclusive", "failed"} or decision.closure_justification_status in {
+        if decision.pairwise_task_completed_for_pair or decision.closure_justification_status in {
             "collecting",
             "blocked",
             "sufficient",
@@ -1584,11 +1676,13 @@ class OpenAIPlannerBackend:
         decision: PlannerDecision,
         main_gap: str,
         latest_microscopic_report: Any,
+        legacy_pairwise_task_outcome: str,
     ) -> PlannerDecision:
         del latest_microscopic_report
         decision = self._hydrate_verifier_and_closure_state(
             decision=decision,
             latest_verifier_report=None,
+            legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             main_gap=main_gap,
         )
         if decision.action in {"macro", "microscopic"}:
@@ -1722,6 +1816,7 @@ class OpenAIPlannerBackend:
         *,
         decision: PlannerDecision,
         latest_verifier_report: Any,
+        legacy_pairwise_task_outcome: str,
         main_gap: str,
     ) -> PlannerDecision:
         current_pair_key = _decision_pair_key(decision.decision_pair)
@@ -1756,7 +1851,7 @@ class OpenAIPlannerBackend:
             return decision
 
         if decision.pairwise_task_completed_for_pair == current_pair_key:
-            if decision.pairwise_task_outcome == "decisive":
+            if legacy_pairwise_task_outcome == "decisive":
                 decision.closure_justification_status = "sufficient"
                 if decision.verifier_supplement_status == "sufficient":
                     decision.closure_justification_evidence_source = "mixed"
@@ -1769,7 +1864,7 @@ class OpenAIPlannerBackend:
                     or f"Existing internal evidence already separates '{decision.current_hypothesis}' from '{decision.runner_up_hypothesis or 'unknown'}'."
                 )
                 return decision
-            if decision.pairwise_task_outcome == "inconclusive":
+            if legacy_pairwise_task_outcome == "inconclusive":
                 if decision.closure_justification_status == "missing":
                     decision.closure_justification_status = "collecting"
                 decision.closure_justification_evidence_source = (
@@ -1782,7 +1877,7 @@ class OpenAIPlannerBackend:
                     or f"Existing internal evidence narrowed '{decision.current_hypothesis}' versus '{decision.runner_up_hypothesis or 'unknown'}' but did not fully close the gap: {main_gap}"
                 )
                 return decision
-            if decision.pairwise_task_outcome == "failed":
+            if legacy_pairwise_task_outcome == "failed":
                 decision.closure_justification_status = "blocked"
                 decision.closure_justification_evidence_source = "internal"
                 decision.closure_justification_basis = "new_targeted_task"
@@ -1793,6 +1888,65 @@ class OpenAIPlannerBackend:
                 )
                 return decision
 
+        return decision
+
+    def _synchronize_pairwise_resolution_fields(
+        self,
+        *,
+        decision: PlannerDecision,
+        legacy_pairwise_task_outcome: str,
+        main_gap: str,
+    ) -> PlannerDecision:
+        current_pair_key = _decision_pair_key(decision.decision_pair)
+        evidence_sources: list[str] = []
+        if decision.closure_justification_evidence_source in {"internal", "external", "mixed"}:
+            if decision.closure_justification_evidence_source == "mixed":
+                evidence_sources.extend(["internal", "external"])
+            else:
+                evidence_sources.append(decision.closure_justification_evidence_source)
+        if decision.verifier_supplement_status == "sufficient" and "external" not in evidence_sources:
+            evidence_sources.append("external")
+        if decision.finalize and decision.finalization_mode == "best_available" and decision.closure_justification_status == "blocked":
+            mode = "best_available_tool_blocked"
+            summary = (
+                decision.closure_justification_summary
+                or f"Best-available closure was used because the remaining pairwise gap stayed blocked: {main_gap}"
+            )
+        elif decision.finalize and decision.verifier_supplement_status == "sufficient":
+            mode = "resolved_with_verifier_support"
+            summary = (
+                decision.closure_justification_summary
+                or decision.verifier_supplement_summary
+                or f"Verifier-supported closure was sufficient to keep '{decision.current_hypothesis}' ahead of '{decision.runner_up_hypothesis or 'unknown'}'."
+            )
+        elif decision.finalize and decision.closure_justification_status == "sufficient":
+            mode = "resolved_by_accumulated_internal_evidence"
+            summary = (
+                decision.closure_justification_summary
+                or f"Accumulated internal evidence was sufficient to keep '{decision.current_hypothesis}' ahead of '{decision.runner_up_hypothesis or 'unknown'}'."
+            )
+        elif decision.pairwise_task_completed_for_pair == current_pair_key:
+            mode = "dedicated_pairwise_task_completed"
+            summary = (
+                decision.pairwise_task_rationale
+                or decision.closure_justification_summary
+                or f"A dedicated pairwise task was completed for '{decision.current_hypothesis}' versus '{decision.runner_up_hypothesis or 'unknown'}'."
+            )
+        elif legacy_pairwise_task_outcome in {"decisive", "inconclusive", "failed"}:
+            mode = "dedicated_pairwise_task_completed"
+            summary = (
+                decision.pairwise_task_rationale
+                or decision.closure_justification_summary
+                or f"A dedicated pairwise task returned `{legacy_pairwise_task_outcome}` for the unresolved gap: {main_gap}"
+            )
+        else:
+            mode = "not_run"
+            summary = None
+
+        decision.pairwise_task_outcome = mode  # type: ignore[assignment]
+        decision.pairwise_resolution_mode = mode  # type: ignore[assignment]
+        decision.pairwise_resolution_evidence_sources = list(dict.fromkeys(item for item in evidence_sources if item))
+        decision.pairwise_resolution_summary = summary
         return decision
 
     def _finalization_mode_for_decision(self, decision: PlannerDecision) -> str:

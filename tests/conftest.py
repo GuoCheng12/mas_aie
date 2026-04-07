@@ -211,6 +211,8 @@ class TestMicroscopicReasoningBackend:
 
 def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
     lower_instruction = task_instruction.lower()
+    if "list_artifact_bundle_members" in task_instruction:
+        return "artifact_parse_only"
     if "run_targeted_transition_dipole_analysis" in task_instruction:
         return "targeted_property_follow_up"
     if "run_ris_state_characterization" in task_instruction:
@@ -254,6 +256,7 @@ def _microscopic_capability_route(task_instruction: str, task_mode: str) -> str:
 
 def _microscopic_capability_name(capability_route: str, task_instruction: str = "") -> str:
     for capability_name in (
+        "list_artifact_bundle_members",
         "run_targeted_transition_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_charge_analysis",
@@ -261,6 +264,7 @@ def _microscopic_capability_name(capability_route: str, task_instruction: str = 
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_state_characterization",
+        "extract_geometry_descriptors_from_bundle",
     ):
         if capability_name in task_instruction:
             return capability_name

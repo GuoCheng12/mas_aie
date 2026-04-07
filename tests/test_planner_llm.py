@@ -11,11 +11,14 @@ from aie_mas.agents.planner import (
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AieMasState,
+    AgentReport,
+    PlannerDecision,
     SharedStructureContext,
     WorkingMemoryAgentEntry,
     WorkingMemoryEntry,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
+from aie_mas.memory.working import WorkingMemoryManager
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -152,6 +155,18 @@ def test_mentioned_microscopic_capabilities_includes_orbital_interfaces() -> Non
     ]
 
 
+def test_mentioned_microscopic_capabilities_includes_member_listing_and_geometry_extraction() -> None:
+    instruction = (
+        "First use list_artifact_bundle_members on round_08_run_targeted_localized_orbital_analysis_bundle, "
+        "then if needed run extract_geometry_descriptors_from_bundle on the same reusable bundle."
+    )
+
+    assert _mentioned_microscopic_capabilities(instruction) == [
+        "list_artifact_bundle_members",
+        "extract_geometry_descriptors_from_bundle",
+    ]
+
+
 def test_single_action_microscopic_task_instruction_for_supported_targeted_interface_is_neutral() -> None:
     instruction = _single_action_microscopic_task_instruction(
         capability_name="run_targeted_density_population_analysis",
@@ -204,6 +219,67 @@ def test_single_action_microscopic_task_instruction_for_phase2_targeted_interfac
     assert "raw state-character observables only" in ris_instruction
     assert "ESIPT" not in ris_instruction
     assert "TICT" not in ris_instruction
+
+
+def test_single_action_microscopic_task_instruction_for_member_listing_is_neutral() -> None:
+    instruction = _single_action_microscopic_task_instruction(
+        capability_name="list_artifact_bundle_members",
+        current_hypothesis="ICT",
+        main_gap="Need to inspect exact follow-up members before raw inspection.",
+        original_task_instruction=(
+            "Use list_artifact_bundle_members for bundle_id=`round_08_run_targeted_localized_orbital_analysis_bundle` "
+            "and return stable member ids."
+        ),
+    )
+
+    assert instruction.startswith(
+        "Execute ONLY `list_artifact_bundle_members` for bundle_id=`round_08_run_targeted_localized_orbital_analysis_bundle`"
+    )
+    assert "stable member ids" in instruction
+    assert "ESIPT" not in instruction
+    assert "TICT" not in instruction
+
+
+def test_working_memory_backfills_task_instruction_and_action_labels() -> None:
+    manager = WorkingMemoryManager()
+    state = _base_state()
+    state.round_idx = 2
+    state.latest_evidence_summary = "Microscopic follow-up completed."
+    state.latest_main_gap = "Need raw inspection of one follow-up bundle member."
+    state.latest_conflict_status = "none"
+    state.last_planner_decision = PlannerDecision(
+        diagnosis="Inspect the follow-up bundle members directly.",
+        action="microscopic",
+        current_hypothesis="ICT",
+        confidence=0.72,
+        planned_agents=["microscopic"],
+        task_instruction=None,
+        agent_task_instructions={},
+    )
+    state.active_round_reports = [
+        AgentReport(
+            agent_name="microscopic",
+            task_received="Inspect a targeted follow-up bundle.",
+            task_understanding="Inspect raw artifacts for one exact member.",
+            execution_plan="Discovery-only member listing then bounded raw inspection.",
+            result_summary="Listed stable member ids and inspected the requested member.",
+            remaining_local_uncertainty="Need one more CT-localization discriminator.",
+            tool_calls=[],
+            raw_results={},
+            structured_results={"executed_capability": "list_artifact_bundle_members"},
+            planner_readable_report="Stable member ids were returned for the reusable follow-up bundle.",
+            status="success",
+        )
+    ]
+
+    manager.append_round_summary(state)
+
+    entry = state.working_memory[-1]
+    assert entry.planner_task_instruction == "microscopic"
+    assert entry.planned_action_label == "microscopic"
+    assert entry.executed_action_labels == ["list_artifact_bundle_members"]
+    assert state.planned_action_label == "microscopic"
+    assert state.executed_action_labels == ["list_artifact_bundle_members"]
 
 
 def _microscopic_registry_blocked_report() -> dict[str, object]:
@@ -782,7 +858,9 @@ def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_
         _base_state(
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="ICT__vs__TICT",
-            pairwise_task_outcome="decisive",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="sufficient",
             pairwise_task_rationale="Microscopic evidence directly probed the key discriminator.",
         )
     )
@@ -791,6 +869,7 @@ def test_planner_diagnosis_requests_verifier_after_pairwise_task_completion(tmp_
     assert result["decision"].decision_gate_status == "needs_high_confidence_verifier"
     assert result["decision"].needs_verifier is True
     assert result["decision"].closure_justification_status == "sufficient"
+    assert result["decision"].pairwise_task_outcome == "dedicated_pairwise_task_completed"
     assert "high-confidence external verification" in (result["decision"].task_instruction or "")
 
 
@@ -1143,7 +1222,9 @@ def test_planner_reweight_normalizes_prepare_finalization_alias_to_finalize(tmp_
             ],
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="neutral aromatic__vs__TICT",
-            pairwise_task_outcome="decisive",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="sufficient",
             pairwise_task_rationale="Parsed torsion snapshots show the lowest state remains bright across the discriminator.",
             verifier_reports=[_verifier_report_for_pair("neutral aromatic__vs__TICT", "close_family")],
         )
@@ -1153,6 +1234,7 @@ def test_planner_reweight_normalizes_prepare_finalization_alias_to_finalize(tmp_
     assert result["decision"].finalize is True
     assert result["decision"].planned_agents == []
     assert result["decision"].decision_gate_status == "ready_to_finalize_decisive"
+    assert result["decision"].pairwise_task_outcome == "resolved_with_verifier_support"
 
 
 def test_planner_reweight_allows_decisive_finalize_when_verifier_and_closure_are_sufficient(tmp_path: Path) -> None:
@@ -1194,7 +1276,9 @@ def test_planner_reweight_allows_decisive_finalize_when_verifier_and_closure_are
             ],
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="ICT__vs__TICT",
-            pairwise_task_outcome="decisive",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="sufficient",
             pairwise_task_rationale="Existing internal evidence directly separates ICT from TICT.",
             verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT", "close_family")],
         )
@@ -1205,6 +1289,7 @@ def test_planner_reweight_allows_decisive_finalize_when_verifier_and_closure_are
     assert result["decision"].decision_gate_status == "ready_to_finalize_decisive"
     assert result["decision"].closure_justification_status == "sufficient"
     assert result["decision"].verifier_supplement_status == "sufficient"
+    assert result["decision"].pairwise_task_outcome == "resolved_with_verifier_support"
 
 
 def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pairwise_task(tmp_path: Path) -> None:
@@ -1237,7 +1322,9 @@ def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pair
         _base_state(
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="ICT__vs__TICT",
-            pairwise_task_outcome="inconclusive",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="collecting",
             pairwise_task_rationale="The bounded microscopic discriminator stayed ambiguous.",
             verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT")],
         )
@@ -1248,6 +1335,7 @@ def test_planner_reweight_allows_best_available_finalize_after_inconclusive_pair
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
     assert result["decision"].verifier_supplement_status == "sufficient"
     assert result["decision"].closure_justification_status == "collecting"
+    assert result["decision"].pairwise_task_outcome == "resolved_with_verifier_support"
     assert "Best-available closure" in (result["decision"].final_hypothesis_rationale or "")
 
 
@@ -1281,7 +1369,9 @@ def test_planner_reweight_allows_best_available_finalize_when_closure_is_blocked
         _base_state(
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="ICT__vs__TICT",
-            pairwise_task_outcome="failed",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="blocked",
             pairwise_task_rationale="The bounded microscopic discriminator failed locally.",
             verifier_reports=[_verifier_report_for_pair("ICT__vs__TICT")],
         )
@@ -1291,6 +1381,7 @@ def test_planner_reweight_allows_best_available_finalize_when_closure_is_blocked
     assert result["decision"].finalization_mode == "best_available"
     assert result["decision"].closure_justification_status == "blocked"
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
+    assert result["decision"].pairwise_task_outcome == "best_available_tool_blocked"
 
 
 def test_planner_diagnosis_forces_finalize_on_last_allowed_round(tmp_path: Path) -> None:
@@ -1468,7 +1559,9 @@ def test_planner_reweight_finalizes_when_repeated_microscopic_local_uncertainty_
             ],
             pairwise_task_agent="microscopic",
             pairwise_task_completed_for_pair="ESIPT__vs__TICT",
-            pairwise_task_outcome="inconclusive",
+            pairwise_task_outcome="dedicated_pairwise_task_completed",
+            pairwise_resolution_mode="dedicated_pairwise_task_completed",
+            closure_justification_status="collecting",
             pairwise_task_rationale="Existing torsion and geometry evidence narrowed ESIPT versus TICT but did not close the gap.",
             microscopic_reports=[
                 {
@@ -1513,6 +1606,7 @@ def test_planner_reweight_finalizes_when_repeated_microscopic_local_uncertainty_
     assert result["decision"].finalization_mode == "best_available"
     assert result["decision"].decision_gate_status == "ready_to_finalize_best_available"
     assert result["decision"].closure_justification_status == "blocked"
+    assert result["decision"].pairwise_task_outcome == "best_available_tool_blocked"
     assert "repeated microscopic local limitation" in (result["decision"].final_hypothesis_rationale or "")
 
 

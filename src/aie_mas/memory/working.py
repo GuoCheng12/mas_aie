@@ -1,8 +1,32 @@
 from __future__ import annotations
 
 from collections import Counter
+from typing import Any
 
 from aie_mas.graph.state import AieMasState, WorkingMemoryAgentEntry, WorkingMemoryEntry
+
+
+_MICROSCOPIC_ACTION_LABELS: tuple[str, ...] = (
+    "list_rotatable_dihedrals",
+    "list_available_conformers",
+    "list_artifact_bundles",
+    "list_artifact_bundle_members",
+    "run_baseline_bundle",
+    "run_conformer_bundle",
+    "run_torsion_snapshots",
+    "run_targeted_charge_analysis",
+    "run_targeted_localized_orbital_analysis",
+    "run_targeted_natural_orbital_analysis",
+    "run_targeted_density_population_analysis",
+    "run_targeted_transition_dipole_analysis",
+    "run_ris_state_characterization",
+    "parse_snapshot_outputs",
+    "extract_ct_descriptors_from_bundle",
+    "extract_geometry_descriptors_from_bundle",
+    "inspect_raw_artifact_bundle",
+    "run_targeted_state_characterization",
+    "unsupported_excited_state_relaxation",
+)
 
 
 class WorkingMemoryManager:
@@ -47,6 +71,14 @@ class WorkingMemoryManager:
         if not local_uncertainty_summary:
             local_uncertainty_summary = None
         repeated_local_uncertainty_signals = self._repeated_local_uncertainties(state, agent_reports)
+        planned_action_label = self._planned_action_label(state)
+        executed_action_labels = self._executed_action_labels(state.active_round_reports)
+        planner_task_instruction = self._backfilled_task_instruction(
+            planner_task_instruction=state.last_planner_decision.task_instruction,
+            planner_agent_task_instructions=state.last_planner_decision.agent_task_instructions,
+            planned_action_label=planned_action_label,
+            executed_action_labels=executed_action_labels,
+        )
 
         entry = WorkingMemoryEntry(
             round_id=state.round_idx + 1,
@@ -61,7 +93,7 @@ class WorkingMemoryManager:
             main_gap=state.latest_main_gap or "Not specified.",
             conflict_status=state.latest_conflict_status or "unknown",
             next_action=state.last_planner_decision.action,
-            planner_task_instruction=state.last_planner_decision.task_instruction,
+            planner_task_instruction=planner_task_instruction,
             planner_agent_task_instructions=dict(state.last_planner_decision.agent_task_instructions),
             hypothesis_uncertainty_note=state.last_planner_decision.hypothesis_uncertainty_note,
             final_hypothesis_rationale=state.last_planner_decision.final_hypothesis_rationale,
@@ -88,15 +120,24 @@ class WorkingMemoryManager:
             pairwise_task_completed_for_pair=state.last_planner_decision.pairwise_task_completed_for_pair,
             pairwise_task_outcome=state.last_planner_decision.pairwise_task_outcome,
             pairwise_task_rationale=state.last_planner_decision.pairwise_task_rationale,
+            pairwise_resolution_mode=state.last_planner_decision.pairwise_resolution_mode,
+            pairwise_resolution_evidence_sources=list(
+                state.last_planner_decision.pairwise_resolution_evidence_sources
+            ),
+            pairwise_resolution_summary=state.last_planner_decision.pairwise_resolution_summary,
             finalization_mode=state.last_planner_decision.finalization_mode,
             pairwise_verifier_completed_for_pair=state.last_planner_decision.pairwise_verifier_completed_for_pair,
             pairwise_verifier_evidence_specificity=state.last_planner_decision.pairwise_verifier_evidence_specificity,
+            planned_action_label=planned_action_label,
+            executed_action_labels=executed_action_labels,
             local_uncertainty_summary=local_uncertainty_summary,
             repeated_local_uncertainty_signals=repeated_local_uncertainty_signals,
             capability_lesson_candidates=list(state.last_planner_decision.capability_lesson_candidates),
             agent_reports=agent_reports,
         )
         state.working_memory.append(entry)
+        state.planned_action_label = planned_action_label
+        state.executed_action_labels = executed_action_labels
         state.round_idx += 1
         state.active_round_reports.clear()
         return state
@@ -138,12 +179,17 @@ class WorkingMemoryManager:
                     "pairwise_task_completed_for_pair": entry.pairwise_task_completed_for_pair,
                     "pairwise_task_outcome": entry.pairwise_task_outcome,
                     "pairwise_task_rationale": self._truncate(entry.pairwise_task_rationale or "", 220),
+                    "pairwise_resolution_mode": entry.pairwise_resolution_mode,
+                    "pairwise_resolution_evidence_sources": list(entry.pairwise_resolution_evidence_sources),
+                    "pairwise_resolution_summary": self._truncate(entry.pairwise_resolution_summary or "", 220),
                     "finalization_mode": entry.finalization_mode,
                     "pairwise_verifier_completed_for_pair": entry.pairwise_verifier_completed_for_pair,
                     "pairwise_verifier_evidence_specificity": entry.pairwise_verifier_evidence_specificity,
                     "evidence_summary": self._truncate(entry.evidence_summary, 260),
                     "diagnosis_summary": self._truncate(entry.diagnosis_summary, 260),
                     "planner_task_instruction": self._truncate(entry.planner_task_instruction or "", 220),
+                    "planned_action_label": entry.planned_action_label,
+                    "executed_action_labels": list(entry.executed_action_labels),
                     "local_uncertainty_summary": self._truncate(entry.local_uncertainty_summary or "", 260),
                     "repeated_local_uncertainty_signals": entry.repeated_local_uncertainty_signals,
                     "capability_assessment": self._truncate(entry.capability_assessment or "", 220),
@@ -224,3 +270,59 @@ class WorkingMemoryManager:
         normalized = [value.strip() for value in values if value.strip()]
         counts = Counter(normalized)
         return [value for value, count in counts.items() if count >= 2]
+
+    def _planned_action_label(self, state: AieMasState) -> str:
+        decision = state.last_planner_decision
+        if decision is None:
+            return "unknown"
+        if decision.action == "microscopic":
+            candidate_texts = [
+                str(decision.agent_task_instructions.get("microscopic") or "").strip(),
+                str(decision.task_instruction or "").strip(),
+            ]
+            for text in candidate_texts:
+                for capability_name in _MICROSCOPIC_ACTION_LABELS:
+                    if capability_name in text:
+                        return capability_name
+        return decision.action
+
+    def _executed_action_labels(self, reports: list[Any]) -> list[str]:
+        labels: list[str] = []
+        for report in reports:
+            agent_name = getattr(report, "agent_name", None)
+            if agent_name == "macro":
+                labels.append("macro")
+                continue
+            if agent_name == "verifier":
+                labels.append("verifier")
+                continue
+            if agent_name == "microscopic":
+                structured_results = getattr(report, "structured_results", {}) or {}
+                executed_capability = str(structured_results.get("executed_capability") or "").strip()
+                labels.append(executed_capability or "microscopic")
+        deduped: list[str] = []
+        for label in labels:
+            if label not in deduped:
+                deduped.append(label)
+        return deduped
+
+    def _backfilled_task_instruction(
+        self,
+        *,
+        planner_task_instruction: str | None,
+        planner_agent_task_instructions: dict[str, str],
+        planned_action_label: str | None,
+        executed_action_labels: list[str],
+    ) -> str | None:
+        task_instruction = str(planner_task_instruction or "").strip()
+        if task_instruction:
+            return task_instruction
+        if len(planner_agent_task_instructions) == 1:
+            only_instruction = next(iter(planner_agent_task_instructions.values()), "").strip()
+            if only_instruction:
+                return only_instruction
+        if planned_action_label:
+            return planned_action_label
+        if executed_action_labels:
+            return ", ".join(executed_action_labels)
+        return None

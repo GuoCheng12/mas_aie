@@ -54,7 +54,12 @@ MicroscopicSemanticContractMode = Literal[
     "legacy_json_fallback",
     "failed",
 ]
-MicroscopicSemanticDiscoveryNeed = Literal["rotatable_dihedrals", "conformers", "artifact_bundles"]
+MicroscopicSemanticDiscoveryNeed = Literal[
+    "rotatable_dihedrals",
+    "conformers",
+    "artifact_bundles",
+    "artifact_bundle_members",
+]
 MicroscopicSemanticTargetObjectKind = Literal["none", "dihedral", "conformer", "artifact_bundle"]
 
 
@@ -81,6 +86,7 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
     if capability_name == "run_torsion_snapshots":
         return "torsion_snapshot_follow_up"
     if capability_name in {
+        "list_artifact_bundle_members",
         "run_targeted_charge_analysis",
         "run_targeted_localized_orbital_analysis",
         "run_targeted_natural_orbital_analysis",
@@ -199,7 +205,12 @@ class MicroscopicToolRequestDraft(BaseModel):
     artifact_source_round: Optional[int] = None
     artifact_scope: Optional[str] = None
     artifact_bundle_id: Optional[str] = None
-    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    artifact_kind: Optional[
+        Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]
+    ] = None
+    artifact_member_id: Optional[str] = None
+    artifact_member_ids: list[str] = Field(default_factory=list)
+    target_selection_mode: Optional[Literal["bundle_wide", "representative_subset", "exact_members"]] = None
     descriptor_scope: list[str] = Field(default_factory=list)
     requested_observable_scope: list[str] = Field(default_factory=list)
     source_round_preference: Optional[int] = None
@@ -237,7 +248,7 @@ class MicroscopicToolRequestDraft(BaseModel):
         }
         return aliases.get(normalized, normalized)
 
-    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", mode="before")
+    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", "artifact_member_id", mode="before")
     @classmethod
     def _reject_placeholder_target_value(cls, value: Any) -> Any:
         if not isinstance(value, str):
@@ -249,7 +260,7 @@ class MicroscopicToolRequestDraft(BaseModel):
             raise ValueError(f"Placeholder target values are not allowed: {normalized!r}")
         return normalized
 
-    @field_validator("conformer_ids", mode="before")
+    @field_validator("conformer_ids", "artifact_member_ids", mode="before")
     @classmethod
     def _reject_placeholder_conformer_ids(cls, value: Any) -> Any:
         if not isinstance(value, list):
@@ -273,6 +284,7 @@ class MicroscopicSemanticConstraintsDraft(BaseModel):
     descriptor_scope: list[str] = Field(default_factory=list)
     requested_observable_scope: list[str] = Field(default_factory=list)
     target_count: Optional[int] = None
+    target_selection_mode: Optional[Literal["bundle_wide", "representative_subset", "exact_members"]] = None
 
 
 class MicroscopicSemanticSelectionDraft(BaseModel):
@@ -281,7 +293,9 @@ class MicroscopicSemanticSelectionDraft(BaseModel):
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
-    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    artifact_kind: Optional[
+        Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]
+    ] = None
     source_round_selector: Optional[str] = None
 
     @field_validator("source_round_selector", mode="before")
@@ -309,8 +323,10 @@ class MicroscopicSemanticTargetDraft(BaseModel):
     conformer_id: Optional[str] = None
     conformer_ids: list[str] = Field(default_factory=list)
     artifact_bundle_id: Optional[str] = None
+    artifact_member_id: Optional[str] = None
+    artifact_member_ids: list[str] = Field(default_factory=list)
 
-    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", mode="before")
+    @field_validator("dihedral_id", "conformer_id", "artifact_bundle_id", "artifact_member_id", mode="before")
     @classmethod
     def _reject_placeholder_target_value(cls, value: Any) -> Any:
         if not isinstance(value, str):
@@ -322,7 +338,7 @@ class MicroscopicSemanticTargetDraft(BaseModel):
             raise ValueError(f"Placeholder target values are not allowed: {normalized!r}")
         return normalized
 
-    @field_validator("conformer_ids", mode="before")
+    @field_validator("conformer_ids", "artifact_member_ids", mode="before")
     @classmethod
     def _reject_placeholder_conformer_ids(cls, value: Any) -> Any:
         if not isinstance(value, list):
@@ -347,6 +363,7 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_targeted_transition_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
+        "list_artifact_bundle_members",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -377,6 +394,7 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_targeted_transition_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
+        "list_artifact_bundle_members",
         "parse_snapshot_outputs",
         "extract_ct_descriptors_from_bundle",
         "extract_geometry_descriptors_from_bundle",
@@ -419,7 +437,9 @@ class SelectionPolicyDraft(BaseModel):
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
-    artifact_kind: Optional[Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]] = None
+    artifact_kind: Optional[
+        Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]
+    ] = None
     source_round_preference: Optional[int] = None
 
 
@@ -518,7 +538,10 @@ _TAGGED_PROTOCOL_CALL_KEYS = {
     "artifact_source_round",
     "artifact_scope",
     "artifact_bundle_id",
+    "artifact_member_id",
+    "artifact_member_ids",
     "artifact_kind",
+    "target_selection_mode",
     "source_round_preference",
     "min_relevance",
     "include_peripheral",
@@ -557,6 +580,10 @@ _TAGGED_CONTRACT_CONSTRAINT_KEYS = {
     "max_conformers",
     "honor_exact_target",
     "allow_fallback",
+    "descriptor_scope",
+    "requested_observable_scope",
+    "target_count",
+    "target_selection_mode",
 }
 _TAGGED_CONTRACT_SELECTION_KEYS = {
     "exclude_dihedral_ids",
@@ -572,6 +599,8 @@ _TAGGED_CONTRACT_TARGET_KEYS = {
     "conformer_id",
     "conformer_ids",
     "artifact_bundle_id",
+    "artifact_member_id",
+    "artifact_member_ids",
 }
 _TAGGED_ACTION_CARD_ROOT_KEYS = {
     "contract_version",
@@ -734,6 +763,7 @@ def _structure_source_for_semantic_capability(
     has_reusable_structure: bool,
 ) -> Optional[Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]]:
     if capability_name in {
+        "list_artifact_bundle_members",
         "run_targeted_charge_analysis",
         "run_targeted_localized_orbital_analysis",
         "run_targeted_natural_orbital_analysis",
@@ -857,14 +887,22 @@ def _build_semantic_contract_draft(
 
     constraints_payload: dict[str, Any] = {}
     for key, value in constraint_values.items():
-        if key in {"perform_new_calculation", "optimize_ground_state", "reuse_existing_artifacts_only", "honor_exact_target", "allow_fallback"}:
+        if key in {
+            "perform_new_calculation",
+            "optimize_ground_state",
+            "reuse_existing_artifacts_only",
+            "honor_exact_target",
+            "allow_fallback",
+        }:
             constraints_payload[key] = _parse_bool(value)
-        elif key in {"snapshot_count", "max_conformers"}:
+        elif key in {"snapshot_count", "max_conformers", "target_count"}:
             constraints_payload[key] = int(value)
         elif key == "angle_offsets_deg":
             constraints_payload[key] = _parse_float_list(value)
         elif key == "state_window":
             constraints_payload[key] = _parse_int_list(value)
+        elif key in {"descriptor_scope", "requested_observable_scope"}:
+            constraints_payload[key] = _parse_symbolic_list(value)
         else:
             constraints_payload[key] = value
 
@@ -881,7 +919,7 @@ def _build_semantic_contract_draft(
 
     target_payload: dict[str, Any] = {}
     for key, value in target_values.items():
-        if key == "conformer_ids":
+        if key in {"conformer_ids", "artifact_member_ids"}:
             target_payload[key] = _parse_symbolic_list(value)
         else:
             target_payload[key] = value
@@ -975,16 +1013,18 @@ def _parse_registry_param_value(
         return raw_value.strip()
     if param_type == "artifact_kind":
         return raw_value.strip()
+    if param_type == "target_selection_mode":
+        return raw_value.strip()
     if param_type == "source_round_selector":
         return MicroscopicSemanticSelectionDraft._normalize_source_round_selector(raw_value)  # type: ignore[misc]
-    if param_type in {"dihedral_id", "conformer_id", "artifact_bundle_id"}:
+    if param_type in {"dihedral_id", "conformer_id", "artifact_bundle_id", "artifact_member_id"}:
         normalized = raw_value.strip()
         if _is_placeholder_target_value(normalized):
             raise TaggedMicroscopicProtocolError(
                 f"Placeholder target values are not allowed for param.{param_name}: {normalized!r}."
             )
         return normalized
-    if param_type == "conformer_ids":
+    if param_type in {"conformer_ids", "artifact_member_ids"}:
         values = _parse_symbolic_list(raw_value)
         placeholders = [item for item in values if _is_placeholder_target_value(item)]
         if placeholders:
@@ -1043,9 +1083,9 @@ def _build_action_card_draft(
     action_definition = AMESP_ACTION_REGISTRY.get(execution_action)
     if action_definition is None:
         raise TaggedMicroscopicProtocolError(f"Unknown execution_action '{execution_action}'.")
-    if action_definition.action_kind != "execution":
+    if action_definition.action_kind not in {"execution", "discovery"}:
         raise TaggedMicroscopicProtocolError(
-            f"execution_action '{execution_action}' must resolve to an execution action."
+            f"execution_action '{execution_action}' must resolve to a registry-backed discovery or execution action."
         )
 
     discovery_actions = _parse_pipe_list(root_values.get("discovery_actions", ""))
@@ -1225,11 +1265,16 @@ def _semantic_contract_from_action_card(
             needs_discovery = "artifact_bundles"
         if "artifact_bundle_id" in params:
             target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        if "artifact_member_id" in params:
+            target_payload["artifact_member_id"] = params["artifact_member_id"]
+        if "artifact_member_ids" in params:
+            target_payload["artifact_member_ids"] = params["artifact_member_ids"]
         for key in (
             "perform_new_calculation",
             "optimize_ground_state",
             "state_window",
             "target_count",
+            "target_selection_mode",
         ):
             if key in params:
                 constraints_payload[key] = params[key]
@@ -1260,13 +1305,27 @@ def _semantic_contract_from_action_card(
             needs_discovery = "artifact_bundles"
         if "artifact_bundle_id" in params:
             target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
+        if "artifact_member_id" in params:
+            target_payload["artifact_member_id"] = params["artifact_member_id"]
+        if "artifact_member_ids" in params:
+            target_payload["artifact_member_ids"] = params["artifact_member_ids"]
         for key in (
             "perform_new_calculation",
             "reuse_existing_artifacts_only",
             "requested_observable_scope",
+            "target_selection_mode",
         ):
             if key in params:
                 constraints_payload[key] = params[key]
+        for key in ("artifact_kind", "source_round_selector"):
+            if key in params:
+                selection_payload[key] = params[key]
+    elif execution_action == "list_artifact_bundle_members":
+        target_object_kind = "artifact_bundle"
+        if discovery_action == "list_artifact_bundles" or "artifact_bundle_id" not in params:
+            needs_discovery = "artifact_bundles"
+        if "artifact_bundle_id" in params:
+            target_payload["artifact_bundle_id"] = params["artifact_bundle_id"]
         for key in ("artifact_kind", "source_round_selector"):
             if key in params:
                 selection_payload[key] = params[key]
@@ -1560,6 +1619,8 @@ def _has_explicit_contract_target(contract: MicroscopicSemanticContractDraft) ->
             contract.target.conformer_id,
             contract.target.conformer_ids,
             contract.target.artifact_bundle_id,
+            contract.target.artifact_member_id,
+            contract.target.artifact_member_ids,
         )
     )
 
@@ -1574,6 +1635,7 @@ def _required_discovery_for_contract(contract: MicroscopicSemanticContractDraft)
     if contract.primary_capability == "run_conformer_bundle":
         return "conformers"
     if contract.primary_capability in {
+        "list_artifact_bundle_members",
         "run_targeted_charge_analysis",
         "run_targeted_localized_orbital_analysis",
         "run_targeted_natural_orbital_analysis",
@@ -1717,6 +1779,22 @@ def compile_semantic_contract_to_tool_plan(
                 ),
             )
         )
+    elif discovery_need == "artifact_bundle_members":
+        calls.append(
+            MicroscopicToolCall(
+                call_id="discover_artifact_bundle_members",
+                call_kind="discovery",
+                request=MicroscopicToolRequest(
+                    capability_name="list_artifact_bundle_members",
+                    artifact_bundle_id=contract.target.artifact_bundle_id,
+                    artifact_kind=selection_policy.artifact_kind,
+                    source_round_preference=selection_policy.source_round_preference,
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    requested_route_summary="Discover stable member ids inside the selected artifact bundle before exact-member microscopic execution.",
+                ),
+            )
+        )
 
     capability_definition = AMESP_CAPABILITY_REGISTRY[effective_capability]
     execution_request = MicroscopicToolRequest(
@@ -1744,6 +1822,7 @@ def compile_semantic_contract_to_tool_plan(
         artifact_bundle_id=(
             contract.target.artifact_bundle_id
             if effective_capability in {
+                "list_artifact_bundle_members",
                 "run_targeted_charge_analysis",
                 "run_targeted_localized_orbital_analysis",
                 "run_targeted_natural_orbital_analysis",
@@ -1758,9 +1837,38 @@ def compile_semantic_contract_to_tool_plan(
             }
             else None
         ),
+        artifact_member_id=(
+            contract.target.artifact_member_id
+            if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
+                "run_targeted_state_characterization",
+                "inspect_raw_artifact_bundle",
+            }
+            else None
+        ),
+        artifact_member_ids=(
+            list(contract.target.artifact_member_ids)
+            if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
+                "run_targeted_state_characterization",
+                "inspect_raw_artifact_bundle",
+            }
+            else []
+        ),
         artifact_kind=(
             selection_policy.artifact_kind
             if effective_capability in {
+                "list_artifact_bundle_members",
                 "run_targeted_charge_analysis",
                 "run_targeted_localized_orbital_analysis",
                 "run_targeted_natural_orbital_analysis",
@@ -1774,6 +1882,20 @@ def compile_semantic_contract_to_tool_plan(
                 "inspect_raw_artifact_bundle",
             }
             else None
+        ),
+        target_selection_mode=(
+            contract.constraints.target_selection_mode
+            if effective_capability in {
+                "run_targeted_charge_analysis",
+                "run_targeted_localized_orbital_analysis",
+                "run_targeted_natural_orbital_analysis",
+                "run_targeted_density_population_analysis",
+                "run_targeted_transition_dipole_analysis",
+                "run_ris_state_characterization",
+                "run_targeted_state_characterization",
+                "inspect_raw_artifact_bundle",
+            }
+            else "bundle_wide"
         ),
         descriptor_scope=(
             list(contract.constraints.descriptor_scope)
@@ -1793,6 +1915,7 @@ def compile_semantic_contract_to_tool_plan(
         artifact_source_round=(
             selection_policy.source_round_preference
             if effective_capability in {
+                "list_artifact_bundle_members",
                 "run_targeted_charge_analysis",
                 "run_targeted_localized_orbital_analysis",
                 "run_targeted_natural_orbital_analysis",
@@ -1823,6 +1946,7 @@ def compile_semantic_contract_to_tool_plan(
                 "extract_geometry_descriptors_from_bundle",
                 "inspect_raw_artifact_bundle",
                 "list_artifact_bundles",
+                "list_artifact_bundle_members",
             }
             else selection_policy.source_round_preference
         ),
@@ -1858,8 +1982,8 @@ def compile_semantic_contract_to_tool_plan(
     )
     calls.append(
         MicroscopicToolCall(
-            call_id=f"execute_{effective_capability}",
-            call_kind="execution",
+            call_id=f"{'discover' if effective_capability == 'list_artifact_bundle_members' else 'execute'}_{effective_capability}",
+            call_kind="discovery" if effective_capability == "list_artifact_bundle_members" else "execution",
             request=execution_request,
         )
     )
@@ -1907,6 +2031,12 @@ def _selection_policy_from_reasoning_draft(draft: Optional[SelectionPolicyDraft]
 
 
 def _default_requested_deliverables_for_capability(capability_name: AmespCapabilityName) -> list[str]:
+    if capability_name == "list_artifact_bundle_members":
+        return [
+            "artifact bundle member inventory",
+            "stable member ids",
+            "member-level parse support summary",
+        ]
     if capability_name == "run_baseline_bundle":
         return [
             "low-cost aTB S0 geometry optimization",
@@ -1986,6 +2116,13 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
 
 
 def _default_expected_outputs_for_capability(capability_name: AmespCapabilityName) -> list[str]:
+    if capability_name == "list_artifact_bundle_members":
+        return [
+            "artifact bundle member ids",
+            "member labels",
+            "parent-child source linkage",
+            "per-member parse capability summary",
+        ]
     if capability_name == "run_baseline_bundle":
         return [
             "S0 optimized geometry",
@@ -2092,6 +2229,8 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
 
 
 def _default_requested_route_summary_for_capability(capability_name: AmespCapabilityName) -> str:
+    if capability_name == "list_artifact_bundle_members":
+        return "Inspect an existing artifact bundle and list stable member ids plus parent-child linkage without launching new calculations."
     if capability_name == "run_baseline_bundle":
         return "Use the default low-cost baseline bundle."
     if capability_name == "run_conformer_bundle":
@@ -2126,7 +2265,12 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
 def _default_call_kind_for_capability(
     capability_name: AmespCapabilityName,
 ) -> Literal["discovery", "execution"]:
-    if capability_name in {"list_rotatable_dihedrals", "list_available_conformers", "list_artifact_bundles"}:
+    if capability_name in {
+        "list_rotatable_dihedrals",
+        "list_available_conformers",
+        "list_artifact_bundles",
+        "list_artifact_bundle_members",
+    }:
         return "discovery"
     return "execution"
 
@@ -2224,7 +2368,10 @@ def _normalize_tool_request_from_draft(
         artifact_source_round=draft.artifact_source_round,
         artifact_scope=draft.artifact_scope,
         artifact_bundle_id=draft.artifact_bundle_id,
+        artifact_member_id=draft.artifact_member_id,
+        artifact_member_ids=list(draft.artifact_member_ids),
         artifact_kind=draft.artifact_kind or selection_policy.artifact_kind,
+        target_selection_mode=draft.target_selection_mode or "bundle_wide",
         descriptor_scope=list(draft.descriptor_scope),
         requested_observable_scope=list(draft.requested_observable_scope),
         source_round_preference=source_round_preference,
@@ -2478,6 +2625,8 @@ def _build_execution_steps(
             "s0_optimization" if optimize_ground_state else "s0_singlepoint",
             "s1_vertical_excitation",
         ]
+    elif capability_name == "list_artifact_bundle_members":
+        step_types = ["artifact_parse"]
     elif capability_name == "parse_snapshot_outputs":
         step_types = ["artifact_parse"]
     elif capability_name in {
@@ -2637,10 +2786,13 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "list_rotatable_dihedrals: discovery-only rotatable dihedral enumeration with stable IDs",
         "list_available_conformers: discovery-only conformer enumeration with stable IDs",
         "list_artifact_bundles: discovery-only artifact bundle enumeration with stable IDs",
+        "list_artifact_bundle_members: discovery-only artifact bundle member enumeration with stable member IDs and parent-child linkage",
         "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
         "run_targeted_charge_analysis: bounded fixed-geometry targeted charge analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_localized_orbital_analysis: bounded fixed-geometry targeted localized-orbital analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_natural_orbital_analysis: bounded fixed-geometry targeted natural-orbital analysis on a small representative subset of existing artifact geometries",
         "run_targeted_density_population_analysis: bounded fixed-geometry targeted density/population analysis on a small representative subset of existing artifact geometries",
         "run_targeted_transition_dipole_analysis: bounded fixed-geometry targeted transition-dipole analysis on a small representative subset of existing artifact geometries",
         "run_ris_state_characterization: bounded fixed-geometry RIS state characterization on a small representative subset of existing artifact geometries",
@@ -2715,9 +2867,13 @@ def compile_reasoning_response_to_execution_plan(
     )
     calls, normalization_notes = _canonicalize_compiled_tool_call_sequence(calls)
     execution_call = next((call for call in calls if call.call_kind == "execution"), None)
+    discovery_only_call = calls[-1] if calls and all(call.call_kind == "discovery" for call in calls) else None
     if execution_call is None:
-        raise TaggedMicroscopicProtocolError("Compiled microscopic plan did not contain an execution call.")
-    execution_request = execution_call.request
+        if discovery_only_call is None:
+            raise TaggedMicroscopicProtocolError("Compiled microscopic plan did not contain an executable registry call.")
+        execution_request = discovery_only_call.request
+    else:
+        execution_request = execution_call.request
     capability_name = execution_request.capability_name
     planning_unmet_constraints = list(reasoning.execution_plan.planning_unmet_constraints)
     if task_mode == "baseline_s0_s1" and capability_name != "run_baseline_bundle":

@@ -1011,12 +1011,18 @@ def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounde
     assert targeted_result.route_summary["shared_first_state_virtual_orbitals"] == [5]
     assert targeted_result.route_summary["shared_first_bright_state_virtual_orbitals"] == [5]
     assert targeted_result.missing_deliverables == []
-    assert targeted_result.generated_artifacts["artifact_bundle_id"] == "round_02_torsion_snapshots"
-    assert targeted_result.generated_artifacts["artifact_bundle_kind"] == "torsion_snapshots"
+    assert targeted_result.generated_artifacts["artifact_bundle_id"] == "round_04_run_targeted_state_characterization_bundle"
+    assert targeted_result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
     assert targeted_result.generated_artifacts["selected_target_count"] == 2
     assert len(targeted_result.generated_artifacts["characterization_artifacts"]) == 2
     assert len(targeted_result.generated_artifacts["reused_snapshot_artifacts"]) == 2
-    assert "artifact_bundle_registry_entries" not in targeted_result.generated_artifacts
+    registry_entries = list(targeted_result.generated_artifacts.get("artifact_bundle_registry_entries") or [])
+    assert len(registry_entries) == 1
+    assert registry_entries[0]["artifact_bundle"]["bundle_id"] == "round_04_run_targeted_state_characterization_bundle"
+    assert registry_entries[0]["artifact_bundle"]["bundle_kind"] == "targeted_property_follow_up"
+    assert registry_entries[0]["artifact_bundle"]["source_bundle_id"] == "round_02_torsion_snapshots"
+    assert registry_entries[0]["artifact_bundle"]["source_member_ids"] == ["torsion_01", "torsion_02"]
+    assert [member["member_id"] for member in registry_entries[0]["bundle_members"]] == ["torsion_01", "torsion_02"]
 
     first_record = targeted_result.route_records[0]
     assert first_record["state_family_overlap"]["available"] is True
@@ -1025,6 +1031,118 @@ def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounde
     assert "mulliken_charges" in first_record["available_state_character_descriptors"]
     assert "molecular_orbital_files" in first_record["available_state_character_descriptors"]
     assert first_record["molecular_orbital_files_available"] is True
+
+
+def test_amesp_targeted_follow_up_supports_exact_member_targeting(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_fake_subprocess_success,
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Reuse one exact torsion member for targeted follow-up.",
+            requested_deliverables=["targeted state-characterization records"],
+            capability_route="targeted_property_follow_up",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_targeted_state_characterization",
+                perform_new_calculation=True,
+                optimize_ground_state=False,
+                artifact_bundle_id="round_02_torsion_snapshots",
+                artifact_source_round=2,
+                artifact_scope="torsion_snapshots",
+                artifact_member_ids=["torsion_02"],
+                target_selection_mode="exact_members",
+                state_window=[1, 2, 3],
+                target_count=2,
+                deliverables=["targeted state-characterization records"],
+                requested_route_summary="Reuse exactly torsion_02 for targeted follow-up.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="exact_member_target",
+        workdir=tmp_path / "exact_member_target_workdir",
+        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert result.route_summary["target_selection_mode"] == "exact_members"
+    assert result.route_summary["requested_exact_member_ids"] == ["torsion_02"]
+    assert result.route_summary["selected_target_count"] == 1
+    assert result.route_summary["selected_target_members"] == ["torsion_02"]
+    assert len(result.route_records) == 1
+    assert result.route_records[0]["member_id"] == "torsion_02"
+
+
+def test_amesp_list_artifact_bundle_members_returns_stable_member_metadata(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_fake_subprocess_success,
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="List stable member ids for one reusable torsion bundle.",
+            requested_deliverables=["artifact bundle member inventory"],
+            capability_route="artifact_parse_only",
+            microscopic_tool_plan=MicroscopicToolPlan(
+                calls=[
+                    MicroscopicToolCall(
+                        call_id="discover_artifact_bundle_members",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_artifact_bundle_members",
+                            artifact_bundle_id="round_02_torsion_snapshots",
+                            artifact_kind="torsion_snapshots",
+                            perform_new_calculation=False,
+                            reuse_existing_artifacts_only=True,
+                            requested_route_summary="List stable members for one torsion bundle.",
+                        ),
+                    )
+                ],
+                requested_route_summary="List stable members for one torsion bundle.",
+                requested_deliverables=["artifact bundle member inventory"],
+                selection_policy=SelectionPolicy(artifact_kind="torsion_snapshots", source_round_preference=2),
+            ),
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="list_artifact_bundle_members",
+                artifact_bundle_id="round_02_torsion_snapshots",
+                artifact_kind="torsion_snapshots",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                deliverables=["artifact bundle member inventory"],
+                requested_route_summary="List stable members for one torsion bundle.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if discovery fails.",
+        ),
+        smiles="N",
+        label="list_artifact_bundle_members",
+        workdir=tmp_path / "list_artifact_bundle_members_workdir",
+        available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+        round_index=4,
+    )
+
+    assert result.executed_capability == "list_artifact_bundle_members"
+    assert result.performed_new_calculations is False
+    assert result.reused_existing_artifacts is True
+    assert result.route_summary["discovery_capability"] == "list_artifact_bundle_members"
+    assert result.route_summary["item_count"] == 2
+    assert [record["member_id"] for record in result.route_records] == ["torsion_01", "torsion_02"]
+    assert result.route_records[0]["source_bundle_id"] == "round_02_torsion_snapshots"
+    assert "inspect_raw_artifact_bundle" in result.route_records[0]["parse_capabilities_supported"]
 
 
 def test_amesp_targeted_charge_analysis_writes_hirshfeld_and_returns_charge_records(
@@ -1094,6 +1212,8 @@ def test_amesp_targeted_localized_orbital_analysis_writes_method_lmo_and_returns
     first_record = result.route_records[0]
     assert first_record["localized_orbital_analysis"]["localization_method"] == "pm"
     assert first_record["localized_orbital_analysis"]["localized_orbitals_available"] is True
+    assert result.generated_artifacts["artifact_bundle_id"] == "round_04_run_targeted_localized_orbital_analysis_bundle"
+    assert result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
     s0_input = captured_inputs["run_targeted_localized_orbital_analysis_follow_up_torsion_01_char_s0sp"]
     assert ">method" in s0_input
     assert "lmo pm" in s0_input
@@ -1131,6 +1251,8 @@ def test_amesp_targeted_natural_orbital_analysis_writes_method_natorb_and_return
     first_record = result.route_records[0]
     assert first_record["natural_orbital_analysis"]["natural_orbital_kind"] == "no"
     assert first_record["natural_orbital_analysis"]["natural_orbitals_available"] is True
+    assert result.generated_artifacts["artifact_bundle_id"] == "round_04_run_targeted_natural_orbital_analysis_bundle"
+    assert result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
     s0_input = captured_inputs["run_targeted_natural_orbital_analysis_follow_up_torsion_01_char_s0sp"]
     assert ">method" in s0_input
     assert "natorb no" in s0_input
@@ -1173,6 +1295,8 @@ def test_amesp_targeted_density_population_analysis_writes_out2_and_returns_dens
     assert density_record["gross_orbital_populations_available"] is True
     assert density_record["mayer_bond_order_available"] is True
     assert density_record["top_mayer_pairs"][0]["bond_order"] == 0.91
+    assert result.generated_artifacts["artifact_bundle_id"] == "round_04_run_targeted_density_population_analysis_bundle"
+    assert result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
     assert "out 2" in captured_inputs["run_targeted_density_population_analysis_follow_up_torsion_01_char_s0sp"]
 
 
@@ -1216,6 +1340,76 @@ def test_amesp_targeted_transition_dipole_analysis_writes_tda_atb_excdip_and_ret
     assert "! atb tda" in s1_input
     assert ">atb" in s1_input
     assert "excdip on" in s1_input
+
+
+def test_amesp_inspect_raw_artifact_bundle_supports_exact_member_targeting_for_follow_up_bundle(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_fake_subprocess_success,
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    localized_result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_localized_orbital_analysis",
+        deliverables=[
+            "targeted localized-orbital analysis records",
+            "localized-orbital availability summary",
+            "bounded raw localized-orbital observables",
+        ],
+    )
+
+    inspect_result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Inspect one exact follow-up bundle member for raw localized-orbital artifacts.",
+            requested_deliverables=[
+                "raw artifact file inventory",
+                "extractable observable inventory",
+                "raw inspection notes",
+            ],
+            capability_route="artifact_parse_only",
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="inspect_raw_artifact_bundle",
+                perform_new_calculation=False,
+                reuse_existing_artifacts_only=True,
+                artifact_bundle_id="round_04_run_targeted_localized_orbital_analysis_bundle",
+                artifact_source_round=4,
+                artifact_scope="targeted_property_follow_up",
+                artifact_member_ids=["torsion_01"],
+                target_selection_mode="exact_members",
+                requested_observable_scope=["localized_orbitals_pm", "molecular_orbital_files"],
+                deliverables=[
+                    "raw artifact file inventory",
+                    "extractable observable inventory",
+                    "raw inspection notes",
+                ],
+                requested_route_summary="Inspect exactly torsion_01 from the localized-orbital follow-up bundle.",
+            ),
+            structure_source="existing_prepared_structure",
+            failure_reporting="Return partial or failed if inspection fails.",
+        ),
+        smiles="N",
+        label="localized_follow_up_inspect",
+        workdir=tmp_path / "localized_follow_up_inspect_workdir",
+        available_artifacts={**localized_result.generated_artifacts, "source_round": 4},
+        round_index=5,
+    )
+
+    assert inspect_result.executed_capability == "inspect_raw_artifact_bundle"
+    assert inspect_result.route == "artifact_parse_only"
+    assert inspect_result.route_summary["artifact_scope"] == "targeted_property_follow_up"
+    assert inspect_result.route_summary["target_selection_mode"] == "exact_members"
+    assert inspect_result.route_summary["requested_exact_member_ids"] == ["torsion_01"]
+    assert len(inspect_result.parsed_snapshot_records) == 1
+    assert inspect_result.parsed_snapshot_records[0]["snapshot_label"] == "torsion_01"
+    assert "localized_orbitals_pm" in inspect_result.route_summary["extractable_observables"]
+    assert "molecular_orbital_files" in inspect_result.route_summary["extractable_observables"]
+    assert inspect_result.missing_deliverables == []
 
 
 def test_amesp_ris_state_characterization_writes_tda_ris_and_returns_ris_state_character_records(
@@ -1414,6 +1608,53 @@ def test_amesp_parse_snapshot_outputs_reuses_baseline_bundle_artifacts_without_n
     assert parsed_result.route == "artifact_parse_only"
     assert parsed_result.performed_new_calculations is False
     assert parsed_result.reused_existing_artifacts is True
+
+
+def test_amesp_parse_snapshot_outputs_rejects_exact_member_targeting(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_fake_subprocess_success,
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Attempt unsupported exact-member parse-only targeting.",
+                requested_deliverables=["per-snapshot excitation records"],
+                capability_route="artifact_parse_only",
+                microscopic_tool_request=MicroscopicToolRequest(
+                    capability_name="parse_snapshot_outputs",
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    artifact_bundle_id="round_02_torsion_snapshots",
+                    artifact_source_round=2,
+                    artifact_scope="torsion_snapshots",
+                    artifact_member_ids=["torsion_01"],
+                    target_selection_mode="exact_members",
+                    state_window=[1, 2],
+                    deliverables=["per-snapshot excitation records"],
+                    requested_route_summary="Attempt exact-member parse-only targeting.",
+                ),
+                structure_source="existing_prepared_structure",
+                failure_reporting="Return partial or failed if parsing fails.",
+            ),
+            smiles="N",
+            label="parse_exact_member_rejected",
+            workdir=tmp_path / "parse_exact_member_rejected_workdir",
+            available_artifacts={**torsion_result.generated_artifacts, "source_round": 2},
+            round_index=4,
+        )
+    except AmespExecutionError as exc:
+        assert exc.structured_results["completion_reason_code"] == "unsupported_target_selection_mode"
+        assert exc.structured_results["unsupported_target_selection_mode"] == "exact_members"
+        assert exc.structured_results["supported_target_selection_modes"] == ["bundle_wide"]
+    else:
+        raise AssertionError("Expected unsupported_target_selection_mode for exact-member parse-only request.")
     assert len(parsed_result.parsed_snapshot_records) == 1
     assert parsed_result.route_summary["artifact_scope"] == "baseline_bundle"
     assert parsed_result.route_summary["ct_proxy_availability"] == "partial_observable_only"

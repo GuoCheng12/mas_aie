@@ -24,12 +24,14 @@ from aie_mas.graph.state import (
     ArtifactBundleCompletionStatus,
     ArtifactBundleDescriptor,
     ArtifactBundleKind,
+    ArtifactBundleMemberMetadata,
     ArtifactBundleRegistryEntry,
     ConformerDescriptor,
     DihedralBondType,
     DihedralDescriptor,
     MicroscopicCapabilityName,
     MicroscopicExecutionPlan,
+    MicroscopicTargetSelectionMode,
     MicroscopicToolCall,
     MicroscopicToolPlan,
     MicroscopicToolRequest,
@@ -135,6 +137,9 @@ class AmespCapabilityDefinition(BaseModel):
     required_inputs: list[str] = Field(default_factory=list)
     optional_inputs: list[str] = Field(default_factory=list)
     supported_deliverables: list[str] = Field(default_factory=list)
+    supported_target_selection_modes: list[MicroscopicTargetSelectionMode] = Field(
+        default_factory=lambda: ["bundle_wide"]
+    )
     unsupported_requests_note: Optional[str] = None
     default_budget_behavior: str
 
@@ -155,6 +160,9 @@ AmespActionParamType = Literal[
     "conformer_id",
     "conformer_ids",
     "artifact_bundle_id",
+    "artifact_member_id",
+    "artifact_member_ids",
+    "target_selection_mode",
 ]
 
 
@@ -191,7 +199,7 @@ class AmespBaselineRunResult(BaseModel):
     honored_constraints: list[str] = Field(default_factory=list)
     unmet_constraints: list[str] = Field(default_factory=list)
     missing_deliverables: list[str] = Field(default_factory=list)
-    structure: PreparedStructure
+    structure: Optional[PreparedStructure] = None
     s0: Optional[AmespGroundStateResult] = None
     s1: Optional[AmespExcitedStateResult] = None
     parsed_snapshot_records: list[dict[str, Any]] = Field(default_factory=list)
@@ -227,6 +235,15 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         required_inputs=["available microscopic artifacts"],
         optional_inputs=["artifact_kind", "source_round_preference"],
         supported_deliverables=["artifact bundle descriptors"],
+        default_budget_behavior="Never launches new Amesp calculations; discovery only.",
+    ),
+    "list_artifact_bundle_members": AmespCapabilityDefinition(
+        name="list_artifact_bundle_members",
+        purpose="List stable member IDs within one reusable microscopic artifact bundle for later exact-member targeting.",
+        requires_new_calculation=False,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_kind", "artifact_bundle_id", "source_round_preference"],
+        supported_deliverables=["artifact bundle member descriptors"],
         default_budget_behavior="Never launches new Amesp calculations; discovery only.",
     ),
     "run_baseline_bundle": AmespCapabilityDefinition(
@@ -281,6 +298,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
             "charge availability summary",
             "bounded raw charge observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -289,12 +307,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost localized-orbital analysis.",
         requires_new_calculation=True,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count", "optimize_ground_state"],
         supported_deliverables=[
             "targeted localized-orbital analysis records",
             "localized-orbital availability summary",
             "bounded raw localized-orbital observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -303,12 +322,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost natural-orbital analysis.",
         requires_new_calculation=True,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count", "optimize_ground_state"],
         supported_deliverables=[
             "targeted natural-orbital analysis records",
             "natural-orbital availability summary",
             "bounded raw natural-orbital observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -317,12 +337,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost density/population analysis.",
         requires_new_calculation=True,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count", "optimize_ground_state"],
         supported_deliverables=[
             "targeted density/population analysis records",
             "density/population availability summary",
             "bounded raw density/population observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -331,12 +352,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost transition-dipole analysis.",
         requires_new_calculation=True,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count", "optimize_ground_state"],
         supported_deliverables=[
             "targeted transition-dipole analysis records",
             "transition-dipole availability summary",
             "bounded raw transition-dipole observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -345,12 +367,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost RIS state characterization.",
         requires_new_calculation=True,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window", "target_count", "optimize_ground_state"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count", "optimize_ground_state"],
         supported_deliverables=[
             "RIS state-characterization records",
             "RIS state-characterization availability summary",
             "bounded raw RIS state-character observables",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -363,6 +386,9 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
             "artifact_source_round",
             "artifact_scope",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "state_window",
             "descriptor_scope",
             "target_count",
@@ -373,6 +399,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
             "state-family overlap summary",
             "bounded CT/state-character proxy summary",
         ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
@@ -381,7 +408,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Parse existing snapshot artifacts and return per-snapshot excited-state summaries without new calculations.",
         requires_new_calculation=False,
         required_inputs=["existing snapshot artifacts"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "state_window"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "state_window"],
         supported_deliverables=[
             "per-snapshot excitation energies",
             "per-snapshot oscillator strengths",
@@ -401,6 +428,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
             "bounded CT descriptor records",
             "artifact-backed CT surrogate summary",
         ],
+        supported_target_selection_modes=["bundle_wide"],
         unsupported_requests_note="Some requested CT descriptors may remain unavailable even when raw Amesp artifacts exist.",
         default_budget_behavior="Reuse only existing artifact bundles and return partial observables when raw-file coverage is insufficient.",
     ),
@@ -415,6 +443,7 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
             "bounded geometry descriptor records",
             "artifact-backed geometry summary",
         ],
+        supported_target_selection_modes=["bundle_wide"],
         unsupported_requests_note="Geometry extraction is limited to descriptors measurable from reusable optimized or prepared coordinates already present in the artifact bundle.",
         default_budget_behavior="Reuse only existing artifact bundles and return partial observables when coordinate coverage is insufficient.",
     ),
@@ -423,12 +452,13 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         purpose="Inspect a reusable artifact bundle and report which raw Amesp files and observable families are available.",
         requires_new_calculation=False,
         required_inputs=["existing microscopic artifact bundle"],
-        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "requested_observable_scope"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "requested_observable_scope"],
         supported_deliverables=[
             "raw artifact file inventory",
             "extractable observable inventory",
             "raw inspection notes",
         ],
+        supported_target_selection_modes=["bundle_wide", "exact_members"],
         unsupported_requests_note="Raw-file inspection reports file coverage and extractable observable families; it does not by itself guarantee complete descriptor extraction.",
         default_budget_behavior="Reuse only existing artifact bundles and never launch new calculations.",
     ),
@@ -540,7 +570,35 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
                 "artifact_kind",
                 "artifact_kind",
                 "Requested artifact bundle kind.",
-                enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"],
+                enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"],
+            ),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+        },
+        defaults={"source_round_selector": "latest_available"},
+    ),
+    "list_artifact_bundle_members": AmespActionDefinition(
+        action_name="list_artifact_bundle_members",
+        action_kind="discovery",
+        purpose="Discover stable member IDs inside one reusable artifact bundle before exact-member targeting.",
+        allowed_llm_params=["artifact_kind", "artifact_bundle_id", "source_round_selector"],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "artifact_kind": _action_param(
+                "artifact_kind",
+                "artifact_kind",
+                "Requested artifact bundle kind.",
+                enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"],
+            ),
+            "artifact_bundle_id": _action_param(
+                "artifact_bundle_id",
+                "artifact_bundle_id",
+                "Explicit artifact bundle ID whose members should be listed.",
             ),
             "source_round_selector": _action_param(
                 "source_round_selector",
@@ -713,6 +771,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -721,8 +782,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded charge-analysis calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -736,6 +800,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -756,6 +821,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -764,8 +832,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded localized-orbital calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -779,6 +850,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -799,6 +871,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -807,8 +882,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded natural-orbital calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -822,6 +900,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -842,6 +921,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -850,8 +932,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded density/population calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -865,6 +950,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -885,6 +971,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -893,8 +982,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded transition-dipole calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -908,6 +1000,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -928,6 +1021,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "target_count",
@@ -936,8 +1032,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded RIS state-characterization calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before the bounded follow-up. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -951,6 +1050,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -971,6 +1071,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "state_window",
             "descriptor_scope",
@@ -980,8 +1083,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new targeted state-characterization calculations. Must remain true.", default=True),
             "optimize_ground_state": _action_param("optimize_ground_state", "bool", "Whether to re-optimize each selected geometry before vertical excitation. Defaults to false for fixed-geometry characterization.", default=False),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -996,6 +1102,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": True,
             "optimize_ground_state": False,
+            "target_selection_mode": "representative_subset",
             "source_round_selector": "latest_available",
             "target_count": 3,
         },
@@ -1023,7 +1130,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for parse-only reuse.", default=False),
             "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
             "source_round_selector": _action_param(
                 "source_round_selector",
@@ -1064,7 +1171,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for bundle-based CT extraction.", default=False),
             "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
             "source_round_selector": _action_param(
                 "source_round_selector",
@@ -1105,7 +1212,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for bundle-based geometry extraction.", default=False),
             "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
             "source_round_selector": _action_param(
                 "source_round_selector",
@@ -1138,6 +1245,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "reuse_existing_artifacts_only",
             "artifact_kind",
             "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
             "source_round_selector",
             "requested_observable_scope",
         ],
@@ -1145,8 +1255,11 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         param_types={
             "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new calculations. Must remain false for raw artifact inspection.", default=False),
             "reuse_existing_artifacts_only": _action_param("reuse_existing_artifacts_only", "bool", "Whether only reusable artifacts may be used.", default=True),
-            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle"]),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
             "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the inspection route should select bundle members.", enum_values=["bundle_wide", "exact_members"], default="bundle_wide"),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -1159,6 +1272,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
         defaults={
             "perform_new_calculation": False,
             "reuse_existing_artifacts_only": True,
+            "target_selection_mode": "bundle_wide",
             "source_round_selector": "latest_available",
         },
         allowed_discovery_actions=["list_artifact_bundles"],
@@ -1597,6 +1711,28 @@ class AmespMicroscopicTool:
             break
 
         if execution_call is None:
+            if tool_plan.calls and all(call.call_kind == "discovery" for call in tool_plan.calls):
+                primary_call = tool_plan.calls[-1]
+                result = AmespBaselineRunResult(
+                    route="artifact_parse_only",
+                    executed_capability=primary_call.request.capability_name,
+                    requested_capability=primary_call.request.capability_name,
+                    performed_new_calculations=False,
+                    reused_existing_artifacts=True,
+                    resolved_target_ids={},
+                    honored_constraints=[],
+                    unmet_constraints=[],
+                    missing_deliverables=[],
+                    structure=None,
+                    route_records=list(discovery_results.get(primary_call.call_id, {}).get("items") or []),
+                    route_summary={
+                        "discovery_capability": primary_call.request.capability_name,
+                        "item_count": len(list(discovery_results.get(primary_call.call_id, {}).get("items") or [])),
+                    },
+                    raw_step_results={"discovery_results": discovery_results},
+                    generated_artifacts={},
+                )
+                return result
             raise AmespExecutionError(
                 "precondition_missing",
                 "Microscopic tool plan did not contain an execution call.",
@@ -1844,6 +1980,15 @@ class AmespMicroscopicTool:
             }
         if request.capability_name == "list_artifact_bundles":
             descriptors = self._list_artifact_bundle_descriptors(
+                request=request,
+                available_artifacts=available_artifacts,
+            )
+            return {
+                "capability_name": request.capability_name,
+                "items": [item.model_dump(mode="json") for item in descriptors],
+            }
+        if request.capability_name == "list_artifact_bundle_members":
+            descriptors = self._list_artifact_bundle_member_descriptors(
                 request=request,
                 available_artifacts=available_artifacts,
             )
@@ -2112,6 +2257,40 @@ class AmespMicroscopicTool:
             return descriptors
         return [descriptor for descriptor in descriptors if descriptor.artifact_kind == request.artifact_kind]
 
+    def _list_artifact_bundle_member_descriptors(
+        self,
+        *,
+        request: MicroscopicToolRequest,
+        available_artifacts: dict[str, Any] | None,
+    ) -> list[ArtifactBundleMemberMetadata]:
+        resolved_request = request
+        if request.artifact_bundle_id is None:
+            descriptors = self._list_artifact_bundle_descriptors(
+                request=MicroscopicToolRequest(
+                    capability_name="list_artifact_bundles",
+                    artifact_kind=request.artifact_kind,
+                    source_round_preference=request.source_round_preference,
+                    perform_new_calculation=False,
+                    reuse_existing_artifacts_only=True,
+                    requested_route_summary=request.requested_route_summary,
+                ),
+                available_artifacts=available_artifacts,
+            )
+            if not descriptors:
+                return []
+            resolved_request = request.model_copy(
+                update={
+                    "artifact_bundle_id": descriptors[0].artifact_bundle_id,
+                    "artifact_kind": descriptors[0].artifact_kind,
+                    "artifact_source_round": descriptors[0].source_round,
+                }
+            )
+        _, bundle_members = self._artifact_bundle_source_with_members_by_id(
+            artifact_bundle_id=str(resolved_request.artifact_bundle_id),
+            available_artifacts=available_artifacts,
+        ) or (None, [])
+        return bundle_members
+
     def _available_artifact_bundle_descriptors(
         self,
         available_artifacts: dict[str, Any] | None,
@@ -2123,9 +2302,7 @@ class AmespMicroscopicTool:
             for item in registry_entries:
                 entry = ArtifactBundleRegistryEntry.model_validate(item)
                 bundle = entry.artifact_bundle
-                snapshot_count = 1 if bundle.bundle_kind == "baseline_bundle" else len(
-                    list(entry.generated_artifacts.get("snapshot_artifacts") or entry.generated_artifacts.get("conformer_artifacts") or [])
-                )
+                snapshot_count = len(entry.bundle_members) or (1 if bundle.bundle_kind == "baseline_bundle" else 0)
                 descriptors_by_id[bundle.bundle_id] = ArtifactBundleDescriptor(
                     artifact_bundle_id=bundle.bundle_id,
                     source_round=bundle.source_round,
@@ -2142,8 +2319,27 @@ class AmespMicroscopicTool:
                 source_artifacts = dict(source.get("generated_artifacts") or {})
                 source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
                 source_artifacts["source_round"] = source_round
-                for descriptor in self._artifact_bundle_descriptors_from_source(source_artifacts):
-                    descriptors_by_id[descriptor.artifact_bundle_id] = descriptor
+                source_capability = str(
+                    source.get("executed_capability") or source_artifacts.get("executed_capability") or ""
+                ).strip()
+                if source_capability:
+                    entry = _artifact_bundle_entry_from_generated_artifacts(
+                        source_capability=source_capability,  # type: ignore[arg-type]
+                        source_round=source_round,
+                        generated_artifacts=source_artifacts,
+                    )
+                    if entry is not None:
+                        bundle = entry.artifact_bundle
+                        descriptors_by_id[bundle.bundle_id] = ArtifactBundleDescriptor(
+                            artifact_bundle_id=bundle.bundle_id,
+                            source_round=bundle.source_round,
+                            source_capability=bundle.source_capability,
+                            artifact_kind=bundle.bundle_kind,
+                            bundle_completion_status=bundle.bundle_completion_status,
+                            snapshot_count=len(entry.bundle_members) or (1 if bundle.bundle_kind == "baseline_bundle" else 0),
+                            available_files=list(bundle.available_files),
+                            available_deliverables=list(bundle.available_deliverables),
+                        )
         else:
             for descriptor in self._artifact_bundle_descriptors_from_source(available_artifacts):
                 descriptors_by_id[descriptor.artifact_bundle_id] = descriptor
@@ -2155,6 +2351,7 @@ class AmespMicroscopicTool:
     ) -> list[ArtifactBundleDescriptor]:
         descriptors: list[ArtifactBundleDescriptor] = []
         source_round = int(source_artifacts.get("source_round") or 0)
+        source_capability = str(source_artifacts.get("source_capability") or "").strip()
         bundle_completion_status = _bundle_completion_status_from_generated_artifacts(source_artifacts)
         if source_artifacts.get("snapshot_artifacts"):
             descriptors.append(
@@ -2206,6 +2403,19 @@ class AmespMicroscopicTool:
                     ],
                 )
             )
+        if source_artifacts.get("characterization_artifacts"):
+            descriptors.append(
+                ArtifactBundleDescriptor(
+                    artifact_bundle_id=str(source_artifacts.get("artifact_bundle_id") or f"round_{source_round:02d}_{source_capability or 'targeted_property_follow_up'}_bundle"),
+                    source_round=source_round,
+                    source_capability=source_capability or "run_targeted_state_characterization",
+                    artifact_kind="targeted_property_follow_up",
+                    bundle_completion_status=bundle_completion_status,
+                    snapshot_count=len(list(source_artifacts.get("characterization_artifacts") or [])),
+                    available_files=_collect_available_file_keys(source_artifacts, "characterization_artifacts"),
+                    available_deliverables=["targeted property follow-up artifacts"],
+                )
+            )
         return descriptors
 
     def _artifact_bundle_descriptor_by_id(
@@ -2225,6 +2435,21 @@ class AmespMicroscopicTool:
         artifact_bundle_id: str,
         available_artifacts: dict[str, Any] | None,
     ) -> Optional[tuple[ArtifactBundleDescriptor, dict[str, Any]]]:
+        resolved = self._artifact_bundle_source_with_members_by_id(
+            artifact_bundle_id=artifact_bundle_id,
+            available_artifacts=available_artifacts,
+        )
+        if resolved is None:
+            return None
+        descriptor, generated_artifacts, _ = resolved
+        return descriptor, generated_artifacts
+
+    def _artifact_bundle_source_with_members_by_id(
+        self,
+        *,
+        artifact_bundle_id: str,
+        available_artifacts: dict[str, Any] | None,
+    ) -> Optional[tuple[ArtifactBundleDescriptor, dict[str, Any], list[ArtifactBundleMemberMetadata]]]:
         available_artifacts = available_artifacts or {}
         registry_entries = list(available_artifacts.get("artifact_bundle_registry_entries") or [])
         if registry_entries:
@@ -2248,6 +2473,7 @@ class AmespMicroscopicTool:
                         available_deliverables=list(bundle.available_deliverables),
                     ),
                     dict(entry.generated_artifacts),
+                    list(entry.bundle_members),
                 )
         registry_sources = list(available_artifacts.get("artifact_bundle_registry_sources") or [])
         if registry_sources:
@@ -2255,9 +2481,31 @@ class AmespMicroscopicTool:
                 source_artifacts = dict(source.get("generated_artifacts") or {})
                 source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
                 source_artifacts["source_round"] = source_round
-                for descriptor in self._artifact_bundle_descriptors_from_source(source_artifacts):
-                    if descriptor.artifact_bundle_id == artifact_bundle_id:
-                        return descriptor, source_artifacts
+                source_capability = str(
+                    source.get("executed_capability") or source_artifacts.get("executed_capability") or ""
+                ).strip()
+                if source_capability:
+                    entry = _artifact_bundle_entry_from_generated_artifacts(
+                        source_capability=source_capability,  # type: ignore[arg-type]
+                        source_round=source_round,
+                        generated_artifacts=source_artifacts,
+                    )
+                    if entry is not None and entry.artifact_bundle.bundle_id == artifact_bundle_id:
+                        bundle = entry.artifact_bundle
+                        return (
+                            ArtifactBundleDescriptor(
+                                artifact_bundle_id=bundle.bundle_id,
+                                source_round=bundle.source_round,
+                                source_capability=bundle.source_capability,
+                                artifact_kind=bundle.bundle_kind,
+                                bundle_completion_status=bundle.bundle_completion_status,
+                                snapshot_count=len(entry.bundle_members) or 1,
+                                available_files=list(bundle.available_files),
+                                available_deliverables=list(bundle.available_deliverables),
+                            ),
+                            source_artifacts,
+                            list(entry.bundle_members),
+                        )
             return None
         descriptor = self._artifact_bundle_descriptor_by_id(
             artifact_bundle_id=artifact_bundle_id,
@@ -2265,14 +2513,21 @@ class AmespMicroscopicTool:
         )
         if descriptor is None:
             return None
-        return descriptor, available_artifacts
+        return descriptor, available_artifacts, []
 
     def _resolve_artifact_bundle_records_for_analysis(
         self,
         *,
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
-    ) -> tuple[dict[str, Any], str, Optional[int], list[dict[str, Any]]]:
+    ) -> tuple[
+        dict[str, Any],
+        str,
+        Optional[int],
+        list[dict[str, Any]],
+        MicroscopicTargetSelectionMode,
+        list[str],
+    ]:
         if not available_artifacts:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -2285,6 +2540,25 @@ class AmespMicroscopicTool:
                 },
             )
 
+        supported_modes = _supported_target_selection_modes_for_capability(request.capability_name)
+        exact_member_ids = _requested_artifact_member_ids(request)
+        target_selection_mode = request.target_selection_mode
+        if exact_member_ids and target_selection_mode == "bundle_wide":
+            target_selection_mode = "exact_members"
+        if target_selection_mode not in supported_modes:
+            raise AmespExecutionError(
+                "precondition_missing",
+                f"Capability `{request.capability_name}` does not support target_selection_mode=`{target_selection_mode}`.",
+                status="failed",
+                structured_results={
+                    "executed_capability": request.capability_name,
+                    "performed_new_calculations": request.perform_new_calculation,
+                    "reused_existing_artifacts": True,
+                    "completion_reason_code": "unsupported_target_selection_mode",
+                    "unsupported_target_selection_mode": target_selection_mode,
+                    "supported_target_selection_modes": list(supported_modes),
+                },
+            )
         selected_artifacts = available_artifacts
         artifact_scope = request.artifact_scope or request.artifact_kind or "latest_bundle"
         source_round = available_artifacts.get("source_round")
@@ -2340,6 +2614,8 @@ class AmespMicroscopicTool:
                 if baseline_record.get("s0_aop_path") or baseline_record.get("s1_aop_path"):
                     artifact_scope = "baseline_bundle"
                     artifact_records = [baseline_record]
+        if artifact_scope == "targeted_property_follow_up":
+            artifact_records = list(selected_artifacts.get("characterization_artifacts") or [])
         if not artifact_records:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -2351,7 +2627,35 @@ class AmespMicroscopicTool:
                     "reused_existing_artifacts": True,
                 },
             )
-        return selected_artifacts, artifact_scope, source_round, artifact_records
+        if target_selection_mode == "exact_members":
+            if not exact_member_ids:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    "Exact-member artifact targeting requires artifact_member_id or artifact_member_ids.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": request.capability_name,
+                        "performed_new_calculations": request.perform_new_calculation,
+                        "reused_existing_artifacts": True,
+                        "completion_reason_code": "unsupported_target_selection_mode",
+                        "unsupported_target_selection_mode": target_selection_mode,
+                        "supported_target_selection_modes": list(supported_modes),
+                    },
+                )
+            artifact_records = _select_exact_artifact_records(artifact_records, exact_member_ids)
+            if not artifact_records:
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    "None of the requested artifact members were available in the selected artifact bundle.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": request.capability_name,
+                        "performed_new_calculations": request.perform_new_calculation,
+                        "reused_existing_artifacts": True,
+                        "requested_artifact_member_ids": exact_member_ids,
+                    },
+                )
+        return selected_artifacts, artifact_scope, source_round, artifact_records, target_selection_mode, exact_member_ids
 
     def _load_prepared_structure_from_paths(
         self,
@@ -2654,7 +2958,7 @@ class AmespMicroscopicTool:
                     "reused_existing_artifacts": True,
                 },
             )
-        selected_artifacts, artifact_scope, source_round, artifact_records = (
+        selected_artifacts, artifact_scope, source_round, artifact_records, target_selection_mode, exact_member_ids = (
             self._resolve_artifact_bundle_records_for_analysis(
                 request=request,
                 available_artifacts=available_artifacts,
@@ -2666,11 +2970,14 @@ class AmespMicroscopicTool:
         )
         descriptor_scope = list(profile["descriptor_scope"])
         source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
-        selected_records = _select_targeted_state_characterization_records(
-            artifact_scope=artifact_scope,
-            artifact_records=artifact_records,
-            target_count=request.target_count,
-        )
+        if target_selection_mode == "exact_members":
+            selected_records = list(artifact_records)
+        else:
+            selected_records = _select_targeted_state_characterization_records(
+                artifact_scope=artifact_scope,
+                artifact_records=artifact_records,
+                target_count=request.target_count,
+            )
         if not selected_records:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -2695,6 +3002,7 @@ class AmespMicroscopicTool:
             prepared = self._load_prepared_structure_from_record(artifact, selected_artifacts)
             geometry_payload = _geometry_payload_from_artifact_record(artifact, prepared)
             member_label = _artifact_record_label(artifact, fallback=f"member_{index:02d}")
+            member_id = _artifact_record_member_id(artifact, fallback=member_label)
             member_result = self._run_single_low_cost_bundle(
                 atoms=_in_memory_atoms(
                     symbols=geometry_payload["symbols"],
@@ -2740,7 +3048,10 @@ class AmespMicroscopicTool:
                 first_bright_virtual_sets.append(set(characterization_record.get("first_bright_state_virtual_orbitals") or []))
             characterization_artifacts.append(
                 {
+                    "member_id": member_id,
                     "member_label": member_label,
+                    "source_bundle_id": request.artifact_bundle_id,
+                    "source_member_id": _artifact_record_member_id(artifact, fallback=member_label),
                     "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
                     "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
                     "s0_aip_path": member_result.generated_artifacts.get("s0_aip_path")
@@ -2754,6 +3065,29 @@ class AmespMicroscopicTool:
                     "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path")
                     or member_result.generated_artifacts.get("s0_singlepoint_mo_path"),
                     "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                    "available_raw_files": _collect_available_file_keys(
+                        {
+                            "snapshot_artifacts": [
+                                {
+                                    "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
+                                    "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
+                                    "s0_aip_path": member_result.generated_artifacts.get("s0_aip_path")
+                                    or member_result.generated_artifacts.get("s0_singlepoint_aip_path"),
+                                    "s1_aip_path": member_result.generated_artifacts.get("s1_aip_path"),
+                                    "s0_aop_path": member_result.generated_artifacts.get("s0_aop_path")
+                                    or member_result.generated_artifacts.get("s0_singlepoint_aop_path"),
+                                    "s1_aop_path": member_result.generated_artifacts.get("s1_aop_path"),
+                                    "s0_stdout_path": member_result.generated_artifacts.get("s0_stdout_path")
+                                    or member_result.generated_artifacts.get("s0_singlepoint_stdout_path"),
+                                    "s1_stdout_path": member_result.generated_artifacts.get("s1_stdout_path"),
+                                    "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path")
+                                    or member_result.generated_artifacts.get("s0_singlepoint_mo_path"),
+                                    "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                                }
+                            ]
+                        },
+                        "snapshot_artifacts",
+                    ),
                 }
             )
             if primary_result is None or member_result.s0.final_energy_hartree < primary_result.s0.final_energy_hartree:
@@ -2776,10 +3110,12 @@ class AmespMicroscopicTool:
             "source_bundle_completion_status": source_bundle_completion_status,
             "descriptor_scope": descriptor_scope,
             "selected_target_members": [
-                _artifact_record_label(record, fallback=f"member_{index:02d}")
+                _artifact_record_member_id(record, fallback=f"member_{index:02d}")
                 for index, record in enumerate(selected_records, start=1)
             ],
             "selected_target_count": len(selected_records),
+            "target_selection_mode": target_selection_mode,
+            "requested_exact_member_ids": list(exact_member_ids),
             availability_key: "proxy_only" if capability_available_descriptors else "not_available",
             available_key: sorted(capability_available_descriptors),
             missing_key: missing_descriptors,
@@ -2805,10 +3141,19 @@ class AmespMicroscopicTool:
             "selected_target_count": len(selected_records),
         }
         primary_result.generated_artifacts["source_round"] = source_round
-        primary_result.generated_artifacts["artifact_bundle_id"] = request.artifact_bundle_id
-        primary_result.generated_artifacts["artifact_bundle_kind"] = artifact_scope
+        primary_result.generated_artifacts["artifact_bundle_id"] = (
+            f"round_{round_index:02d}_{capability_name}_bundle"
+        )
+        primary_result.generated_artifacts["artifact_bundle_kind"] = "targeted_property_follow_up"
+        primary_result.generated_artifacts["source_bundle_id"] = request.artifact_bundle_id
+        primary_result.generated_artifacts["source_capability"] = capability_name
+        primary_result.generated_artifacts["source_member_ids"] = [
+            _artifact_record_member_id(record, fallback=f"member_{index:02d}")
+            for index, record in enumerate(selected_records, start=1)
+        ]
         primary_result.generated_artifacts["selected_target_count"] = len(selected_records)
         primary_result.generated_artifacts["selected_target_members"] = route_summary["selected_target_members"]
+        primary_result.generated_artifacts["target_selection_mode"] = target_selection_mode
         primary_result.generated_artifacts["characterization_artifacts"] = characterization_artifacts
         primary_result.generated_artifacts["reused_snapshot_artifacts"] = selected_records
         return primary_result
@@ -2819,7 +3164,7 @@ class AmespMicroscopicTool:
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
     ) -> AmespBaselineRunResult:
-        selected_artifacts, artifact_scope, source_round, artifact_records = (
+        selected_artifacts, artifact_scope, source_round, artifact_records, _, _ = (
             self._resolve_artifact_bundle_records_for_analysis(
                 request=request,
                 available_artifacts=available_artifacts,
@@ -2939,7 +3284,7 @@ class AmespMicroscopicTool:
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
     ) -> AmespBaselineRunResult:
-        selected_artifacts, artifact_scope, source_round, artifact_records = (
+        selected_artifacts, artifact_scope, source_round, artifact_records, _, _ = (
             self._resolve_artifact_bundle_records_for_analysis(
                 request=request,
                 available_artifacts=available_artifacts,
@@ -3087,7 +3432,7 @@ class AmespMicroscopicTool:
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
     ) -> AmespBaselineRunResult:
-        selected_artifacts, artifact_scope, source_round, artifact_records = (
+        selected_artifacts, artifact_scope, source_round, artifact_records, _, _ = (
             self._resolve_artifact_bundle_records_for_analysis(
                 request=request,
                 available_artifacts=available_artifacts,
@@ -3210,7 +3555,7 @@ class AmespMicroscopicTool:
         request: MicroscopicToolRequest,
         available_artifacts: dict[str, Any] | None,
     ) -> AmespBaselineRunResult:
-        selected_artifacts, artifact_scope, source_round, artifact_records = (
+        selected_artifacts, artifact_scope, source_round, artifact_records, target_selection_mode, exact_member_ids = (
             self._resolve_artifact_bundle_records_for_analysis(
                 request=request,
                 available_artifacts=available_artifacts,
@@ -3282,6 +3627,8 @@ class AmespMicroscopicTool:
             "available_raw_files": sorted(file_inventory),
             "extractable_observables": sorted(extractable_observables),
             "missing_observables": missing_observables,
+            "target_selection_mode": target_selection_mode,
+            "requested_exact_member_ids": list(exact_member_ids),
             "inspection_notes": (
                 ["Requested observable scope exceeded current raw-file coverage."]
                 if missing_observables
@@ -5388,6 +5735,60 @@ def _artifact_record_label(
     return fallback
 
 
+def _artifact_record_member_id(
+    artifact_record: dict[str, Any],
+    *,
+    fallback: str,
+) -> str:
+    for key in ("member_id", "snapshot_label", "member_label", "conformer_id"):
+        value = artifact_record.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    conformer_rank = artifact_record.get("conformer_rank")
+    if conformer_rank is not None:
+        return f"conformer_{int(conformer_rank):02d}"
+    return fallback
+
+
+def _requested_artifact_member_ids(request: MicroscopicToolRequest) -> list[str]:
+    member_ids: list[str] = []
+    if request.artifact_member_id:
+        member_ids.append(request.artifact_member_id)
+    member_ids.extend(request.artifact_member_ids)
+    deduped: list[str] = []
+    for item in member_ids:
+        normalized = str(item).strip()
+        if normalized and normalized not in deduped:
+            deduped.append(normalized)
+    return deduped
+
+
+def _select_exact_artifact_records(
+    artifact_records: list[dict[str, Any]],
+    requested_member_ids: list[str],
+) -> list[dict[str, Any]]:
+    ordered_records: list[dict[str, Any]] = []
+    by_member_id = {
+        _artifact_record_member_id(record, fallback=f"member_{index:02d}"): record
+        for index, record in enumerate(artifact_records, start=1)
+    }
+    for member_id in requested_member_ids:
+        record = by_member_id.get(member_id)
+        if record is not None:
+            ordered_records.append(record)
+    return ordered_records
+
+
+def _supported_target_selection_modes_for_capability(
+    capability_name: MicroscopicCapabilityName,
+) -> tuple[MicroscopicTargetSelectionMode, ...]:
+    if capability_name in _TARGETED_PROPERTY_CAPABILITIES:
+        return ("representative_subset", "exact_members")
+    if capability_name == "inspect_raw_artifact_bundle":
+        return ("bundle_wide", "exact_members")
+    return ("bundle_wide",)
+
+
 def _select_targeted_state_characterization_records(
     *,
     artifact_scope: str,
@@ -5809,6 +6210,63 @@ def _baseline_artifact_record(
     return record
 
 
+def _artifact_bundle_members_from_generated_artifacts(
+    *,
+    bundle_kind: ArtifactBundleKind,
+    bundle_id: str,
+    generated_artifacts: dict[str, Any],
+) -> list[ArtifactBundleMemberMetadata]:
+    parse_capabilities_supported: list[MicroscopicCapabilityName]
+    records: list[dict[str, Any]]
+    if bundle_kind == "targeted_property_follow_up":
+        parse_capabilities_supported = ["inspect_raw_artifact_bundle"]
+        records = list(generated_artifacts.get("characterization_artifacts") or [])
+    elif bundle_kind == "conformer_bundle":
+        parse_capabilities_supported = [
+            "parse_snapshot_outputs",
+            "extract_ct_descriptors_from_bundle",
+            "extract_geometry_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        ]
+        records = list(generated_artifacts.get("conformer_artifacts") or [])
+    elif bundle_kind == "torsion_snapshots":
+        parse_capabilities_supported = [
+            "parse_snapshot_outputs",
+            "extract_ct_descriptors_from_bundle",
+            "extract_geometry_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        ]
+        records = list(generated_artifacts.get("snapshot_artifacts") or [])
+    else:
+        parse_capabilities_supported = [
+            "parse_snapshot_outputs",
+            "extract_ct_descriptors_from_bundle",
+            "extract_geometry_descriptors_from_bundle",
+            "inspect_raw_artifact_bundle",
+        ]
+        records = [_baseline_artifact_record(generated_artifacts)]
+
+    members: list[ArtifactBundleMemberMetadata] = []
+    for index, record in enumerate(records, start=1):
+        member_id = _artifact_record_member_id(record, fallback=f"member_{index:02d}")
+        generated_files = (
+            list(record.get("available_raw_files") or [])
+            if isinstance(record.get("available_raw_files"), list)
+            else _artifact_record_file_inventory(record)
+        )
+        members.append(
+            ArtifactBundleMemberMetadata(
+                member_id=member_id,
+                member_label=_artifact_record_label(record, fallback=member_id),
+                source_bundle_id=str(record.get("source_bundle_id") or generated_artifacts.get("source_bundle_id") or "").strip() or None,
+                source_member_id=str(record.get("source_member_id") or "").strip() or None,
+                generated_files=generated_files,
+                parse_capabilities_supported=parse_capabilities_supported,
+            )
+        )
+    return members
+
+
 def _artifact_bundle_entry_from_generated_artifacts(
     *,
     source_capability: MicroscopicCapabilityName,
@@ -5851,6 +6309,13 @@ def _artifact_bundle_entry_from_generated_artifacts(
             "excitation spread",
             "bright-state sensitivity",
         ]
+    elif source_capability in _TARGETED_PROPERTY_CAPABILITIES and generated_artifacts.get("characterization_artifacts"):
+        bundle_kind = "targeted_property_follow_up"
+        snapshot_count = len(list(generated_artifacts.get("characterization_artifacts") or []))
+        available_deliverables = list(
+            AMESP_CAPABILITY_REGISTRY[source_capability].supported_deliverables
+        )
+        parse_capabilities_supported = ["inspect_raw_artifact_bundle"]
 
     if bundle_kind is None:
         return None
@@ -5859,12 +6324,25 @@ def _artifact_bundle_entry_from_generated_artifacts(
         available_files = _collect_scalar_artifact_files(generated_artifacts)
     elif bundle_kind == "torsion_snapshots":
         available_files = _collect_available_file_keys(generated_artifacts, "snapshot_artifacts")
+    elif bundle_kind == "targeted_property_follow_up":
+        available_files = _collect_available_file_keys(generated_artifacts, "characterization_artifacts")
     else:
         available_files = _collect_available_file_keys(generated_artifacts, "conformer_artifacts")
 
+    bundle_id = (
+        f"round_{source_round:02d}_{source_capability}_bundle"
+        if bundle_kind == "targeted_property_follow_up"
+        else f"round_{source_round:02d}_{bundle_kind}"
+    )
+    bundle_members = _artifact_bundle_members_from_generated_artifacts(
+        bundle_kind=bundle_kind,
+        bundle_id=bundle_id,
+        generated_artifacts=generated_artifacts,
+    )
+
     return ArtifactBundleRegistryEntry(
         artifact_bundle=ArtifactBundle(
-            bundle_id=f"round_{source_round:02d}_{bundle_kind}",
+            bundle_id=bundle_id,
             bundle_kind=bundle_kind,
             source_round=source_round,
             source_capability=source_capability,
@@ -5872,7 +6350,14 @@ def _artifact_bundle_entry_from_generated_artifacts(
             available_files=available_files,
             available_deliverables=available_deliverables,
             parse_capabilities_supported=parse_capabilities_supported,
+            source_bundle_id=str(generated_artifacts.get("source_bundle_id") or "").strip() or None,
+            source_member_ids=[
+                str(item).strip()
+                for item in list(generated_artifacts.get("source_member_ids") or [])
+                if str(item).strip()
+            ],
         ),
+        bundle_members=bundle_members,
         generated_artifacts=dict(generated_artifacts),
     )
 

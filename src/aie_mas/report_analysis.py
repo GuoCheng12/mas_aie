@@ -68,6 +68,8 @@ class RoundReportContext(BaseModel):
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
     planner_task_instruction: Optional[str] = None
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -77,6 +79,9 @@ class RoundReportContext(BaseModel):
     verifier_supplement_status: Optional[str] = None
     closure_justification_status: Optional[str] = None
     finalization_mode: Optional[str] = None
+    pairwise_resolution_mode: Optional[str] = None
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: Optional[str] = None
     agent_reports: list[AgentRunSummary] = Field(default_factory=list)
 
 
@@ -112,6 +117,8 @@ class AnalyzedRound(BaseModel):
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
     planner_task_instruction: Optional[str] = None
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -121,6 +128,9 @@ class AnalyzedRound(BaseModel):
     verifier_supplement_status: Optional[str] = None
     closure_justification_status: Optional[str] = None
     finalization_mode: Optional[str] = None
+    pairwise_resolution_mode: Optional[str] = None
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: Optional[str] = None
     agent_reports: list[AgentRunSummary] = Field(default_factory=list)
     dialogue_summary: str
     issues: list[str] = Field(default_factory=list)
@@ -180,6 +190,8 @@ def load_report_context(report_dir: Path) -> ReportContext:
                 confidence=_optional_float(entry.get("confidence")),
                 top3=_top3_from_pool(entry.get("hypothesis_pool") or []),
                 planner_task_instruction=_optional_text(entry.get("planner_task_instruction")),
+                planned_action_label=_optional_text(entry.get("planned_action_label")),
+                executed_action_labels=[str(item) for item in (entry.get("executed_action_labels") or [])],
                 planner_agent_task_instructions={
                     str(key): str(value)
                     for key, value in (entry.get("planner_agent_task_instructions") or {}).items()
@@ -192,6 +204,11 @@ def load_report_context(report_dir: Path) -> ReportContext:
                 verifier_supplement_status=_optional_text(entry.get("verifier_supplement_status")),
                 closure_justification_status=_optional_text(entry.get("closure_justification_status")),
                 finalization_mode=_optional_text(entry.get("finalization_mode")),
+                pairwise_resolution_mode=_optional_text(entry.get("pairwise_resolution_mode")),
+                pairwise_resolution_evidence_sources=[
+                    str(item) for item in (entry.get("pairwise_resolution_evidence_sources") or [])
+                ],
+                pairwise_resolution_summary=_optional_text(entry.get("pairwise_resolution_summary")),
                 agent_reports=agent_reports,
             )
         )
@@ -247,6 +264,8 @@ def analyze_report_with_llm(
                 confidence=round_context.confidence,
                 top3=round_context.top3,
                 planner_task_instruction=round_context.planner_task_instruction,
+                planned_action_label=round_context.planned_action_label,
+                executed_action_labels=round_context.executed_action_labels,
                 planner_agent_task_instructions=round_context.planner_agent_task_instructions,
                 diagnosis_summary=round_context.diagnosis_summary,
                 evidence_summary=round_context.evidence_summary,
@@ -256,6 +275,9 @@ def analyze_report_with_llm(
                 verifier_supplement_status=round_context.verifier_supplement_status,
                 closure_justification_status=round_context.closure_justification_status,
                 finalization_mode=round_context.finalization_mode,
+                pairwise_resolution_mode=round_context.pairwise_resolution_mode,
+                pairwise_resolution_evidence_sources=round_context.pairwise_resolution_evidence_sources,
+                pairwise_resolution_summary=round_context.pairwise_resolution_summary,
                 agent_reports=round_context.agent_reports,
                 dialogue_summary=(
                     narrative_round.dialogue_summary

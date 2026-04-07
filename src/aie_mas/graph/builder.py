@@ -150,9 +150,14 @@ class AieMasWorkflow:
         state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair
         state.pairwise_task_outcome = decision.pairwise_task_outcome
         state.pairwise_task_rationale = decision.pairwise_task_rationale
+        state.pairwise_resolution_mode = decision.pairwise_resolution_mode
+        state.pairwise_resolution_evidence_sources = list(decision.pairwise_resolution_evidence_sources)
+        state.pairwise_resolution_summary = decision.pairwise_resolution_summary
         state.finalization_mode = decision.finalization_mode
         state.pairwise_verifier_completed_for_pair = decision.pairwise_verifier_completed_for_pair
         state.pairwise_verifier_evidence_specificity = decision.pairwise_verifier_evidence_specificity
+        state.planned_action_label = decision.planned_action_label
+        state.executed_action_labels = list(decision.executed_action_labels)
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents
         state.pending_agent_instructions = dict(decision.agent_task_instructions)
@@ -336,9 +341,14 @@ class AieMasWorkflow:
             "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
             "pairwise_task_outcome": state.pairwise_task_outcome,
             "pairwise_task_rationale": state.pairwise_task_rationale,
+            "pairwise_resolution_mode": state.pairwise_resolution_mode,
+            "pairwise_resolution_evidence_sources": list(state.pairwise_resolution_evidence_sources),
+            "pairwise_resolution_summary": state.pairwise_resolution_summary,
             "finalization_mode": state.finalization_mode,
             "pairwise_verifier_completed_for_pair": state.pairwise_verifier_completed_for_pair,
             "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
+            "planned_action_label": state.planned_action_label,
+            "executed_action_labels": list(state.executed_action_labels),
             "diagnosis": decision.diagnosis if decision else None,
             "action": decision.action if decision else None,
             "finalize": state.finalize,
@@ -417,6 +427,11 @@ class AieMasWorkflow:
         state.pairwise_task_completed_for_pair = decision.pairwise_task_completed_for_pair  # type: ignore[union-attr]
         state.pairwise_task_outcome = decision.pairwise_task_outcome  # type: ignore[union-attr]
         state.pairwise_task_rationale = decision.pairwise_task_rationale  # type: ignore[union-attr]
+        state.pairwise_resolution_mode = decision.pairwise_resolution_mode  # type: ignore[union-attr]
+        state.pairwise_resolution_evidence_sources = list(  # type: ignore[union-attr]
+            decision.pairwise_resolution_evidence_sources
+        )
+        state.pairwise_resolution_summary = decision.pairwise_resolution_summary  # type: ignore[union-attr]
         state.finalization_mode = decision.finalization_mode  # type: ignore[union-attr]
         state.pairwise_verifier_completed_for_pair = (
             decision.pairwise_verifier_completed_for_pair  # type: ignore[union-attr]
@@ -424,6 +439,8 @@ class AieMasWorkflow:
         state.pairwise_verifier_evidence_specificity = (
             decision.pairwise_verifier_evidence_specificity  # type: ignore[union-attr]
         )
+        state.planned_action_label = decision.planned_action_label  # type: ignore[union-attr]
+        state.executed_action_labels = list(decision.executed_action_labels)  # type: ignore[union-attr]
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents  # type: ignore[union-attr]
         state.pending_agent_instructions = dict(decision.agent_task_instructions)  # type: ignore[union-attr]

@@ -15,7 +15,13 @@ DecisionGateStatus = Literal[
     "blocked_by_missing_decisive_evidence",
 ]
 PairwiseTaskAgent = Literal["macro", "microscopic"]
-PairwiseTaskOutcome = Literal["not_run", "decisive", "inconclusive", "failed"]
+PairwiseTaskOutcome = Literal[
+    "not_run",
+    "dedicated_pairwise_task_completed",
+    "resolved_by_accumulated_internal_evidence",
+    "resolved_with_verifier_support",
+    "best_available_tool_blocked",
+]
 FinalizationMode = Literal["none", "decisive", "best_available"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal[
@@ -41,6 +47,7 @@ MicroscopicCapabilityName = Literal[
     "list_rotatable_dihedrals",
     "list_available_conformers",
     "list_artifact_bundles",
+    "list_artifact_bundle_members",
     "run_baseline_bundle",
     "run_conformer_bundle",
     "run_torsion_snapshots",
@@ -63,8 +70,14 @@ MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
 MicroscopicToolCallKind = Literal["discovery", "execution"]
 DihedralBondType = Literal["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]
 DihedralRelevance = Literal["high", "medium", "low"]
-ArtifactBundleKind = Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle"]
+ArtifactBundleKind = Literal[
+    "baseline_bundle",
+    "torsion_snapshots",
+    "conformer_bundle",
+    "targeted_property_follow_up",
+]
 ArtifactBundleCompletionStatus = Literal["complete", "partial"]
+MicroscopicTargetSelectionMode = Literal["bundle_wide", "representative_subset", "exact_members"]
 ConformerSource = Literal["shared_structure", "microscopic_follow_up"]
 DiscoveryStructureSource = Literal["shared_prepared_structure", "round_s0_optimized_geometry", "latest_available"]
 MicroscopicCompletionReasonCode = Literal[
@@ -235,9 +248,14 @@ class PlannerDecision(BaseModel):
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
     pairwise_task_rationale: Optional[str] = None
+    pairwise_resolution_mode: Optional[PairwiseTaskOutcome] = None
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: Optional[str] = None
     finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
 
 
 class WorkingMemoryEntry(BaseModel):
@@ -280,9 +298,14 @@ class WorkingMemoryEntry(BaseModel):
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
     pairwise_task_rationale: Optional[str] = None
+    pairwise_resolution_mode: Optional[PairwiseTaskOutcome] = None
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: Optional[str] = None
     finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
     local_uncertainty_summary: Optional[str] = None
     repeated_local_uncertainty_signals: list[str] = Field(default_factory=list)
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
@@ -336,6 +359,15 @@ class ArtifactBundleDescriptor(BaseModel):
     available_deliverables: list[str] = Field(default_factory=list)
 
 
+class ArtifactBundleMemberMetadata(BaseModel):
+    member_id: str
+    member_label: str
+    source_bundle_id: Optional[str] = None
+    source_member_id: Optional[str] = None
+    generated_files: list[str] = Field(default_factory=list)
+    parse_capabilities_supported: list[MicroscopicCapabilityName] = Field(default_factory=list)
+
+
 class ArtifactBundle(BaseModel):
     bundle_id: str
     bundle_kind: ArtifactBundleKind
@@ -345,10 +377,13 @@ class ArtifactBundle(BaseModel):
     available_files: list[str] = Field(default_factory=list)
     available_deliverables: list[str] = Field(default_factory=list)
     parse_capabilities_supported: list[MicroscopicCapabilityName] = Field(default_factory=list)
+    source_bundle_id: Optional[str] = None
+    source_member_ids: list[str] = Field(default_factory=list)
 
 
 class ArtifactBundleRegistryEntry(BaseModel):
     artifact_bundle: ArtifactBundle
+    bundle_members: list[ArtifactBundleMemberMetadata] = Field(default_factory=list)
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
 
 
@@ -372,6 +407,9 @@ class MicroscopicToolRequest(BaseModel):
     artifact_scope: Optional[str] = None
     artifact_bundle_id: Optional[str] = None
     artifact_kind: Optional[ArtifactBundleKind] = None
+    artifact_member_id: Optional[str] = None
+    artifact_member_ids: list[str] = Field(default_factory=list)
+    target_selection_mode: MicroscopicTargetSelectionMode = "bundle_wide"
     descriptor_scope: list[str] = Field(default_factory=list)
     requested_observable_scope: list[str] = Field(default_factory=list)
     source_round_preference: Optional[int] = None
@@ -539,9 +577,14 @@ class AieMasState(BaseModel):
     pairwise_task_completed_for_pair: Optional[str] = None
     pairwise_task_outcome: PairwiseTaskOutcome = "not_run"
     pairwise_task_rationale: Optional[str] = None
+    pairwise_resolution_mode: Optional[PairwiseTaskOutcome] = None
+    pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
+    pairwise_resolution_summary: Optional[str] = None
     finalization_mode: FinalizationMode = "none"
     pairwise_verifier_completed_for_pair: Optional[str] = None
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
     hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)
 
     planner_diagnosis_history: list[str] = Field(default_factory=list)
