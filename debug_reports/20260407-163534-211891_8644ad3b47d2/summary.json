@@ -1,0 +1,205 @@
+{
+  "case_id": "8644ad3b47d2",
+  "smiles": "COc3ccc(/C(=C(C#N)\\c1ccccc1)c2ccccc2)cc3",
+  "suite_status": "success",
+  "baseline_bundle_id": "round_01_baseline_bundle",
+  "baseline_source_round": 1,
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2",
+  "capabilities_run": [
+    "run_baseline_bundle",
+    "run_targeted_localized_orbital_analysis",
+    "run_targeted_natural_orbital_analysis",
+    "run_targeted_density_population_analysis",
+    "run_targeted_transition_dipole_analysis",
+    "run_ris_state_characterization"
+  ],
+  "probes": [
+    {
+      "round_index": 1,
+      "capability_name": "run_baseline_bundle",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_01_run_baseline_bundle.json",
+      "route_summary": {
+        "state_count": 2,
+        "lowest_state_energy_ev": 3.6776,
+        "first_bright_state_index": 1,
+        "first_bright_state_energy_ev": 3.6776,
+        "first_bright_state_oscillator_strength": 0.2875,
+        "lowest_state_to_brightest_pattern": "lowest_state_is_bright",
+        "oscillator_strength_summary": {
+          "sum": 0.6228,
+          "max": 0.3353
+        }
+      },
+      "error": null
+    },
+    {
+      "round_index": 2,
+      "capability_name": "run_targeted_localized_orbital_analysis",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_02_run_targeted_localized_orbital_analysis.json",
+      "route_summary": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "source_bundle_completion_status": "complete",
+        "descriptor_scope": [
+          "localized_orbitals_pm",
+          "molecular_orbital_files"
+        ],
+        "selected_target_members": [
+          "baseline_bundle"
+        ],
+        "selected_target_count": 1,
+        "localized_orbital_availability": "proxy_only",
+        "available_localized_orbital_observables": [
+          "localized_orbitals_pm",
+          "molecular_orbital_files"
+        ],
+        "missing_localized_orbital_observables": [],
+        "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+        "optimize_ground_state": false,
+        "state_window": [
+          1,
+          2
+        ]
+      },
+      "error": null
+    },
+    {
+      "round_index": 3,
+      "capability_name": "run_targeted_natural_orbital_analysis",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_03_run_targeted_natural_orbital_analysis.json",
+      "route_summary": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "source_bundle_completion_status": "complete",
+        "descriptor_scope": [
+          "natural_orbitals_no",
+          "molecular_orbital_files"
+        ],
+        "selected_target_members": [
+          "baseline_bundle"
+        ],
+        "selected_target_count": 1,
+        "natural_orbital_availability": "proxy_only",
+        "available_natural_orbital_observables": [
+          "molecular_orbital_files",
+          "natural_orbitals_no"
+        ],
+        "missing_natural_orbital_observables": [],
+        "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+        "optimize_ground_state": false,
+        "state_window": [
+          1,
+          2
+        ]
+      },
+      "error": null
+    },
+    {
+      "round_index": 4,
+      "capability_name": "run_targeted_density_population_analysis",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_04_run_targeted_density_population_analysis.json",
+      "route_summary": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "source_bundle_completion_status": "complete",
+        "descriptor_scope": [
+          "density_matrix",
+          "gross_orbital_populations",
+          "mayer_bond_order"
+        ],
+        "selected_target_members": [
+          "baseline_bundle"
+        ],
+        "selected_target_count": 1,
+        "density_population_availability": "proxy_only",
+        "available_density_population_observables": [
+          "density_matrix",
+          "gross_orbital_populations",
+          "mayer_bond_order"
+        ],
+        "missing_density_population_observables": [],
+        "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+        "optimize_ground_state": false,
+        "state_window": [
+          1,
+          2
+        ]
+      },
+      "error": null
+    },
+    {
+      "round_index": 5,
+      "capability_name": "run_targeted_transition_dipole_analysis",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_05_run_targeted_transition_dipole_analysis.json",
+      "route_summary": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "source_bundle_completion_status": "complete",
+        "descriptor_scope": [
+          "ground_to_excited_transition_dipoles",
+          "excited_to_excited_transition_dipoles"
+        ],
+        "selected_target_members": [
+          "baseline_bundle"
+        ],
+        "selected_target_count": 1,
+        "transition_dipole_availability": "proxy_only",
+        "available_transition_dipole_observables": [
+          "excited_to_excited_transition_dipoles",
+          "ground_to_excited_transition_dipoles"
+        ],
+        "missing_transition_dipole_observables": [],
+        "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+        "optimize_ground_state": false,
+        "state_window": [
+          1,
+          2
+        ]
+      },
+      "error": null
+    },
+    {
+      "round_index": 6,
+      "capability_name": "run_ris_state_characterization",
+      "status": "success",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-163534-211891_8644ad3b47d2/probes/round_06_run_ris_state_characterization.json",
+      "route_summary": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "source_bundle_completion_status": "complete",
+        "descriptor_scope": [
+          "dominant_transitions",
+          "state_family_overlap",
+          "ground_state_dipole",
+          "mulliken_charges",
+          "molecular_orbital_files"
+        ],
+        "selected_target_members": [
+          "baseline_bundle"
+        ],
+        "selected_target_count": 1,
+        "ris_state_characterization_availability": "proxy_only",
+        "available_ris_state_characterization_observables": [
+          "dominant_transitions",
+          "ground_state_dipole",
+          "molecular_orbital_files",
+          "mulliken_charges",
+          "state_family_overlap"
+        ],
+        "missing_ris_state_characterization_observables": [],
+        "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+        "optimize_ground_state": false,
+        "state_window": [
+          1,
+          2
+        ]
+      },
+      "error": null
+    }
+  ]
+}
