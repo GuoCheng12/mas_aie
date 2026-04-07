@@ -34,6 +34,7 @@ from aie_mas.graph.state import (
     MicroscopicToolPlan,
     MicroscopicToolRequest,
     SelectionPolicy,
+    TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES,
     WorkflowProgressEvent,
 )
 
@@ -80,6 +81,13 @@ class AmespExecutionError(RuntimeError):
             "structured_results": self.structured_results,
             "status": self.status,
         }
+
+
+_TEMPORARILY_DISABLED_AMESP_CAPABILITIES = set(TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES)
+
+
+def _is_temporarily_disabled_amesp_capability(capability_name: str) -> bool:
+    return capability_name in _TEMPORARILY_DISABLED_AMESP_CAPABILITIES
 
 
 class AmespExcitedState(BaseModel):
@@ -1177,6 +1185,8 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
 def render_amesp_capability_registry() -> str:
     lines: list[str] = []
     for capability in AMESP_CAPABILITY_REGISTRY.values():
+        if _is_temporarily_disabled_amesp_capability(capability.name):
+            continue
         lines.append(
             f"- `{capability.name}`: {capability.purpose} "
             f"(requires_new_calculation={str(capability.requires_new_calculation).lower()}; "
@@ -1188,6 +1198,8 @@ def render_amesp_capability_registry() -> str:
 def render_amesp_action_registry() -> str:
     lines: list[str] = []
     for action in AMESP_ACTION_REGISTRY.values():
+        if _is_temporarily_disabled_amesp_capability(action.action_name):
+            continue
         lines.append(f"- {action.action_name} [{action.action_kind}]: {action.purpose}")
         if action.allowed_discovery_actions:
             lines.append(f"  allowed_discovery_actions={', '.join(action.allowed_discovery_actions)}")
@@ -1228,7 +1240,7 @@ def render_amesp_interface_catalog() -> str:
 
 
 def render_registry_backed_microscopic_examples() -> dict[str, str]:
-    return {
+    examples = {
         "baseline": json.dumps(
             {
                 "status": "supported",
@@ -1434,6 +1446,9 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             indent=2,
         ),
     }
+    examples.pop("targeted_localized_orbital_analysis", None)
+    examples.pop("targeted_natural_orbital_analysis", None)
+    return examples
 
 
 def render_reasoned_microscopic_examples() -> dict[str, str]:
@@ -1481,28 +1496,6 @@ def render_reasoned_microscopic_examples() -> dict[str, str]:
             "</reasoning_summary>\n"
             "<action_decision_json>\n"
             f"{action_examples['targeted_charge_analysis']}\n"
-            "</action_decision_json>"
-        ),
-        "targeted_localized_orbital_analysis": (
-            "<task_understanding>\n"
-            "Interpret the Planner instruction as a bounded fixed-geometry localized-orbital follow-up on a small representative subset of existing artifact geometries.\n"
-            "</task_understanding>\n"
-            "<reasoning_summary>\n"
-            "The task is best represented by the targeted localized-orbital route with artifact-bundle discovery before execution.\n"
-            "</reasoning_summary>\n"
-            "<action_decision_json>\n"
-            f"{action_examples['targeted_localized_orbital_analysis']}\n"
-            "</action_decision_json>"
-        ),
-        "targeted_natural_orbital_analysis": (
-            "<task_understanding>\n"
-            "Interpret the Planner instruction as a bounded fixed-geometry natural-orbital follow-up on a small representative subset of existing artifact geometries.\n"
-            "</task_understanding>\n"
-            "<reasoning_summary>\n"
-            "The task is best represented by the targeted natural-orbital route with artifact-bundle discovery before execution.\n"
-            "</reasoning_summary>\n"
-            "<action_decision_json>\n"
-            f"{action_examples['targeted_natural_orbital_analysis']}\n"
             "</action_decision_json>"
         ),
         "targeted_density_population_analysis": (
@@ -1725,6 +1718,25 @@ class AmespMicroscopicTool:
         current_hypothesis: Optional[str],
     ) -> AmespBaselineRunResult:
         capability = AMESP_CAPABILITY_REGISTRY[request.capability_name]
+        if _is_temporarily_disabled_amesp_capability(request.capability_name):
+            keyword_family = (
+                "lmo"
+                if request.capability_name == "run_targeted_localized_orbital_analysis"
+                else "natorb"
+            )
+            raise AmespExecutionError(
+                "capability_unsupported",
+                (
+                    f"Amesp capability '{request.capability_name}' is temporarily disabled because the current "
+                    f"validated backend rejects the `{keyword_family}` keyword family in probe runs."
+                ),
+                status="failed",
+                structured_results={
+                    "executed_capability": request.capability_name,
+                    "performed_new_calculations": False,
+                    "reused_existing_artifacts": bool(request.reuse_existing_artifacts_only),
+                },
+            )
         if capability.requires_new_calculation and not self._amesp_bin.exists():
             raise AmespExecutionError(
                 "amesp_binary_missing",

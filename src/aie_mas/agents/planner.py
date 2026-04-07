@@ -14,6 +14,7 @@ from aie_mas.graph.state import (
     DecisionGateStatus,
     HypothesisEntry,
     PlannerDecision,
+    TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
 from aie_mas.memory.working import WorkingMemoryManager
@@ -114,8 +115,6 @@ _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
     "run_conformer_bundle",
     "run_torsion_snapshots",
     "run_targeted_charge_analysis",
-    "run_targeted_localized_orbital_analysis",
-    "run_targeted_natural_orbital_analysis",
     "run_targeted_density_population_analysis",
     "run_targeted_transition_dipole_analysis",
     "run_ris_state_characterization",
@@ -163,6 +162,8 @@ def _normalize_confidence(value: float | None) -> float:
 def _mentioned_microscopic_capabilities(text: str) -> list[str]:
     ordered_matches: list[tuple[int, str]] = []
     for capability in _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES:
+        if capability in TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES:
+            continue
         match = re.search(rf"\b{re.escape(capability)}\b", text)
         if match is not None:
             ordered_matches.append((match.start(), capability))

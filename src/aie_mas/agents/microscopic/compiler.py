@@ -2641,8 +2641,6 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
         "run_targeted_charge_analysis: bounded fixed-geometry targeted charge analysis on a small representative subset of existing artifact geometries",
-        "run_targeted_localized_orbital_analysis: bounded fixed-geometry targeted localized-orbital analysis on a small representative subset of existing artifact geometries",
-        "run_targeted_natural_orbital_analysis: bounded fixed-geometry targeted natural-orbital analysis on a small representative subset of existing artifact geometries",
         "run_targeted_density_population_analysis: bounded fixed-geometry targeted density/population analysis on a small representative subset of existing artifact geometries",
         "run_targeted_transition_dipole_analysis: bounded fixed-geometry targeted transition-dipole analysis on a small representative subset of existing artifact geometries",
         "run_ris_state_characterization: bounded fixed-geometry RIS state characterization on a small representative subset of existing artifact geometries",

@@ -1063,76 +1063,82 @@ def test_amesp_targeted_charge_analysis_writes_hirshfeld_and_returns_charge_reco
     assert "charge hirshfeld" in captured_inputs["run_targeted_charge_analysis_follow_up_torsion_01_char_s0sp"]
 
 
-def test_amesp_targeted_localized_orbital_analysis_writes_lmo_and_returns_localized_orbital_records(
+def test_amesp_targeted_localized_orbital_analysis_is_temporarily_disabled(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    captured_inputs: dict[str, str] = {}
+    subprocess_called = False
+
+    def _unexpected_subprocess(*args, **kwargs):
+        nonlocal subprocess_called
+        subprocess_called = True
+        raise AssertionError("Subprocess should not be called for a temporarily disabled capability.")
+
     tool = _build_targeted_follow_up_tool(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
-        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+        subprocess_runner=_unexpected_subprocess,
     )
     torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
-    result = _run_targeted_property_follow_up(
-        tool=tool,
-        tmp_path=tmp_path,
-        torsion_result=torsion_result,
-        capability_name="run_targeted_localized_orbital_analysis",
-        deliverables=[
-            "targeted localized-orbital analysis records",
-            "localized-orbital availability summary",
-            "bounded raw localized-orbital observables",
-        ],
-    )
+    try:
+        _run_targeted_property_follow_up(
+            tool=tool,
+            tmp_path=tmp_path,
+            torsion_result=torsion_result,
+            capability_name="run_targeted_localized_orbital_analysis",
+            deliverables=[
+                "targeted localized-orbital analysis records",
+                "localized-orbital availability summary",
+                "bounded raw localized-orbital observables",
+            ],
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "capability_unsupported"
+        assert "temporarily disabled" in exc.message
+        assert exc.structured_results["executed_capability"] == "run_targeted_localized_orbital_analysis"
+    else:  # pragma: no cover
+        raise AssertionError("Expected localized-orbital analysis to fail fast as temporarily disabled.")
 
-    assert result.route_summary["localized_orbital_availability"] == "proxy_only"
-    assert "localized_orbitals_pm" in result.route_summary["available_localized_orbital_observables"]
-    assert "molecular_orbital_files" in result.route_summary["available_localized_orbital_observables"]
-    first_record = result.route_records[0]
-    assert first_record["localized_orbital_analysis"]["localization_method"] == "pm"
-    assert first_record["localized_orbital_analysis"]["localized_orbitals_available"] is True
-    aip_text = captured_inputs["run_targeted_localized_orbital_analysis_follow_up_torsion_01_char_s0sp"].lower()
-    assert aip_text.startswith("! b3lyp sto-3g")
-    assert "lmo pm" in aip_text
-    assert "mofile on" in aip_text
-    assert "! atb force" not in aip_text
+    assert subprocess_called is False
 
 
-def test_amesp_targeted_natural_orbital_analysis_writes_natorb_and_returns_natural_orbital_records(
+def test_amesp_targeted_natural_orbital_analysis_is_temporarily_disabled(
     tmp_path: Path,
     monkeypatch,
 ) -> None:
-    captured_inputs: dict[str, str] = {}
+    subprocess_called = False
+
+    def _unexpected_subprocess(*args, **kwargs):
+        nonlocal subprocess_called
+        subprocess_called = True
+        raise AssertionError("Subprocess should not be called for a temporarily disabled capability.")
+
     tool = _build_targeted_follow_up_tool(
         tmp_path=tmp_path,
         monkeypatch=monkeypatch,
-        subprocess_runner=_build_fake_subprocess_with_targeted_analysis_capture(captured_inputs),
+        subprocess_runner=_unexpected_subprocess,
     )
     torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
-    result = _run_targeted_property_follow_up(
-        tool=tool,
-        tmp_path=tmp_path,
-        torsion_result=torsion_result,
-        capability_name="run_targeted_natural_orbital_analysis",
-        deliverables=[
-            "targeted natural-orbital analysis records",
-            "natural-orbital availability summary",
-            "bounded raw natural-orbital observables",
-        ],
-    )
+    try:
+        _run_targeted_property_follow_up(
+            tool=tool,
+            tmp_path=tmp_path,
+            torsion_result=torsion_result,
+            capability_name="run_targeted_natural_orbital_analysis",
+            deliverables=[
+                "targeted natural-orbital analysis records",
+                "natural-orbital availability summary",
+                "bounded raw natural-orbital observables",
+            ],
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "capability_unsupported"
+        assert "temporarily disabled" in exc.message
+        assert exc.structured_results["executed_capability"] == "run_targeted_natural_orbital_analysis"
+    else:  # pragma: no cover
+        raise AssertionError("Expected natural-orbital analysis to fail fast as temporarily disabled.")
 
-    assert result.route_summary["natural_orbital_availability"] == "proxy_only"
-    assert "natural_orbitals_no" in result.route_summary["available_natural_orbital_observables"]
-    assert "molecular_orbital_files" in result.route_summary["available_natural_orbital_observables"]
-    first_record = result.route_records[0]
-    assert first_record["natural_orbital_analysis"]["natural_orbital_kind"] == "no"
-    assert first_record["natural_orbital_analysis"]["natural_orbitals_available"] is True
-    aip_text = captured_inputs["run_targeted_natural_orbital_analysis_follow_up_torsion_01_char_s0sp"].lower()
-    assert aip_text.startswith("! b3lyp sto-3g")
-    assert "natorb no" in aip_text
-    assert "mofile on" in aip_text
-    assert "! atb force" not in aip_text
+    assert subprocess_called is False
 
 
 def test_amesp_targeted_density_population_analysis_writes_out2_and_returns_density_population_records(

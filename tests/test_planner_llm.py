@@ -140,21 +140,30 @@ def test_mentioned_microscopic_capabilities_includes_new_targeted_interfaces() -
     ]
 
 
-def test_single_action_microscopic_task_instruction_for_new_targeted_interface_is_neutral() -> None:
+def test_mentioned_microscopic_capabilities_ignores_temporarily_disabled_interfaces() -> None:
+    instruction = (
+        "Try run_targeted_localized_orbital_analysis first, then run_targeted_natural_orbital_analysis "
+        "if the first route fails."
+    )
+
+    assert _mentioned_microscopic_capabilities(instruction) == []
+
+
+def test_single_action_microscopic_task_instruction_for_supported_targeted_interface_is_neutral() -> None:
     instruction = _single_action_microscopic_task_instruction(
-        capability_name="run_targeted_localized_orbital_analysis",
+        capability_name="run_targeted_density_population_analysis",
         current_hypothesis="ICT",
         main_gap="Need one more LE-vs-CT discriminator.",
         original_task_instruction=(
-            "Use run_targeted_localized_orbital_analysis for bundle_id=`round_05_torsion_snapshots` "
-            "and return localized-orbital observables."
+            "Use run_targeted_density_population_analysis for bundle_id=`round_05_torsion_snapshots` "
+            "and return density/population observables."
         ),
     )
 
     assert instruction.startswith(
-        "Execute ONLY `run_targeted_localized_orbital_analysis` for bundle_id=`round_05_torsion_snapshots`"
+        "Execute ONLY `run_targeted_density_population_analysis` for bundle_id=`round_05_torsion_snapshots`"
     )
-    assert "localized-orbital observables only" in instruction
+    assert "density/population observables only" in instruction
     assert "ESIPT" not in instruction
     assert "TICT" not in instruction
 
@@ -1504,7 +1513,7 @@ def test_planner_reweight_finalizes_when_repeated_microscopic_local_uncertainty_
     assert "repeated microscopic local limitation" in (result["decision"].final_hypothesis_rationale or "")
 
 
-def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_capability(
+def test_planner_diagnosis_does_not_finalize_when_switching_to_new_supported_microscopic_capability(
     tmp_path: Path,
 ) -> None:
     planner, _ = _build_planner(
@@ -1519,22 +1528,22 @@ def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_c
                 {"name": "TICT", "confidence": 0.11},
                 {"name": "ESIPT", "confidence": 0.02}
               ],
-              "diagnosis": "The localized-orbital route failed; switch to a different microscopic observable family.",
+              "diagnosis": "The density/population route failed; switch to a different microscopic observable family.",
               "action": "microscopic",
               "current_hypothesis": "ICT",
               "confidence": 0.46,
               "needs_verifier": false,
-              "task_instruction": "Microscopic (single registry-backed action): run `run_targeted_natural_orbital_analysis` using artifact_bundle_id='round_01_baseline_bundle'.",
+              "task_instruction": "Microscopic (single registry-backed action): run `run_targeted_transition_dipole_analysis` using artifact_bundle_id='round_01_baseline_bundle'.",
               "agent_task_instructions": {
-                "microscopic": "Run exactly one Amesp action: `run_targeted_natural_orbital_analysis` using artifact_bundle_id='round_01_baseline_bundle'."
+                "microscopic": "Run exactly one Amesp action: `run_targeted_transition_dipole_analysis` using artifact_bundle_id='round_01_baseline_bundle'."
               },
-              "evidence_summary": "The latest localized-orbital action failed because the backend rejected the lmo keyword.",
+              "evidence_summary": "The latest density/population action failed because the backend did not expose the requested discriminator.",
               "main_gap": "Need a molecule-specific ICT-vs-LE localization discriminator.",
               "conflict_status": "none",
               "hypothesis_uncertainty_note": "Still missing molecule-specific CT-localization observables.",
-              "capability_assessment": "Localized-orbital analysis is blocked, but natural-orbital and density routes remain available.",
-              "stagnation_assessment": "The failing localized-orbital route should not be repeated.",
-              "contraction_reason": "Pivot to run_targeted_natural_orbital_analysis instead of repeating the failing localized-orbital path.",
+              "capability_assessment": "The current density/population route is insufficient, but transition-dipole and RIS routes remain available.",
+              "stagnation_assessment": "The failing density/population route should not be repeated.",
+              "contraction_reason": "Pivot to run_targeted_transition_dipole_analysis instead of repeating the failing density/population path.",
               "verifier_supplement_status": "sufficient",
               "verifier_information_gain": "high",
               "verifier_evidence_relation": "mixed",
@@ -1542,7 +1551,7 @@ def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_c
               "closure_justification_status": "blocked",
               "closure_justification_evidence_source": "internal",
               "closure_justification_basis": "existing_evidence",
-              "closure_justification_summary": "Need one more internal molecule-specific discriminator after the localized-orbital route failed.",
+              "closure_justification_summary": "Need one more internal molecule-specific discriminator after the density/population route failed.",
               "pairwise_task_agent": "microscopic",
               "pairwise_task_completed_for_pair": "ICT__vs__neutral aromatic",
               "pairwise_task_outcome": "not_run",
@@ -1570,16 +1579,16 @@ def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_c
             microscopic_reports=[
                 {
                     "agent_name": "microscopic",
-                    "task_received": "Run localized orbital analysis.",
-                    "task_understanding": "localized orbital analysis",
-                    "reasoning_summary": "localized orbital reasoning summary",
-                    "execution_plan": "localized orbital execution plan",
-                    "result_summary": "localized orbital result summary",
+                    "task_received": "Run density/population analysis.",
+                    "task_understanding": "density/population analysis",
+                    "reasoning_summary": "density/population reasoning summary",
+                    "execution_plan": "density/population execution plan",
+                    "result_summary": "density/population result summary",
                     "remaining_local_uncertainty": repeated_uncertainty,
                     "tool_calls": [],
                     "raw_results": {},
                     "structured_results": {
-                        "executed_capability": "run_targeted_localized_orbital_analysis",
+                        "executed_capability": "run_targeted_density_population_analysis",
                     },
                     "status": "failed",
                     "planner_readable_report": "microscopic planner readable report",
@@ -1609,4 +1618,4 @@ def test_planner_diagnosis_does_not_finalize_when_switching_to_new_microscopic_c
 
     assert result["decision"].action == "microscopic"
     assert result["decision"].finalize is False
-    assert "run_targeted_natural_orbital_analysis" in (result["decision"].task_instruction or "")
+    assert "run_targeted_transition_dipole_analysis" in (result["decision"].task_instruction or "")
