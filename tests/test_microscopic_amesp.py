@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -325,6 +326,29 @@ def _build_fake_subprocess_with_aip_capture(captured_inputs: dict[str, str]):
     return _runner
 
 
+def _build_fake_subprocess_with_env_capture(
+    captured_inputs: dict[str, str],
+    captured_envs: dict[str, dict[str, str]],
+):
+    def _runner(cmd, cwd, env, capture_output, text):
+        del capture_output, text
+        workdir = Path(cwd)
+        aip_name = Path(cmd[1]).name
+        aop_name = Path(cmd[2]).name
+        label = Path(aip_name).stem
+        captured_inputs[label] = (workdir / aip_name).read_text(encoding="utf-8")
+        captured_envs[label] = dict(env)
+        if label.endswith("_s0") or label.endswith("_s0sp"):
+            aop_text = S0_AOP_TEXT
+        else:
+            aop_text = S1_AOP_TEXT
+        (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+        (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+    return _runner
+
+
 def _build_fake_subprocess_with_targeted_analysis_capture(captured_inputs: dict[str, str]):
     hirshfeld_section = (
         "Hirshfeld charges:\n\n"
@@ -577,6 +601,45 @@ def test_amesp_baseline_tool_executes_fake_s0_and_s1_pipeline(tmp_path: Path) ->
         and event["details"].get("probe_status") == "end"
         for event in progress_events
     )
+
+
+def test_amesp_baseline_tool_injects_amesp_bin_dir_into_subprocess_path(tmp_path: Path) -> None:
+    captured_inputs: dict[str, str] = {}
+    captured_envs: dict[str, dict[str, str]] = {}
+    amesp_bin_dir = tmp_path / "amesp-bin"
+    amesp_bin_dir.mkdir(parents=True, exist_ok=True)
+    amesp_bin = amesp_bin_dir / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_build_fake_subprocess_with_env_capture(captured_inputs, captured_envs),
+    )
+
+    tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Run baseline S0/S1 Amesp workflow.",
+            requested_deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+            microscopic_tool_request=MicroscopicToolRequest(
+                capability_name="run_baseline_bundle",
+                perform_new_calculation=True,
+                deliverables=["S0 geometry optimization", "S1 vertical excitation characterization"],
+                state_window=[1, 2],
+                requested_route_summary="Test baseline bundle request.",
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return a partial or failed local report if Amesp fails.",
+        ),
+        smiles="N",
+        label="fake_case_env",
+        workdir=tmp_path / "workdir_env",
+        available_artifacts={},
+        round_index=1,
+    )
+
+    s0_env = captured_envs["fake_case_env_s0"]
+    assert s0_env["PATH"].split(os.pathsep)[0] == str(amesp_bin_dir)
+    assert str(amesp_bin_dir) in s0_env["PATH"].split(os.pathsep)
 
 
 def test_parse_excited_states_prefers_reported_excitation_energy_over_total_energy_difference() -> None:

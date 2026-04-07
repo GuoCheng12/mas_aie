@@ -3973,6 +3973,13 @@ class AmespMicroscopicTool:
         _raise_stack_limit()
         env = os.environ.copy()
         env.setdefault("KMP_STACKSIZE", "4g")
+        amesp_bin_dir = str(self._amesp_bin.parent)
+        current_path = env.get("PATH", "")
+        path_entries = [entry for entry in current_path.split(os.pathsep) if entry]
+        if amesp_bin_dir not in path_entries:
+            env["PATH"] = (
+                f"{amesp_bin_dir}{os.pathsep}{current_path}" if current_path else amesp_bin_dir
+            )
 
         start = time.perf_counter()
         if self._subprocess_runner is not None:
