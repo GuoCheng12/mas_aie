@@ -1,0 +1,14 @@
+{
+  "round_index": 8,
+  "capability_name": "run_targeted_localized_orbital_analysis",
+  "status": "failed",
+  "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_08_run_targeted_localized_orbital_analysis.json",
+  "error": {
+    "code": "precondition_missing",
+    "message": "No reusable baseline bundle is available for this baseline-dependent capability.",
+    "generated_artifacts": {},
+    "raw_results": {},
+    "structured_results": {},
+    "status": "failed"
+  }
+}

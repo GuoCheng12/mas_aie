@@ -1,0 +1,194 @@
+{
+  "round_index": 1,
+  "capability_name": "run_baseline_bundle",
+  "status": "failed",
+  "plan": {
+    "plan_version": "amesp_baseline_v1",
+    "local_goal": "Probe microscopic capability 'run_baseline_bundle' directly without Planner mediation.",
+    "requested_deliverables": [
+      "low-cost aTB S0 geometry optimization",
+      "vertical excited-state manifold characterization"
+    ],
+    "capability_route": "baseline_bundle",
+    "microscopic_tool_plan": {
+      "calls": [],
+      "requested_route_summary": "No microscopic tool-plan summary was provided.",
+      "requested_deliverables": [],
+      "selection_policy": {
+        "exclude_dihedral_ids": [],
+        "prefer_adjacent_to_nsnc_core": false,
+        "min_relevance": "medium",
+        "include_peripheral": true,
+        "preferred_bond_types": [],
+        "artifact_kind": null,
+        "source_round_preference": null
+      },
+      "normalization_notes": [],
+      "failure_reporting": "Return a local failed or partial report if the selected microscopic capability cannot be completed."
+    },
+    "microscopic_tool_request": {
+      "capability_name": "run_baseline_bundle",
+      "structure_source": null,
+      "perform_new_calculation": true,
+      "optimize_ground_state": true,
+      "reuse_existing_artifacts_only": false,
+      "artifact_source_round": null,
+      "artifact_scope": null,
+      "artifact_bundle_id": null,
+      "artifact_kind": null,
+      "descriptor_scope": [],
+      "requested_observable_scope": [],
+      "source_round_preference": null,
+      "min_relevance": null,
+      "include_peripheral": null,
+      "preferred_bond_types": [],
+      "dihedral_id": null,
+      "dihedral_atom_indices": [],
+      "conformer_id": null,
+      "conformer_ids": [],
+      "max_conformers": null,
+      "snapshot_count": null,
+      "target_count": null,
+      "angle_offsets_deg": [],
+      "state_window": [
+        1,
+        2
+      ],
+      "honor_exact_target": true,
+      "allow_fallback": false,
+      "deliverables": [
+        "low-cost aTB S0 geometry optimization",
+        "vertical excited-state manifold characterization"
+      ],
+      "budget_profile": "balanced",
+      "requested_route_summary": "Probe the default baseline bundle route: S0 optimization plus bounded vertical excited-state manifold on the shared prepared structure."
+    },
+    "budget_profile": "balanced",
+    "requested_route_summary": "Probe the default baseline bundle route: S0 optimization plus bounded vertical excited-state manifold on the shared prepared structure.",
+    "structure_source": "prepared_from_smiles",
+    "supported_scope": [],
+    "unsupported_requests": [],
+    "planning_unmet_constraints": [],
+    "steps": [],
+    "expected_outputs": [
+      "low-cost aTB S0 geometry optimization",
+      "vertical excited-state manifold characterization"
+    ],
+    "failure_reporting": "If the probe fails, capture the Amesp error payload, raw stdout/stderr, and generated artifacts."
+  },
+  "probe_events": [
+    {
+      "phase": "probe",
+      "round": 1,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "78ed5d49258c",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "structure_prep",
+        "probe_status": "start",
+        "workdir": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 1,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "78ed5d49258c",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "structure_prep",
+        "probe_status": "end",
+        "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+        "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+        "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+        "atom_count": 41,
+        "charge": 0,
+        "multiplicity": 1,
+        "source": "smiles_to_3d"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 1,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "78ed5d49258c",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_optimization",
+        "probe_status": "start",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.aop",
+        "keywords": [
+          "atb",
+          "opt",
+          "force"
+        ],
+        "npara": 20,
+        "maxcore_mb": 12000,
+        "use_ricosx": true
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 1,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "78ed5d49258c",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_optimization_subprocess",
+        "probe_status": "start",
+        "pid": 6942,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 1,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "78ed5d49258c",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_optimization_subprocess",
+        "probe_status": "end",
+        "exit_code": 0,
+        "elapsed_seconds": 0.5223,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stderr.log"
+      }
+    }
+  ],
+  "error": {
+    "code": "normal_termination_missing",
+    "message": "Amesp step 's0_optimization' did not report normal termination.",
+    "generated_artifacts": {
+      "step_id": "s0_optimization",
+      "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.aip",
+      "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.aop",
+      "mo_path": null,
+      "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stdout.log",
+      "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/work/round_01_run_baseline_bundle/78ed5d49258c_probe_r01_s0.stderr.log",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "elapsed_seconds": 0.5223,
+      "source_round": 1,
+      "resolved_target_ids": {}
+    },
+    "raw_results": {
+      "stdout": "  Stop : Please chechk the PATH environmental variable of Amesp !\n \n",
+      "stderr": "/usr/bin/which: no amesp in (/datasets/condaenv/mas_aie/bin:/datasets/miniconda3/condabin:/root/.vscode-server/data/User/globalStorage/github.copilot-chat/debugCommand:/root/.vscode-server/data/User/globalStorage/github.copilot-chat/copilotCli:/root/.vscode-server/cli/servers/Stable-cfbea10c5ffb233ea9177d34726e6056e89913dc/server/bin/remote-cli:/usr/local/sbin:/usr/bin:/bin:/usr/sbin:/sbin:/nix/store/hpvsf3db2q0ij33aw31n953gdkhlmwrg-openssh-10.2p1/bin)\n"
+    },
+    "structured_results": {
+      "resolved_target_ids": {},
+      "honored_constraints": [],
+      "unmet_constraints": []
+    },
+    "status": "failed"
+  },
+  "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_01_run_baseline_bundle.json"
+}

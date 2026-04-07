@@ -1,0 +1,120 @@
+{
+  "case_id": "78ed5d49258c",
+  "smiles": "COc3ccc(/C(=C(C#N)\\c1ccccc1)c2ccccc2)cc3",
+  "suite_status": "failed",
+  "baseline_bundle_id": null,
+  "baseline_source_round": null,
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c",
+  "capabilities_run": [
+    "run_baseline_bundle",
+    "extract_ct_descriptors_from_bundle",
+    "run_targeted_state_characterization",
+    "run_targeted_charge_analysis",
+    "run_targeted_density_population_analysis",
+    "run_targeted_transition_dipole_analysis",
+    "run_ris_state_characterization",
+    "run_targeted_localized_orbital_analysis",
+    "run_targeted_natural_orbital_analysis"
+  ],
+  "probes": [
+    {
+      "round_index": 1,
+      "capability_name": "run_baseline_bundle",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_01_run_baseline_bundle.json",
+      "route_summary": null,
+      "error": {
+        "code": "normal_termination_missing",
+        "message": "Amesp step 's0_optimization' did not report normal termination."
+      }
+    },
+    {
+      "round_index": 2,
+      "capability_name": "extract_ct_descriptors_from_bundle",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_02_extract_ct_descriptors_from_bundle.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 3,
+      "capability_name": "run_targeted_state_characterization",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_03_run_targeted_state_characterization.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 4,
+      "capability_name": "run_targeted_charge_analysis",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_04_run_targeted_charge_analysis.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 5,
+      "capability_name": "run_targeted_density_population_analysis",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_05_run_targeted_density_population_analysis.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 6,
+      "capability_name": "run_targeted_transition_dipole_analysis",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_06_run_targeted_transition_dipole_analysis.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 7,
+      "capability_name": "run_ris_state_characterization",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_07_run_ris_state_characterization.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 8,
+      "capability_name": "run_targeted_localized_orbital_analysis",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_08_run_targeted_localized_orbital_analysis.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    },
+    {
+      "round_index": 9,
+      "capability_name": "run_targeted_natural_orbital_analysis",
+      "status": "failed",
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-140220-413604_78ed5d49258c/probes/round_09_run_targeted_natural_orbital_analysis.json",
+      "route_summary": null,
+      "error": {
+        "code": "precondition_missing",
+        "message": "No reusable baseline bundle is available for this baseline-dependent capability."
+      }
+    }
+  ]
+}
