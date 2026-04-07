@@ -55,43 +55,63 @@ CONTEXTS: dict[str, dict[str, Any]] = {
 TARGETS: dict[str, dict[str, Any]] = {
     "control_mofile_only": {
         "title": "Control with mofile only",
+        "method_lines": [],
         "ope_lines": ["mofile on"],
     },
     "control_out2_only": {
         "title": "Control with out 2 only",
+        "method_lines": [],
         "ope_lines": ["out 2"],
     },
-    "lmo_pm_mofile": {
-        "title": "Localized orbital (PM) with mofile",
-        "ope_lines": ["mofile on", "lmo pm"],
+    "lmo_pm_method_mofile": {
+        "title": "Localized orbital (PM in >method) with mofile",
+        "method_lines": ["lmo pm"],
+        "ope_lines": ["mofile on"],
     },
-    "lmo_pm_out2_mofile": {
-        "title": "Localized orbital (PM) with out 2 + mofile",
-        "ope_lines": ["out 2", "mofile on", "lmo pm"],
+    "lmo_pm_method_mofile_nlmo_occ": {
+        "title": "Localized orbital (PM in >method) with mofile + nlmo occ",
+        "method_lines": ["lmo pm"],
+        "ope_lines": ["mofile on", "nlmo occ"],
     },
-    "lmo_boys_mofile": {
-        "title": "Localized orbital (Boys) with mofile",
-        "ope_lines": ["mofile on", "lmo boys"],
+    "lmo_pm_method_out2_mofile_nlmo_occ": {
+        "title": "Localized orbital (PM in >method) with out 2 + mofile + nlmo occ",
+        "method_lines": ["lmo pm"],
+        "ope_lines": ["out 2", "mofile on", "nlmo occ"],
     },
-    "natorb_no_plain": {
-        "title": "Natural orbital (NO) without mofile",
-        "ope_lines": ["natorb no"],
+    "lmo_boys_method_mofile_nlmo_occ": {
+        "title": "Localized orbital (Boys in >method) with mofile + nlmo occ",
+        "method_lines": ["lmo boys"],
+        "ope_lines": ["mofile on", "nlmo occ"],
     },
-    "natorb_no_mofile": {
-        "title": "Natural orbital (NO) with mofile",
-        "ope_lines": ["mofile on", "natorb no"],
+    "lmo_boys_method_mofile_nlmo_all": {
+        "title": "Localized orbital (Boys in >method) with mofile + nlmo all",
+        "method_lines": ["lmo boys"],
+        "ope_lines": ["mofile on", "nlmo all"],
     },
-    "natorb_no_out2_mofile": {
-        "title": "Natural orbital (NO) with out 2 + mofile",
-        "ope_lines": ["out 2", "mofile on", "natorb no"],
+    "natorb_no_method_plain": {
+        "title": "Natural orbital (NO in >method) without >ope",
+        "method_lines": ["natorb no"],
+        "ope_lines": [],
     },
-    "natorb_uno_mofile": {
-        "title": "Natural orbital (UNO) with mofile",
-        "ope_lines": ["mofile on", "natorb uno"],
+    "natorb_no_method_mofile": {
+        "title": "Natural orbital (NO in >method) with mofile",
+        "method_lines": ["natorb no"],
+        "ope_lines": ["mofile on"],
     },
-    "natorb_nso_mofile": {
-        "title": "Natural orbital (NSO) with mofile",
-        "ope_lines": ["mofile on", "natorb nso"],
+    "natorb_no_method_out2_mofile": {
+        "title": "Natural orbital (NO in >method) with out 2 + mofile",
+        "method_lines": ["natorb no"],
+        "ope_lines": ["out 2", "mofile on"],
+    },
+    "natorb_uno_method_mofile": {
+        "title": "Natural orbital (UNO in >method) with mofile",
+        "method_lines": ["natorb uno"],
+        "ope_lines": ["mofile on"],
+    },
+    "natorb_nso_method_mofile": {
+        "title": "Natural orbital (NSO in >method) with mofile",
+        "method_lines": ["natorb nso"],
+        "ope_lines": ["mofile on"],
     },
 }
 
@@ -106,11 +126,12 @@ DEFAULT_CONTEXT_SELECTION = [
 DEFAULT_TARGET_SELECTION = [
     "control_mofile_only",
     "control_out2_only",
-    "lmo_pm_mofile",
-    "lmo_boys_mofile",
-    "natorb_no_mofile",
-    "natorb_uno_mofile",
-    "natorb_nso_mofile",
+    "lmo_pm_method_mofile",
+    "lmo_pm_method_mofile_nlmo_occ",
+    "lmo_boys_method_mofile_nlmo_occ",
+    "natorb_no_method_mofile",
+    "natorb_uno_method_mofile",
+    "natorb_nso_method_mofile",
 ]
 
 WATER_GEOMETRY = [
@@ -123,8 +144,8 @@ WATER_GEOMETRY = [
 def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Probe Amesp lmo/natorb keyword acceptance across a matrix of method families, >posthf placement, "
-            "and >ope line combinations."
+            "Probe Amesp lmo/natorb acceptance across a matrix of method families, >posthf placement, "
+            "and explicit >method / >ope combinations."
         )
     )
     parser.add_argument(
@@ -222,6 +243,8 @@ def _write_input(
         "  vshift 500",
         "end",
     ]
+    if target["method_lines"]:
+        _write_block(lines, "method", list(target["method_lines"]))
     for block_name, block_lines in context["pre_ope_blocks"]:
         _write_block(lines, block_name, list(block_lines))
     if target["ope_lines"]:
@@ -292,6 +315,7 @@ def _run_case(
         "target_title": target["title"],
         "status": status,
         "keywords": list(context["keywords"]),
+        "method_lines": list(target["method_lines"]),
         "pre_ope_blocks": context["pre_ope_blocks"],
         "ope_lines": list(target["ope_lines"]),
         "post_ope_blocks": context["post_ope_blocks"],
@@ -312,7 +336,7 @@ def _run_case(
 
 def _write_live_status(*, report_dir: Path, amesp_bin: Path, results: list[dict[str, Any]]) -> None:
     lines = [
-        "# Amesp OPE Syntax Matrix Probe",
+        "# Amesp Method/OPE Syntax Matrix Probe",
         "",
         f"- report_dir: {report_dir}",
         f"- amesp_bin: {amesp_bin}",
@@ -329,6 +353,7 @@ def _write_live_status(*, report_dir: Path, amesp_bin: Path, results: list[dict[
                 f"- target: {item['target_id']} ({item['target_title']})",
                 f"- status: {item['status']}",
                 f"- keywords: {json.dumps(item['keywords'])}",
+                f"- method_lines: {json.dumps(item['method_lines'])}",
                 f"- pre_ope_blocks: {json.dumps(item['pre_ope_blocks'])}",
                 f"- ope_lines: {json.dumps(item['ope_lines'])}",
                 f"- post_ope_blocks: {json.dumps(item['post_ope_blocks'])}",
@@ -401,6 +426,8 @@ def main() -> None:
                 "target_id": item["target_id"],
                 "status": item["status"],
                 "exit_code": item["exit_code"],
+                "method_lines": item["method_lines"],
+                "ope_lines": item["ope_lines"],
                 "terminated_normally": item["terminated_normally"],
                 "stdout_stop_lines": item["stdout_stop_lines"],
                 "stderr_stop_lines": item["stderr_stop_lines"],

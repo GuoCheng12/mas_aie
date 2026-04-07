@@ -30,6 +30,7 @@ DEFAULT_HELP_CASES: list[tuple[str, list[str]]] = [
 ]
 DEFAULT_KEYWORDS = [
     "lmo",
+    "nlmo",
     "natorb",
     "hirshfeld",
     "lowdin",
