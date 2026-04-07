@@ -1,0 +1,14 @@
+{
+  "input_smiles": "COc3ccc(/C(=C(C#N)\\c1ccccc1)c2ccccc2)cc3",
+  "canonical_smiles": "COc1ccc(/C(=C(/C#N)c2ccccc2)c2ccccc2)cc1",
+  "charge": 0,
+  "multiplicity": 1,
+  "heavy_atom_count": 24,
+  "atom_count": 41,
+  "conformer_count": 10,
+  "selected_conformer_id": 2,
+  "force_field": "MMFF94",
+  "xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-141057-027076_41b1cca3fb73/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+  "sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-141057-027076_41b1cca3fb73/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+  "summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-141057-027076_41b1cca3fb73/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json"
+}
