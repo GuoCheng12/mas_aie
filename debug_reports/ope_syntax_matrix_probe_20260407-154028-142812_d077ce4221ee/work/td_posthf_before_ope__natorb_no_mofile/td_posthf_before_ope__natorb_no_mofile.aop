@@ -1,0 +1,46 @@
+ **************************************************************** 
+ **              _      __  __   _____   ____    ____          ** 
+ **             / \    |  \/  | | ____| / ___|  |  _ \         ** 
+ **            / _ \   | |\/| | |  _|   \___ \  | |_) |        ** 
+ **           / ___ \  | |  | | | |___   ___) | |  __/         ** 
+ **          /_/   \_\ |_|  |_| |_____| |____/  |_|            ** 
+ **                                                            ** 
+ **     Atomic and molecular electronic structure program      ** 
+ **                                                            ** 
+ **                  Author : Zhang Yingfeng                   ** 
+ **                                                            ** 
+ **         Version 2.1(dev), release date: 2025-10-23         ** 
+ **                                                            ** 
+ **               Amesp website : www.amesp.xyz                ** 
+ **                                                            ** 
+ **************************************************************** 
+ 
+ If Amesp is utilized in your work, cite this work as : 
+ 
+    Yingfeng Zhang 2024 Electron. Struct. 6 037002. 
+    DOI: 10.1088/2516-1075/ad5cb5
+ 
+ ------------------------- Input File ---------------------------
+ 
+ % npara 1
+ % maxcore 4000
+ ! b3lyp sto-3g td
+ >scf
+   maxcyc 2000
+   vshift 500
+ end
+ >posthf
+   nstates 2
+   tout 1
+ end
+ >ope
+   mofile on
+   natorb no
+ end
+ >xyz 0 1
+  O   0.000000  0.000000  0.000000
+  H   0.000000  0.757160  0.586260
+  H   0.000000 -0.757160  0.586260
+ end
+ Stop : error keyword: "natorb" in >ope!
+ 

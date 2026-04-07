@@ -1,0 +1,56 @@
+{
+  "case_id": "dft_sp__natorb_uno_mofile",
+  "context_id": "dft_sp",
+  "target_id": "natorb_uno_mofile",
+  "context_title": "DFT single-point",
+  "target_title": "Natural orbital (UNO) with mofile",
+  "status": "failed",
+  "keywords": [
+    "b3lyp",
+    "sto-3g"
+  ],
+  "pre_ope_blocks": [],
+  "ope_lines": [
+    "mofile on",
+    "natorb uno"
+  ],
+  "post_ope_blocks": [],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/dft_sp__natorb_uno_mofile/dft_sp__natorb_uno_mofile.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/dft_sp__natorb_uno_mofile/dft_sp__natorb_uno_mofile.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/dft_sp__natorb_uno_mofile/dft_sp__natorb_uno_mofile.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/dft_sp__natorb_uno_mofile/dft_sp__natorb_uno_mofile.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": false,
+  "stdout_stop_lines": [
+    "Stop : error keyword: \"natorb\" in >ope!"
+  ],
+  "stderr_stop_lines": [],
+  "stdout_tail": [
+    "  Stop : error keyword: \"natorb\" in >ope!",
+    " "
+  ],
+  "stderr_tail": [],
+  "aop_tail": [
+    " ------------------------- Input File ---------------------------",
+    " ",
+    " % npara 1",
+    " % maxcore 4000",
+    " ! b3lyp sto-3g",
+    " >scf",
+    "   maxcyc 2000",
+    "   vshift 500",
+    " end",
+    " >ope",
+    "   mofile on",
+    "   natorb uno",
+    " end",
+    " >xyz 0 1",
+    "  O   0.000000  0.000000  0.000000",
+    "  H   0.000000  0.757160  0.586260",
+    "  H   0.000000 -0.757160  0.586260",
+    " end",
+    " Stop : error keyword: \"natorb\" in >ope!",
+    " "
+  ]
+}

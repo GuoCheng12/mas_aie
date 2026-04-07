@@ -1,0 +1,65 @@
+{
+  "case_id": "tda_ris_posthf_after_ope__lmo_boys_mofile",
+  "context_id": "tda_ris_posthf_after_ope",
+  "target_id": "lmo_boys_mofile",
+  "context_title": "TDA-RIS with >posthf after >ope",
+  "target_title": "Localized orbital (Boys) with mofile",
+  "status": "failed",
+  "keywords": [
+    "b3lyp",
+    "sto-3g",
+    "tda-ris"
+  ],
+  "pre_ope_blocks": [],
+  "ope_lines": [
+    "mofile on",
+    "lmo boys"
+  ],
+  "post_ope_blocks": [
+    [
+      "posthf",
+      [
+        "nstates 2",
+        "tout 1"
+      ]
+    ]
+  ],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/tda_ris_posthf_after_ope__lmo_boys_mofile/tda_ris_posthf_after_ope__lmo_boys_mofile.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/tda_ris_posthf_after_ope__lmo_boys_mofile/tda_ris_posthf_after_ope__lmo_boys_mofile.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/tda_ris_posthf_after_ope__lmo_boys_mofile/tda_ris_posthf_after_ope__lmo_boys_mofile.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee/work/tda_ris_posthf_after_ope__lmo_boys_mofile/tda_ris_posthf_after_ope__lmo_boys_mofile.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": false,
+  "stdout_stop_lines": [
+    "Stop : error keyword: \"lmo\" in >ope!"
+  ],
+  "stderr_stop_lines": [],
+  "stdout_tail": [
+    "  Stop : error keyword: \"lmo\" in >ope!",
+    " "
+  ],
+  "stderr_tail": [],
+  "aop_tail": [
+    " ! b3lyp sto-3g tda-ris",
+    " >scf",
+    "   maxcyc 2000",
+    "   vshift 500",
+    " end",
+    " >ope",
+    "   mofile on",
+    "   lmo boys",
+    " end",
+    " >posthf",
+    "   nstates 2",
+    "   tout 1",
+    " end",
+    " >xyz 0 1",
+    "  O   0.000000  0.000000  0.000000",
+    "  H   0.000000  0.757160  0.586260",
+    "  H   0.000000 -0.757160  0.586260",
+    " end",
+    " Stop : error keyword: \"lmo\" in >ope!",
+    " "
+  ]
+}

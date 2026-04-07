@@ -1,0 +1,20 @@
+% npara 1
+% maxcore 4000
+! b3lyp sto-3g tda-ris
+>scf
+  maxcyc 2000
+  vshift 500
+end
+>ope
+  mofile on
+  lmo boys
+end
+>posthf
+  nstates 2
+  tout 1
+end
+>xyz 0 1
+ O   0.000000  0.000000  0.000000
+ H   0.000000  0.757160  0.586260
+ H   0.000000 -0.757160  0.586260
+end

@@ -1,0 +1,25 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/ope_syntax_matrix_probe_20260407-154028-142812_d077ce4221ee",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "contexts_requested": [
+    "dft_sp",
+    "td_posthf_after_ope",
+    "td_posthf_before_ope",
+    "tda_ris_posthf_after_ope",
+    "tda_ris_posthf_before_ope"
+  ],
+  "targets_requested": [
+    "control_mofile_only",
+    "control_out2_only",
+    "lmo_pm_mofile",
+    "lmo_boys_mofile",
+    "natorb_no_mofile",
+    "natorb_uno_mofile",
+    "natorb_nso_mofile"
+  ],
+  "case_count": 35,
+  "npara": 1,
+  "maxcore_mb": 4000,
+  "charge": 0,
+  "multiplicity": 1
+}
