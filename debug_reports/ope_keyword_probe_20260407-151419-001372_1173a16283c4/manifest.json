@@ -1,0 +1,19 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "cases_requested": [
+    "control_no_ope",
+    "charge_hirshfeld",
+    "density_out2",
+    "mofile_only",
+    "localized_pm",
+    "localized_boys",
+    "natural_no",
+    "natural_uno",
+    "natural_nso"
+  ],
+  "npara": 1,
+  "maxcore_mb": 4000,
+  "charge": 0,
+  "multiplicity": 1
+}

@@ -1,0 +1,45 @@
+{
+  "case_id": "mofile_only",
+  "title": "MO file only probe",
+  "status": "success",
+  "keywords": [
+    "b3lyp",
+    "sto-3g"
+  ],
+  "ope_lines": [
+    "mofile on"
+  ],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/mofile_only/mofile_only.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/mofile_only/mofile_only.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/mofile_only/mofile_only.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/mofile_only/mofile_only.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": true,
+  "stdout_stop_lines": [],
+  "stderr_stop_lines": [],
+  "stdout_tail": [],
+  "stderr_tail": [],
+  "aop_tail": [
+    "  E[DFT]  =    -75.312467577",
+    " ",
+    " ----------------------------------------------------------------",
+    " ",
+    " Final Geometry(angstroms):",
+    " ",
+    "  3",
+    "  O            0.00000000    0.00000000    0.00000000",
+    "  H            0.00000000    0.75716000    0.58626000",
+    "  H            0.00000000   -0.75716000    0.58626000",
+    " ",
+    " Final Energy:      -75.3124675769",
+    " ",
+    " ====================================================================",
+    " ",
+    " The program run from  2026-04-07  15:14:20  to  2026-04-07  15:14:21",
+    " Total run time:     0 days,   0  hours,   0 minutes,  0.4259 seconds",
+    " Normal termination of Amesp!",
+    " ",
+    " ===================================================================="
+  ]
+}

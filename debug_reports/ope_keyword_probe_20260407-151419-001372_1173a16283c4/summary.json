@@ -1,0 +1,107 @@
+{
+  "report_dir": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4",
+  "amesp_bin": "/datasets/workspace/mas_aie/third_party/Amesp/Bin/amesp",
+  "suite_status": "failed",
+  "results": [
+    {
+      "case_id": "control_no_ope",
+      "title": "Control without >ope",
+      "status": "success",
+      "exit_code": 0,
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/control_no_ope.json"
+    },
+    {
+      "case_id": "charge_hirshfeld",
+      "title": "Hirshfeld charge probe",
+      "status": "success",
+      "exit_code": 0,
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/charge_hirshfeld.json"
+    },
+    {
+      "case_id": "density_out2",
+      "title": "Density/population out 2 probe",
+      "status": "success",
+      "exit_code": 0,
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/density_out2.json"
+    },
+    {
+      "case_id": "mofile_only",
+      "title": "MO file only probe",
+      "status": "success",
+      "exit_code": 0,
+      "terminated_normally": true,
+      "stdout_stop_lines": [],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/mofile_only.json"
+    },
+    {
+      "case_id": "localized_pm",
+      "title": "Localized orbital probe (PM)",
+      "status": "failed",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "stdout_stop_lines": [
+        "Stop : error keyword: \"lmo\" in >ope!"
+      ],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/localized_pm.json"
+    },
+    {
+      "case_id": "localized_boys",
+      "title": "Localized orbital probe (Boys)",
+      "status": "failed",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "stdout_stop_lines": [
+        "Stop : error keyword: \"lmo\" in >ope!"
+      ],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/localized_boys.json"
+    },
+    {
+      "case_id": "natural_no",
+      "title": "Natural orbital probe (NO)",
+      "status": "failed",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "stdout_stop_lines": [
+        "Stop : error keyword: \"natorb\" in >ope!"
+      ],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/natural_no.json"
+    },
+    {
+      "case_id": "natural_uno",
+      "title": "Natural orbital probe (UNO)",
+      "status": "failed",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "stdout_stop_lines": [
+        "Stop : error keyword: \"natorb\" in >ope!"
+      ],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/natural_uno.json"
+    },
+    {
+      "case_id": "natural_nso",
+      "title": "Natural orbital probe (NSO)",
+      "status": "failed",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "stdout_stop_lines": [
+        "Stop : error keyword: \"natorb\" in >ope!"
+      ],
+      "stderr_stop_lines": [],
+      "result_file": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/natural_nso.json"
+    }
+  ]
+}

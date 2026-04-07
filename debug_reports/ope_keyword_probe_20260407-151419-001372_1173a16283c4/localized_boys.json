@@ -1,0 +1,51 @@
+{
+  "case_id": "localized_boys",
+  "title": "Localized orbital probe (Boys)",
+  "status": "failed",
+  "keywords": [
+    "b3lyp",
+    "sto-3g"
+  ],
+  "ope_lines": [
+    "mofile on",
+    "lmo boys"
+  ],
+  "aip_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/localized_boys/localized_boys.aip",
+  "aop_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/localized_boys/localized_boys.aop",
+  "stdout_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/localized_boys/localized_boys.stdout.log",
+  "stderr_path": "/datasets/workspace/mas_aie/debug_reports/ope_keyword_probe_20260407-151419-001372_1173a16283c4/work/localized_boys/localized_boys.stderr.log",
+  "exit_code": 0,
+  "aop_exists": true,
+  "terminated_normally": false,
+  "stdout_stop_lines": [
+    "Stop : error keyword: \"lmo\" in >ope!"
+  ],
+  "stderr_stop_lines": [],
+  "stdout_tail": [
+    "  Stop : error keyword: \"lmo\" in >ope!",
+    " "
+  ],
+  "stderr_tail": [],
+  "aop_tail": [
+    " ------------------------- Input File ---------------------------",
+    " ",
+    " % npara 1",
+    " % maxcore 4000",
+    " ! b3lyp sto-3g",
+    " >scf",
+    "   maxcyc 2000",
+    "   vshift 500",
+    " end",
+    " >ope",
+    "   mofile on",
+    "   lmo boys",
+    " end",
+    " >xyz 0 1",
+    "  O   0.000000  0.000000  0.000000",
+    "  H   0.000000  0.757160  0.586260",
+    "  H   0.000000 -0.757160  0.586260",
+    " end",
+    " Stop : error keyword: \"lmo\" in >ope!",
+    " "
+  ]
+}
