@@ -1054,8 +1054,9 @@ def test_amesp_targeted_charge_analysis_writes_hirshfeld_and_returns_charge_reco
     assert result.route == "targeted_property_follow_up"
     assert result.route_summary["charge_availability"] == "proxy_only"
     assert "hirshfeld_charges" in result.route_summary["available_charge_observables"]
-    assert "mulliken_charges" in result.route_summary["available_charge_observables"]
     assert "ground_state_dipole" in result.route_summary["available_charge_observables"]
+    assert "mulliken_charges" not in result.route_summary["available_charge_observables"]
+    assert result.route_summary["missing_charge_observables"] == []
     first_record = result.route_records[0]
     assert first_record["charge_analysis"]["charge_scheme"] == "hirshfeld"
     assert first_record["charge_analysis"]["charge_availability"] == "available"

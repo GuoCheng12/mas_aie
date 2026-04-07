@@ -5041,7 +5041,7 @@ def _targeted_property_profile_for_capability(
     targeted_state_method_lines = _targeted_state_characterization_method_lines(normalized_scope)
     if capability_name == "run_targeted_charge_analysis":
         return {
-            "descriptor_scope": ["hirshfeld_charges", "mulliken_charges", "ground_state_dipole"],
+            "descriptor_scope": ["hirshfeld_charges", "ground_state_dipole"],
             "analysis_method_lines": [],
             "analysis_ope_lines": ["charge hirshfeld"],
             "availability_key": "charge_availability",
