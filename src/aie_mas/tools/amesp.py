@@ -3390,6 +3390,7 @@ class AmespMicroscopicTool:
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
                 analysis_ope_lines=analysis_ope_lines,
+                ground_state_profile=ground_state_profile,
             )
         raw_results.update(s0_raw_results)
         generated_artifacts.update(s0_artifacts)
