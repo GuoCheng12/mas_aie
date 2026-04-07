@@ -12,6 +12,7 @@ from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AieMasState,
     AgentReport,
+    HypothesisScreeningRecord,
     PlannerDecision,
     SharedStructureContext,
     WorkingMemoryAgentEntry,
@@ -278,6 +279,7 @@ def test_working_memory_backfills_task_instruction_and_action_labels() -> None:
     assert entry.planner_task_instruction == "microscopic"
     assert entry.planned_action_label == "microscopic"
     assert entry.executed_action_labels == ["list_artifact_bundle_members"]
+    assert entry.executed_evidence_families == []
     assert state.planned_action_label == "microscopic"
     assert state.executed_action_labels == ["list_artifact_bundle_members"]
 
@@ -1716,3 +1718,203 @@ def test_planner_diagnosis_does_not_finalize_when_switching_to_new_supported_mic
     assert result["decision"].action == "microscopic"
     assert result["decision"].finalize is False
     assert "run_targeted_transition_dipole_analysis" in (result["decision"].task_instruction or "")
+
+
+def test_initial_response_can_enter_portfolio_screening_with_coverage_debt(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.49, "rationale": "Current lead."},
+                {"name": "TICT", "confidence": 0.28, "rationale": "Runner-up."},
+                {"name": "ESIPT", "confidence": 0.17, "rationale": "Still credible alternative."},
+                {"name": "neutral aromatic", "confidence": 0.04, "rationale": "Weak fallback."},
+                {"name": "unknown", "confidence": 0.02, "rationale": "Residual uncertainty."}
+              ],
+              "current_hypothesis": "ICT",
+              "confidence": 0.49,
+              "reasoning_phase": "portfolio_screening",
+              "portfolio_screening_complete": false,
+              "credible_alternative_hypotheses": ["TICT", "ESIPT"],
+              "coverage_debt_hypotheses": ["TICT", "ESIPT"],
+              "hypothesis_screening_ledger": [
+                {
+                  "hypothesis": "TICT",
+                  "screening_status": "untested",
+                  "screening_priority": "high",
+                  "evidence_families_covered": [],
+                  "screening_note": "Needs direct torsion-sensitive screening."
+                },
+                {
+                  "hypothesis": "ESIPT",
+                  "screening_status": "indirectly_weakened",
+                  "screening_priority": "normal",
+                  "evidence_families_covered": ["state_ordering_brightness"],
+                  "screening_note": "Still credible but not directly screened."
+                }
+              ],
+              "portfolio_screening_summary": "TICT and ESIPT remain credible and still carry direct-screening debt.",
+              "diagnosis": "Remain in portfolio screening before pairwise contraction.",
+              "action": "macro_and_microscopic",
+              "task_instruction": "Dispatch first-round tasks.",
+              "agent_task_instructions": {
+                "macro": "Inspect low-cost structural readiness.",
+                "microscopic": "Run the first-round bounded baseline bundle."
+              }
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_initial(
+        AieMasState(
+            user_query="Assess the likely AIE mechanism for this molecule.",
+            smiles="C1=CC=CC=C1",
+        )
+    )
+
+    decision = result["decision"]
+    assert decision.reasoning_phase == "portfolio_screening"
+    assert decision.portfolio_screening_complete is False
+    assert decision.coverage_debt_hypotheses == ["TICT", "ESIPT"]
+    assert decision.decision_gate_status == "needs_portfolio_screening"
+    assert decision.decision_pair == []
+
+
+def test_portfolio_screening_gate_blocks_finalize_when_coverage_debt_remains(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.58, "rationale": "Still leads."},
+                {"name": "TICT", "confidence": 0.24, "rationale": "Runner-up."},
+                {"name": "ESIPT", "confidence": 0.12, "rationale": "Still credible."},
+                {"name": "neutral aromatic", "confidence": 0.04, "rationale": "Weak fallback."},
+                {"name": "unknown", "confidence": 0.02, "rationale": "Residual uncertainty."}
+              ],
+              "reasoning_phase": "portfolio_screening",
+              "portfolio_screening_complete": false,
+              "credible_alternative_hypotheses": ["ESIPT"],
+              "coverage_debt_hypotheses": ["ESIPT"],
+              "hypothesis_screening_ledger": [
+                {
+                  "hypothesis": "ESIPT",
+                  "screening_status": "untested",
+                  "screening_priority": "high",
+                  "evidence_families_covered": [],
+                  "screening_note": "Still needs one direct screening task."
+                }
+              ],
+              "portfolio_screening_summary": "ESIPT remains a still-credible but untested alternative.",
+              "diagnosis": "Do not finalize before screening ESIPT directly.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.58,
+              "needs_verifier": false,
+              "finalize": true,
+              "task_instruction": "Use run_targeted_state_characterization to directly screen the remaining alternative.",
+              "agent_task_instructions": {
+                "microscopic": "Use run_targeted_state_characterization to directly screen the remaining alternative."
+              },
+              "evidence_summary": "Baseline evidence supports ICT, but ESIPT is still untested.",
+              "main_gap": "ESIPT has not yet been directly screened.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "A credible third hypothesis is still outstanding.",
+              "final_hypothesis_rationale": "This should be blocked by the portfolio-screening gate.",
+              "capability_assessment": "A bounded targeted screen is still available.",
+              "stagnation_assessment": "No stagnation is present.",
+              "contraction_reason": "Do not collapse to pairwise before screening debt clears.",
+              "information_gain_assessment": "One more direct screen is still required.",
+              "gap_trend": "The gap is shrinking but remains open.",
+              "stagnation_detected": false,
+              "capability_lesson_candidates": [],
+              "hypothesis_reweight_explanation": {
+                "ICT": "Current lead from existing evidence.",
+                "TICT": "Still plausible runner-up.",
+                "ESIPT": "Still credible and not directly screened.",
+                "neutral aromatic": "Weak fallback.",
+                "unknown": "Residual uncertainty."
+              },
+              "decision_gate_status": "ready_to_finalize_best_available",
+              "verifier_supplement_status": "sufficient",
+              "verifier_information_gain": "medium",
+              "verifier_evidence_relation": "supports_top1",
+              "closure_justification_status": "sufficient",
+              "closure_justification_evidence_source": "mixed",
+              "closure_justification_basis": "existing_evidence",
+              "finalization_mode": "best_available"
+            }
+            """
+        ],
+    )
+    state = _base_state()
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.finalize is False
+    assert decision.action == "microscopic"
+    assert decision.reasoning_phase == "portfolio_screening"
+    assert decision.portfolio_screening_complete is False
+    assert decision.coverage_debt_hypotheses == ["ESIPT"]
+    assert decision.decision_gate_status == "needs_portfolio_screening"
+    assert decision.decision_pair == []
+
+
+def test_working_memory_records_portfolio_fields_and_evidence_families() -> None:
+    manager = WorkingMemoryManager()
+    state = _base_state()
+    state.round_idx = 1
+    state.latest_evidence_summary = "A torsion screening action completed."
+    state.latest_main_gap = "ESIPT remains untested."
+    state.latest_conflict_status = "none"
+    state.last_planner_decision = PlannerDecision(
+        diagnosis="Remain in portfolio screening.",
+        action="microscopic",
+        current_hypothesis="ICT",
+        confidence=0.66,
+        reasoning_phase="portfolio_screening",
+        portfolio_screening_complete=False,
+        coverage_debt_hypotheses=["ESIPT"],
+        credible_alternative_hypotheses=["TICT", "ESIPT"],
+        hypothesis_screening_ledger=[
+            HypothesisScreeningRecord(
+                hypothesis="ESIPT",
+                screening_status="untested",
+                screening_priority="high",
+            )
+        ],
+        portfolio_screening_summary="ESIPT remains a coverage-debt hypothesis.",
+        planned_agents=["microscopic"],
+        task_instruction="Use run_torsion_snapshots for one bounded direct screen.",
+        agent_task_instructions={
+            "microscopic": "Use run_torsion_snapshots for one bounded direct screen."
+        },
+    )
+    state.active_round_reports = [
+        AgentReport(
+            agent_name="microscopic",
+            task_received="Run one torsion screen.",
+            task_understanding="Collect torsion sensitivity evidence only.",
+            execution_plan="Bounded torsion snapshot follow-up.",
+            result_summary="A torsion snapshot bundle was generated.",
+            remaining_local_uncertainty="One more ESIPT-oriented screen may still be needed.",
+            tool_calls=[],
+            raw_results={},
+            structured_results={"executed_capability": "run_torsion_snapshots"},
+            planner_readable_report="Torsion sensitivity evidence was collected.",
+            status="success",
+        )
+    ]
+
+    manager.append_round_summary(state)
+
+    entry = state.working_memory[-1]
+    assert entry.reasoning_phase == "portfolio_screening"
+    assert entry.coverage_debt_hypotheses == ["ESIPT"]
+    assert entry.hypothesis_screening_ledger[0].hypothesis == "ESIPT"
+    assert entry.executed_evidence_families == ["torsion_sensitivity"]

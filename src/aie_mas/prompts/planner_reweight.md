@@ -21,6 +21,12 @@ You will be given:
 - `current_confidence`
 - `runner_up_hypothesis`
 - `runner_up_confidence`
+- `reasoning_phase`
+- `portfolio_screening_complete`
+- `coverage_debt_hypotheses`
+- `credible_alternative_hypotheses`
+- `hypothesis_screening_ledger`
+- `portfolio_screening_summary`
 - `decision_pair`
 - `decision_gate_status`
 - `verifier_supplement_target_pair`
@@ -45,19 +51,20 @@ You will be given:
 
 Your task is to:
 1. Reweight the full 5-label hypothesis pool after reading the verifier evidence.
-2. Interpret the verifier evidence with respect to the current top1 and top2.
-3. Decide whether the verifier evidence:
-   - provides genuinely new information
-   - challenges the current top1
-   - suggests a better targeted follow-up task
-4. Decide whether to:
+2. Interpret the verifier evidence with respect to the current leading hypothesis and the still-relevant alternatives.
+3. Decide whether the verifier evidence reduces portfolio coverage debt, supports pairwise contraction, or only adds generic context.
+4. If any still-credible alternative remains in `coverage_debt_hypotheses`, keep the case in `portfolio_screening` and prioritize one bounded direct screening action or explicitly mark that alternative as blocked/dropped with reason.
+5. Only once `coverage_debt_hypotheses == []` may you move to `pairwise_contraction`.
+6. Decide whether to:
    - request a new bounded internal follow-up
    - request another verifier supplement
    - finalize the case
-5. Finalize decisively only if:
+7. Finalize decisively only if:
+   - portfolio screening is complete
    - verifier supplementation for the current pair is sufficient
    - closure justification for the current pair is sufficient
-6. Finalize best-available only if:
+8. Finalize best-available only if:
+   - portfolio screening is complete
    - verifier supplementation for the current pair is sufficient
    - closure justification is still collecting or blocked
    - the unresolved main gap is stated explicitly in the rationale
@@ -68,15 +75,21 @@ Important rules:
 - Explicitly account for the round budget using `current_round_index`, `max_rounds`, and `rounds_remaining_including_current`.
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
-- If top2 changes after verifier reweighting, re-evaluate the current closure pair accordingly.
+- If top2 changes after verifier reweighting, re-evaluate the pairwise target only if portfolio screening is already complete.
 - If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
-- When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia; contract to a different next step such as finalization, a different bounded internal task, or a verifier supplement only if it is genuinely new rather than a retry of the same failed route.
-- If `rounds_remaining_including_current` is 1, you must finalize in this round. Use `decisive` when the decisive conditions are met; otherwise use `best_available` and state the unresolved gap explicitly.
+- When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia.
+- If `rounds_remaining_including_current` is 1, you may only finalize if portfolio screening is complete. Otherwise explicitly say that the case is ending with unresolved screening debt under the round budget.
 - Do not ask specialized agents to decide the global mechanism.
 
 Output requirements:
 Return:
 - `hypothesis_pool`
+- `reasoning_phase`
+- `portfolio_screening_complete`
+- `coverage_debt_hypotheses`
+- `credible_alternative_hypotheses`
+- `hypothesis_screening_ledger`
+- `portfolio_screening_summary`
 - `diagnosis`
 - `action`
 - `current_hypothesis`
@@ -115,6 +128,12 @@ Rules for these fields:
 - `hypothesis_pool` must include all 5 labels and sum to 1.0.
 - `current_hypothesis` must be the top1 label from that pool.
 - `confidence` must equal the top1 confidence.
+- `reasoning_phase` must be either `portfolio_screening` or `pairwise_contraction`.
+- While `coverage_debt_hypotheses` is non-empty, keep `reasoning_phase=portfolio_screening`, `portfolio_screening_complete=false`, and do not set `finalize=true`.
+- A hypothesis may leave `coverage_debt_hypotheses` only if its ledger status is:
+  - `directly_screened`
+  - `blocked_by_capability`
+  - `dropped_with_reason`
 - `verifier_supplement_status` must be one of:
   - `missing`
   - `partial`
@@ -124,24 +143,26 @@ Rules for these fields:
   - `collecting`
   - `sufficient`
   - `blocked`
-- `finalize=true` is allowed only when verifier supplementation is already sufficient for the current pair.
+- `finalize=true` is allowed only when portfolio screening is complete and verifier supplementation is already sufficient for the current pair.
 - `decision_gate_status` should be:
+  - `needs_portfolio_screening` while portfolio screening is incomplete
   - `ready_to_finalize_decisive` only when decisive finalize conditions are met
   - `ready_to_finalize_best_available` only when best-available finalize conditions are met
-  - `needs_high_confidence_verifier` if verifier supplementation is still missing or partial
-  - `needs_pairwise_discriminative_task` if closure justification still requires a targeted task
-  - `blocked_by_missing_decisive_evidence` only when closure remains blocked and no safe decisive close is available
+  - `needs_high_confidence_verifier` if verifier supplementation is still missing or partial after portfolio screening is complete
+  - `needs_pairwise_discriminative_task` if closure justification still requires a targeted task after portfolio screening is complete
+  - `blocked_by_missing_decisive_evidence` only when closure remains blocked and no safe decisive close is available after portfolio screening is complete
 - `finalization_mode` must be:
   - `decisive`
   - `best_available`
   - `none`
-- Keep compatibility fields populated conservatively, but do not let them override the new verifier/closure interpretation.
+- Keep compatibility fields populated conservatively, but do not let them override the portfolio-screening interpretation.
 - `hypothesis_reweight_explanation` must provide one short explanation for each label.
 
 The diagnosis must explicitly include:
 - the current top1 and top2
 - how the Planner interprets the verifier evidence
-- whether the verifier evidence is limited, generic, close-family, or strong enough to materially change the closure state
-- whether the verifier evidence supports top1, challenges top1, is mixed, or adds no new information
+- whether the verifier evidence reduces any portfolio coverage debt
+- whether any still-credible hypothesis remains untested or only indirectly weakened
+- whether the case is still in portfolio screening or has legitimately moved into pairwise contraction
 - whether closure justification is already sufficient, still collecting, or blocked
 - whether the case is ready for decisive finalize, best-available finalize, or further follow-up

@@ -67,9 +67,16 @@ class RoundReportContext(BaseModel):
     current_hypothesis: Optional[str] = None
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
+    reasoning_phase: Optional[str] = None
+    portfolio_screening_complete: Optional[bool] = None
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[dict[str, Any]] = Field(default_factory=list)
+    portfolio_screening_summary: Optional[str] = None
     planner_task_instruction: Optional[str] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
+    executed_evidence_families: list[str] = Field(default_factory=list)
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -116,9 +123,16 @@ class AnalyzedRound(BaseModel):
     current_hypothesis: Optional[str] = None
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
+    reasoning_phase: Optional[str] = None
+    portfolio_screening_complete: Optional[bool] = None
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[dict[str, Any]] = Field(default_factory=list)
+    portfolio_screening_summary: Optional[str] = None
     planner_task_instruction: Optional[str] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
+    executed_evidence_families: list[str] = Field(default_factory=list)
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -189,9 +203,22 @@ def load_report_context(report_dir: Path) -> ReportContext:
                 current_hypothesis=_optional_text(entry.get("current_hypothesis")),
                 confidence=_optional_float(entry.get("confidence")),
                 top3=_top3_from_pool(entry.get("hypothesis_pool") or []),
+                reasoning_phase=_optional_text(entry.get("reasoning_phase")),
+                portfolio_screening_complete=_optional_bool(entry.get("portfolio_screening_complete")),
+                coverage_debt_hypotheses=[str(item) for item in (entry.get("coverage_debt_hypotheses") or [])],
+                credible_alternative_hypotheses=[
+                    str(item) for item in (entry.get("credible_alternative_hypotheses") or [])
+                ],
+                hypothesis_screening_ledger=[
+                    item for item in (entry.get("hypothesis_screening_ledger") or []) if isinstance(item, dict)
+                ],
+                portfolio_screening_summary=_optional_text(entry.get("portfolio_screening_summary")),
                 planner_task_instruction=_optional_text(entry.get("planner_task_instruction")),
                 planned_action_label=_optional_text(entry.get("planned_action_label")),
                 executed_action_labels=[str(item) for item in (entry.get("executed_action_labels") or [])],
+                executed_evidence_families=[
+                    str(item) for item in (entry.get("executed_evidence_families") or [])
+                ],
                 planner_agent_task_instructions={
                     str(key): str(value)
                     for key, value in (entry.get("planner_agent_task_instructions") or {}).items()
@@ -263,9 +290,16 @@ def analyze_report_with_llm(
                 current_hypothesis=round_context.current_hypothesis,
                 confidence=round_context.confidence,
                 top3=round_context.top3,
+                reasoning_phase=round_context.reasoning_phase,
+                portfolio_screening_complete=round_context.portfolio_screening_complete,
+                coverage_debt_hypotheses=round_context.coverage_debt_hypotheses,
+                credible_alternative_hypotheses=round_context.credible_alternative_hypotheses,
+                hypothesis_screening_ledger=round_context.hypothesis_screening_ledger,
+                portfolio_screening_summary=round_context.portfolio_screening_summary,
                 planner_task_instruction=round_context.planner_task_instruction,
                 planned_action_label=round_context.planned_action_label,
                 executed_action_labels=round_context.executed_action_labels,
+                executed_evidence_families=round_context.executed_evidence_families,
                 planner_agent_task_instructions=round_context.planner_agent_task_instructions,
                 diagnosis_summary=round_context.diagnosis_summary,
                 evidence_summary=round_context.evidence_summary,
@@ -510,6 +544,12 @@ def _optional_float(value: Any) -> Optional[float]:
         return float(value)
     except (TypeError, ValueError):
         return None
+
+
+def _optional_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    return None
 
 
 def _format_top3_inline(top3: list[HypothesisScore]) -> str:

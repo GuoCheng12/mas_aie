@@ -134,6 +134,12 @@ class AieMasWorkflow:
         state.confidence = decision.confidence
         state.runner_up_hypothesis = decision.runner_up_hypothesis
         state.runner_up_confidence = decision.runner_up_confidence
+        state.reasoning_phase = decision.reasoning_phase
+        state.portfolio_screening_complete = decision.portfolio_screening_complete
+        state.coverage_debt_hypotheses = list(decision.coverage_debt_hypotheses)
+        state.credible_alternative_hypotheses = list(decision.credible_alternative_hypotheses)
+        state.hypothesis_screening_ledger = list(decision.hypothesis_screening_ledger)
+        state.portfolio_screening_summary = decision.portfolio_screening_summary
         state.decision_pair = list(decision.decision_pair)
         state.decision_gate_status = decision.decision_gate_status
         state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair
@@ -158,6 +164,7 @@ class AieMasWorkflow:
         state.pairwise_verifier_evidence_specificity = decision.pairwise_verifier_evidence_specificity
         state.planned_action_label = decision.planned_action_label
         state.executed_action_labels = list(decision.executed_action_labels)
+        state.executed_evidence_families = []
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents
         state.pending_agent_instructions = dict(decision.agent_task_instructions)
@@ -325,6 +332,14 @@ class AieMasWorkflow:
             "confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
+            "reasoning_phase": state.reasoning_phase,
+            "portfolio_screening_complete": state.portfolio_screening_complete,
+            "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
+            "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
+            "hypothesis_screening_ledger": [
+                record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
+            ],
+            "portfolio_screening_summary": state.portfolio_screening_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
@@ -349,6 +364,7 @@ class AieMasWorkflow:
             "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
             "planned_action_label": state.planned_action_label,
             "executed_action_labels": list(state.executed_action_labels),
+            "executed_evidence_families": list(state.executed_evidence_families),
             "diagnosis": decision.diagnosis if decision else None,
             "action": decision.action if decision else None,
             "finalize": state.finalize,
@@ -409,6 +425,12 @@ class AieMasWorkflow:
         state.confidence = decision.confidence  # type: ignore[union-attr]
         state.runner_up_hypothesis = decision.runner_up_hypothesis  # type: ignore[union-attr]
         state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
+        state.reasoning_phase = decision.reasoning_phase  # type: ignore[union-attr]
+        state.portfolio_screening_complete = decision.portfolio_screening_complete  # type: ignore[union-attr]
+        state.coverage_debt_hypotheses = list(decision.coverage_debt_hypotheses)  # type: ignore[union-attr]
+        state.credible_alternative_hypotheses = list(decision.credible_alternative_hypotheses)  # type: ignore[union-attr]
+        state.hypothesis_screening_ledger = list(decision.hypothesis_screening_ledger)  # type: ignore[union-attr]
+        state.portfolio_screening_summary = decision.portfolio_screening_summary  # type: ignore[union-attr]
         state.decision_pair = list(decision.decision_pair)  # type: ignore[union-attr]
         state.decision_gate_status = decision.decision_gate_status  # type: ignore[union-attr]
         state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair  # type: ignore[union-attr]
@@ -441,6 +463,7 @@ class AieMasWorkflow:
         )
         state.planned_action_label = decision.planned_action_label  # type: ignore[union-attr]
         state.executed_action_labels = list(decision.executed_action_labels)  # type: ignore[union-attr]
+        state.executed_evidence_families = []
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents  # type: ignore[union-attr]
         state.pending_agent_instructions = dict(decision.agent_task_instructions)  # type: ignore[union-attr]

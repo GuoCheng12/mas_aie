@@ -8,6 +8,7 @@ PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifi
 PendingAgent = Literal["macro", "microscopic", "verifier"]
 DecisionGateStatus = Literal[
     "not_ready",
+    "needs_portfolio_screening",
     "needs_pairwise_discriminative_task",
     "needs_high_confidence_verifier",
     "ready_to_finalize_decisive",
@@ -23,6 +24,23 @@ PairwiseTaskOutcome = Literal[
     "best_available_tool_blocked",
 ]
 FinalizationMode = Literal["none", "decisive", "best_available"]
+ReasoningPhase = Literal["portfolio_screening", "pairwise_contraction"]
+HypothesisScreeningStatus = Literal[
+    "untested",
+    "indirectly_weakened",
+    "directly_screened",
+    "blocked_by_capability",
+    "dropped_with_reason",
+]
+HypothesisScreeningPriority = Literal["none", "low", "normal", "high"]
+EvidenceFamily = Literal[
+    "geometry_precondition",
+    "state_ordering_brightness",
+    "torsion_sensitivity",
+    "charge_localization",
+    "external_precedent",
+    "raw_artifact_inspection",
+]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal[
     "structure_prep",
@@ -134,6 +152,14 @@ class HypothesisEntry(BaseModel):
     candidate_strength: Optional[Literal["strong", "medium", "weak"]] = None
 
 
+class HypothesisScreeningRecord(BaseModel):
+    hypothesis: str
+    screening_status: HypothesisScreeningStatus = "untested"
+    screening_priority: HypothesisScreeningPriority = "normal"
+    evidence_families_covered: list[EvidenceFamily] = Field(default_factory=list)
+    screening_note: Optional[str] = None
+
+
 class AgentReport(BaseModel):
     agent_name: Literal["microscopic", "macro", "verifier"]
     task_received: str
@@ -215,6 +241,12 @@ class PlannerDecision(BaseModel):
     action: PlannerAction
     current_hypothesis: str
     confidence: float
+    reasoning_phase: ReasoningPhase = "portfolio_screening"
+    portfolio_screening_complete: bool = False
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    portfolio_screening_summary: Optional[str] = None
     needs_verifier: bool = False
     finalize: bool = False
     planned_agents: list[PendingAgent] = Field(default_factory=list)
@@ -263,6 +295,12 @@ class WorkingMemoryEntry(BaseModel):
     current_hypothesis: str
     confidence: float
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
+    reasoning_phase: ReasoningPhase = "portfolio_screening"
+    portfolio_screening_complete: bool = False
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    portfolio_screening_summary: Optional[str] = None
     runner_up_hypothesis: Optional[str] = None
     runner_up_confidence: Optional[float] = None
     action_taken: str
@@ -306,6 +344,7 @@ class WorkingMemoryEntry(BaseModel):
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
+    executed_evidence_families: list[EvidenceFamily] = Field(default_factory=list)
     local_uncertainty_summary: Optional[str] = None
     repeated_local_uncertainty_signals: list[str] = Field(default_factory=list)
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
@@ -565,6 +604,12 @@ class AieMasState(BaseModel):
     confidence: Optional[float] = None
     runner_up_hypothesis: Optional[str] = None
     runner_up_confidence: Optional[float] = None
+    reasoning_phase: ReasoningPhase = "portfolio_screening"
+    portfolio_screening_complete: bool = False
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    portfolio_screening_summary: Optional[str] = None
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
     verifier_supplement_target_pair: Optional[str] = None
@@ -589,6 +634,7 @@ class AieMasState(BaseModel):
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
+    executed_evidence_families: list[EvidenceFamily] = Field(default_factory=list)
     hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)
 
     planner_diagnosis_history: list[str] = Field(default_factory=list)

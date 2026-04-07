@@ -68,3 +68,5 @@ def test_recent_rounds_context_keeps_latest_action_gap_and_summaries() -> None:
     assert "capability_assessment" in context[0]
     assert "local_uncertainty_summary" in context[1]
     assert "repeated_local_uncertainty_signals" in context[2]
+    assert "reasoning_phase" in context[0]
+    assert "executed_evidence_families" in context[2]

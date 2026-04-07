@@ -13,6 +13,7 @@ from aie_mas.graph.state import (
     CapabilityLessonEntry,
     DecisionGateStatus,
     HypothesisEntry,
+    HypothesisScreeningRecord,
     PlannerDecision,
     TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES,
 )
@@ -25,6 +26,12 @@ class PlannerInitialResponse(BaseModel):
     hypothesis_pool: list[HypothesisEntry]
     current_hypothesis: str
     confidence: float
+    reasoning_phase: str = "portfolio_screening"
+    portfolio_screening_complete: bool = False
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    portfolio_screening_summary: str = ""
     diagnosis: str
     action: str = "macro_and_microscopic"
     task_instruction: str = ""
@@ -55,6 +62,12 @@ class PlannerInitialResponse(BaseModel):
 
 class PlannerRoundResponse(BaseModel):
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
+    reasoning_phase: str = "portfolio_screening"
+    portfolio_screening_complete: bool = False
+    coverage_debt_hypotheses: list[str] = Field(default_factory=list)
+    credible_alternative_hypotheses: list[str] = Field(default_factory=list)
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    portfolio_screening_summary: str = ""
     diagnosis: str
     action: str
     current_hypothesis: str
@@ -607,6 +620,108 @@ def _normalize_reweight_explanation(
     return normalized
 
 
+def _normalize_reasoning_phase(raw_phase: str | None) -> str:
+    if raw_phase in {"portfolio_screening", "pairwise_contraction"}:
+        return raw_phase
+    return "portfolio_screening"
+
+
+def _normalize_hypothesis_name_list(
+    raw_items: list[str],
+    *,
+    hypothesis_pool: list[HypothesisEntry],
+    exclude: set[str] | None = None,
+) -> list[str]:
+    exclude = exclude or set()
+    allowed = {entry.name for entry in hypothesis_pool}
+    normalized: list[str] = []
+    for raw_item in raw_items:
+        label = _normalize_hypothesis_label(raw_item)
+        if label is None or label not in allowed or label in exclude or label in normalized:
+            continue
+        normalized.append(label)
+    return normalized
+
+
+def _normalize_hypothesis_screening_ledger(
+    raw_ledger: list[HypothesisScreeningRecord],
+    *,
+    hypothesis_pool: list[HypothesisEntry],
+) -> list[HypothesisScreeningRecord]:
+    allowed = {entry.name for entry in hypothesis_pool}
+    normalized: dict[str, HypothesisScreeningRecord] = {}
+    for record in raw_ledger:
+        label = _normalize_hypothesis_label(record.hypothesis)
+        if label is None or label not in allowed:
+            continue
+        normalized[label] = HypothesisScreeningRecord(
+            hypothesis=label,
+            screening_status=record.screening_status,
+            screening_priority=record.screening_priority,
+            evidence_families_covered=list(dict.fromkeys(record.evidence_families_covered)),
+            screening_note=(record.screening_note or "").strip() or None,
+        )
+    return list(normalized.values())
+
+
+def _apply_portfolio_screening_consistency(
+    *,
+    reasoning_phase: str,
+    portfolio_screening_complete: bool,
+    credible_alternative_hypotheses: list[str],
+    coverage_debt_hypotheses: list[str],
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord],
+) -> tuple[str, bool, list[str], list[HypothesisScreeningRecord]]:
+    ledger_by_hypothesis = {record.hypothesis: record for record in hypothesis_screening_ledger}
+    for hypothesis in credible_alternative_hypotheses:
+        ledger_by_hypothesis.setdefault(
+            hypothesis,
+            HypothesisScreeningRecord(hypothesis=hypothesis),
+        )
+
+    normalized_ledger = list(ledger_by_hypothesis.values())
+    debt: list[str] = []
+    for hypothesis in credible_alternative_hypotheses:
+        status = ledger_by_hypothesis[hypothesis].screening_status
+        if status in {"untested", "indirectly_weakened"}:
+            if hypothesis not in debt:
+                debt.append(hypothesis)
+        elif hypothesis in coverage_debt_hypotheses:
+            continue
+
+    for hypothesis in coverage_debt_hypotheses:
+        if hypothesis not in debt and hypothesis in credible_alternative_hypotheses:
+            status = ledger_by_hypothesis[hypothesis].screening_status
+            if status in {"untested", "indirectly_weakened"}:
+                debt.append(hypothesis)
+
+    if debt:
+        return "portfolio_screening", False, debt, normalized_ledger
+
+    if portfolio_screening_complete or reasoning_phase == "pairwise_contraction":
+        return "pairwise_contraction", True, debt, normalized_ledger
+    return "portfolio_screening", False, debt, normalized_ledger
+
+
+def _looks_like_legacy_portfolio_response(
+    *,
+    reasoning_phase: str,
+    portfolio_screening_complete: bool,
+    coverage_debt_hypotheses: list[str],
+    credible_alternative_hypotheses: list[str],
+    hypothesis_screening_ledger: list[HypothesisScreeningRecord],
+    portfolio_screening_summary: str | None,
+) -> bool:
+    return (
+        reasoning_phase == "portfolio_screening"
+        and portfolio_screening_complete is False
+        and not coverage_debt_hypotheses
+        and not credible_alternative_hypotheses
+        and not hypothesis_screening_ledger
+        and not (portfolio_screening_summary or "").strip()
+    )
+
+
 def _decision_pair_from_pool(hypothesis_pool: list[HypothesisEntry]) -> list[str]:
     if len(hypothesis_pool) < 2:
         return [hypothesis_pool[0].name] if hypothesis_pool else []
@@ -785,6 +900,14 @@ def _planner_normalized_payload(
     payload["runner_up_hypothesis"] = decision.runner_up_hypothesis
     payload["runner_up_confidence"] = decision.runner_up_confidence
     payload["hypothesis_reweight_explanation"] = dict(decision.hypothesis_reweight_explanation)
+    payload["reasoning_phase"] = decision.reasoning_phase
+    payload["portfolio_screening_complete"] = decision.portfolio_screening_complete
+    payload["coverage_debt_hypotheses"] = list(decision.coverage_debt_hypotheses)
+    payload["credible_alternative_hypotheses"] = list(decision.credible_alternative_hypotheses)
+    payload["hypothesis_screening_ledger"] = [
+        record.model_dump(mode="json") for record in decision.hypothesis_screening_ledger
+    ]
+    payload["portfolio_screening_summary"] = decision.portfolio_screening_summary
     payload["decision_pair"] = list(decision.decision_pair)
     payload["decision_gate_status"] = decision.decision_gate_status
     payload["verifier_supplement_target_pair"] = decision.verifier_supplement_target_pair
@@ -980,6 +1103,45 @@ class OpenAIPlannerBackend:
             fallback_confidence=response.confidence,
         )
         runner_up_hypothesis, runner_up_confidence = _runner_up_from_pool(hypothesis_pool, current_hypothesis)
+        reasoning_phase = _normalize_reasoning_phase(response.reasoning_phase)
+        credible_alternative_hypotheses = _normalize_hypothesis_name_list(
+            response.credible_alternative_hypotheses,
+            hypothesis_pool=hypothesis_pool,
+            exclude={current_hypothesis},
+        )
+        coverage_debt_hypotheses = _normalize_hypothesis_name_list(
+            response.coverage_debt_hypotheses,
+            hypothesis_pool=hypothesis_pool,
+            exclude={current_hypothesis},
+        )
+        hypothesis_screening_ledger = _normalize_hypothesis_screening_ledger(
+            response.hypothesis_screening_ledger,
+            hypothesis_pool=hypothesis_pool,
+        )
+        portfolio_screening_summary = response.portfolio_screening_summary.strip() or None
+        if _looks_like_legacy_portfolio_response(
+            reasoning_phase=reasoning_phase,
+            portfolio_screening_complete=response.portfolio_screening_complete,
+            coverage_debt_hypotheses=coverage_debt_hypotheses,
+            credible_alternative_hypotheses=credible_alternative_hypotheses,
+            hypothesis_screening_ledger=hypothesis_screening_ledger,
+            portfolio_screening_summary=portfolio_screening_summary,
+        ):
+            reasoning_phase = "pairwise_contraction"
+            portfolio_screening_complete = True
+        else:
+            (
+                reasoning_phase,
+                portfolio_screening_complete,
+                coverage_debt_hypotheses,
+                hypothesis_screening_ledger,
+            ) = _apply_portfolio_screening_consistency(
+                reasoning_phase=reasoning_phase,
+                portfolio_screening_complete=response.portfolio_screening_complete,
+                credible_alternative_hypotheses=credible_alternative_hypotheses,
+                coverage_debt_hypotheses=coverage_debt_hypotheses,
+                hypothesis_screening_ledger=hypothesis_screening_ledger,
+            )
         agent_task_instructions = _normalize_agent_task_instructions(response.agent_task_instructions)
         if not agent_task_instructions:
             agent_task_instructions = _normalize_agent_task_instructions(
@@ -1009,14 +1171,28 @@ class OpenAIPlannerBackend:
                 response.hypothesis_reweight_explanation,
                 hypothesis_pool=hypothesis_pool,
             ),
-            decision_pair=_decision_pair_from_pool(hypothesis_pool),
-            decision_gate_status="not_ready",
-            verifier_supplement_target_pair=_decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            reasoning_phase=reasoning_phase,  # type: ignore[arg-type]
+            portfolio_screening_complete=portfolio_screening_complete,
+            coverage_debt_hypotheses=coverage_debt_hypotheses,
+            credible_alternative_hypotheses=credible_alternative_hypotheses,
+            hypothesis_screening_ledger=hypothesis_screening_ledger,
+            portfolio_screening_summary=portfolio_screening_summary,
+            decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
+            decision_gate_status="not_ready" if portfolio_screening_complete else "needs_portfolio_screening",
+            verifier_supplement_target_pair=(
+                _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
+                if portfolio_screening_complete
+                else None
+            ),
             verifier_supplement_status="missing",
             verifier_information_gain="none",
             verifier_evidence_relation="no_new_info",
             verifier_supplement_summary=None,
-            closure_justification_target_pair=_decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            closure_justification_target_pair=(
+                _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
+                if portfolio_screening_complete
+                else None
+            ),
             closure_justification_status="missing",
             closure_justification_evidence_source=None,
             closure_justification_basis=None,
@@ -1084,6 +1260,45 @@ class OpenAIPlannerBackend:
             fallback_confidence=response.confidence,
         )
         runner_up_hypothesis, runner_up_confidence = _runner_up_from_pool(hypothesis_pool, current_hypothesis)
+        reasoning_phase = _normalize_reasoning_phase(response.reasoning_phase)
+        credible_alternative_hypotheses = _normalize_hypothesis_name_list(
+            response.credible_alternative_hypotheses,
+            hypothesis_pool=hypothesis_pool,
+            exclude={current_hypothesis},
+        )
+        coverage_debt_hypotheses = _normalize_hypothesis_name_list(
+            response.coverage_debt_hypotheses,
+            hypothesis_pool=hypothesis_pool,
+            exclude={current_hypothesis},
+        )
+        hypothesis_screening_ledger = _normalize_hypothesis_screening_ledger(
+            response.hypothesis_screening_ledger,
+            hypothesis_pool=hypothesis_pool,
+        )
+        portfolio_screening_summary = response.portfolio_screening_summary.strip() or None
+        if _looks_like_legacy_portfolio_response(
+            reasoning_phase=reasoning_phase,
+            portfolio_screening_complete=response.portfolio_screening_complete,
+            coverage_debt_hypotheses=coverage_debt_hypotheses,
+            credible_alternative_hypotheses=credible_alternative_hypotheses,
+            hypothesis_screening_ledger=hypothesis_screening_ledger,
+            portfolio_screening_summary=portfolio_screening_summary,
+        ):
+            reasoning_phase = "pairwise_contraction"
+            portfolio_screening_complete = True
+        else:
+            (
+                reasoning_phase,
+                portfolio_screening_complete,
+                coverage_debt_hypotheses,
+                hypothesis_screening_ledger,
+            ) = _apply_portfolio_screening_consistency(
+                reasoning_phase=reasoning_phase,
+                portfolio_screening_complete=response.portfolio_screening_complete,
+                credible_alternative_hypotheses=credible_alternative_hypotheses,
+                coverage_debt_hypotheses=coverage_debt_hypotheses,
+                hypothesis_screening_ledger=hypothesis_screening_ledger,
+            )
         task_instruction = response.task_instruction.strip() or _default_follow_up_task_instruction(
             response.action,
             current_hypothesis,
@@ -1146,11 +1361,21 @@ class OpenAIPlannerBackend:
                 response.hypothesis_reweight_explanation,
                 hypothesis_pool=hypothesis_pool,
             ),
-            decision_pair=_decision_pair_from_pool(hypothesis_pool),
+            reasoning_phase=reasoning_phase,  # type: ignore[arg-type]
+            portfolio_screening_complete=portfolio_screening_complete,
+            coverage_debt_hypotheses=coverage_debt_hypotheses,
+            credible_alternative_hypotheses=credible_alternative_hypotheses,
+            hypothesis_screening_ledger=hypothesis_screening_ledger,
+            portfolio_screening_summary=portfolio_screening_summary,
+            decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
             decision_gate_status=response.decision_gate_status,
             verifier_supplement_target_pair=response.verifier_supplement_target_pair.strip()
             or str(payload.get("verifier_supplement_target_pair") or "").strip()
-            or _decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            or (
+                _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
+                if portfolio_screening_complete
+                else None
+            ),
             verifier_supplement_status=_normalize_verifier_supplement_status(
                 response.verifier_supplement_status
             ),
@@ -1165,7 +1390,11 @@ class OpenAIPlannerBackend:
             or None,
             closure_justification_target_pair=response.closure_justification_target_pair.strip()
             or str(payload.get("closure_justification_target_pair") or "").strip()
-            or _decision_pair_key(_decision_pair_from_pool(hypothesis_pool)),
+            or (
+                _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
+                if portfolio_screening_complete
+                else None
+            ),
             closure_justification_status=_normalize_closure_justification_status(
                 response.closure_justification_status
             ),
@@ -1267,6 +1496,10 @@ class OpenAIPlannerBackend:
         decision = self._apply_round_budget_gate(
             decision=decision,
             payload=payload,
+            main_gap=main_gap,
+        )
+        decision = self._apply_portfolio_screening_gate(
+            decision=decision,
             main_gap=main_gap,
         )
         decision.planned_action_label = _planned_action_label_for_decision(decision)
@@ -1668,6 +1901,98 @@ class OpenAIPlannerBackend:
         )
         if trailing_rationale:
             decision.final_hypothesis_rationale += f" {trailing_rationale}"
+        return decision
+
+    def _portfolio_screening_action(self, decision: PlannerDecision) -> str:
+        if decision.action in {"macro", "microscopic", "verifier"}:
+            return decision.action
+        for candidate in ("microscopic", "macro", "verifier"):
+            if decision.agent_task_instructions.get(candidate):
+                return candidate
+        return "microscopic"
+
+    def _apply_portfolio_screening_gate(
+        self,
+        *,
+        decision: PlannerDecision,
+        main_gap: str,
+    ) -> PlannerDecision:
+        if decision.portfolio_screening_complete:
+            if decision.reasoning_phase != "pairwise_contraction":
+                decision.reasoning_phase = "pairwise_contraction"  # type: ignore[assignment]
+            if not decision.decision_pair:
+                decision.decision_pair = _decision_pair_from_pool(
+                    [
+                        HypothesisEntry(name=decision.current_hypothesis, confidence=decision.confidence),
+                        *(
+                            [HypothesisEntry(name=decision.runner_up_hypothesis, confidence=decision.runner_up_confidence)]
+                            if decision.runner_up_hypothesis
+                            else []
+                        ),
+                    ]
+                )
+            return decision
+
+        decision.reasoning_phase = "portfolio_screening"  # type: ignore[assignment]
+        decision.portfolio_screening_complete = False
+        decision.decision_pair = []
+        decision.decision_gate_status = "needs_portfolio_screening"
+        decision.verifier_supplement_target_pair = None
+        decision.verifier_supplement_status = "missing"
+        decision.verifier_information_gain = "none"
+        decision.verifier_evidence_relation = "no_new_info"
+        decision.closure_justification_target_pair = None
+        decision.closure_justification_status = "missing"
+        decision.closure_justification_evidence_source = None
+        decision.closure_justification_basis = None
+        decision.closure_justification_summary = None
+        decision.pairwise_task_agent = None
+        decision.pairwise_task_completed_for_pair = None
+        decision.pairwise_task_outcome = "not_run"
+        decision.pairwise_task_rationale = None
+        decision.pairwise_resolution_mode = "not_run"
+        decision.pairwise_resolution_evidence_sources = []
+        decision.pairwise_resolution_summary = None
+        decision.pairwise_verifier_completed_for_pair = None
+        decision.pairwise_verifier_evidence_specificity = None
+        decision.finalize = False
+        decision.finalization_mode = "none"
+        decision.final_hypothesis_rationale = None
+        decision.needs_verifier = False
+
+        screening_note = (
+            decision.portfolio_screening_summary
+            or (
+                "Portfolio screening is still incomplete because these still-credible alternative hypotheses "
+                f"have not yet been directly screened, blocked, or dropped: {', '.join(decision.coverage_debt_hypotheses)}."
+            )
+        )
+        decision.portfolio_screening_summary = screening_note
+        decision.capability_assessment = _append_unique_detail(decision.capability_assessment, screening_note)
+        decision.contraction_reason = _append_unique_detail(
+            decision.contraction_reason,
+            "Do not contract to a pure top1-vs-top2 closure until the remaining coverage debt is cleared.",
+        )
+
+        next_action = self._portfolio_screening_action(decision)
+        decision.action = next_action
+        decision.needs_verifier = next_action == "verifier"
+        decision.planned_agents = self._planned_agents_for_action(next_action)
+        if not decision.task_instruction:
+            decision.task_instruction = _default_follow_up_task_instruction(
+                next_action,
+                decision.current_hypothesis,
+                {
+                    "main_gap": main_gap,
+                    "challenger_hypothesis": decision.runner_up_hypothesis,
+                    "capability_assessment": decision.capability_assessment,
+                    "contraction_reason": decision.contraction_reason,
+                },
+            )
+        if next_action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
+            decision.agent_task_instructions = _normalize_agent_task_instructions(
+                {next_action: decision.task_instruction or ""}
+            )  # type: ignore[assignment]
         return decision
 
     def _apply_pre_decision_gate(
@@ -2197,6 +2522,14 @@ class PlannerAgent:
             "current_confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
+            "reasoning_phase": state.reasoning_phase,
+            "portfolio_screening_complete": state.portfolio_screening_complete,
+            "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
+            "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
+            "hypothesis_screening_ledger": [
+                record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
+            ],
+            "portfolio_screening_summary": state.portfolio_screening_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
@@ -2255,6 +2588,14 @@ class PlannerAgent:
             "current_confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
+            "reasoning_phase": state.reasoning_phase,
+            "portfolio_screening_complete": state.portfolio_screening_complete,
+            "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
+            "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
+            "hypothesis_screening_ledger": [
+                record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
+            ],
+            "portfolio_screening_summary": state.portfolio_screening_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,

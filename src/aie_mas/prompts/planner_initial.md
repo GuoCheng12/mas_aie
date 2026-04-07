@@ -13,10 +13,16 @@ Your task in this initial stage is to:
    - `unknown`
 3. Assign all 5 labels explicit confidences that sum to 1.0.
 4. Select the current top1 hypothesis and the current top2 runner-up.
-5. Explain why the top1 is still uncertain and what evidence could separate top1 from top2 later.
-6. State the current specialized-agent capability boundary.
-7. Decide the first-round action plan.
-8. Provide first-round natural-language task instructions for Macro and Microscopic.
+5. Identify which non-top1 hypotheses are still credible enough to remain in the screening portfolio.
+6. Explain why the top1 is still uncertain and what evidence would directly screen still-credible alternatives.
+7. State the current specialized-agent capability boundary.
+8. Decide the first-round action plan.
+9. Provide first-round natural-language task instructions for Macro and Microscopic.
+
+Workflow rules:
+- The initial round starts in `portfolio_screening`, not `pairwise_contraction`.
+- Do not collapse immediately into a pure top1-vs-top2 closure framing if another still-credible hypothesis has not yet been directly screened, blocked by capability, or dropped with reason.
+- Use the portfolio fields only for process coverage tracking, not for chemistry judgments.
 
 System rules:
 - The first round must include both Macro and Microscopic.
@@ -47,6 +53,12 @@ Return:
 - `hypothesis_pool`
 - `current_hypothesis`
 - `confidence`
+- `reasoning_phase`
+- `portfolio_screening_complete`
+- `coverage_debt_hypotheses`
+- `credible_alternative_hypotheses`
+- `hypothesis_screening_ledger`
+- `portfolio_screening_summary`
 - `diagnosis`
 - `action`
 - `task_instruction`
@@ -71,8 +83,22 @@ Hypothesis-pool rules:
 - Provide one short sentence for each of the 5 labels.
 - Explain why each label currently rises, falls, or stays limited.
 
+Portfolio-screening rules:
+- In the initial round, `reasoning_phase` should normally be `portfolio_screening`.
+- In the initial round, `portfolio_screening_complete` should normally be `false`.
+- `credible_alternative_hypotheses` should list non-top1 hypotheses that still deserve explicit screening later.
+- `coverage_debt_hypotheses` should include each still-credible alternative that has not yet been directly screened, blocked by capability, or dropped with reason.
+- `hypothesis_screening_ledger` should record screening status for each still-credible alternative using only:
+  - `untested`
+  - `indirectly_weakened`
+  - `directly_screened`
+  - `blocked_by_capability`
+  - `dropped_with_reason`
+- In the initial round, Macro and the bounded Microscopic baseline provide indirect evidence only; they do not count as `directly_screened` for still-credible third alternatives.
+- `portfolio_screening_summary` should briefly explain which still-credible alternatives remain untested and why the case is still in portfolio screening.
+
 `decision_gate_status` rules:
-- In the initial round it should remain `not_ready`.
+- In the initial round it should normally be `needs_portfolio_screening`.
 
 `pairwise_task_*` and `finalization_mode` rules:
 - `pairwise_task_agent` should be empty in the initial round.
@@ -84,8 +110,10 @@ Hypothesis-pool rules:
 The diagnosis should explain:
 - what the task is
 - what the current top1 and top2 are
+- which additional credible alternatives still remain in the portfolio, if any
 - why top1 is only a working hypothesis
-- what uncertainty is already visible between top1 and top2
+- what uncertainty is already visible between top1, top2, and any still-credible third candidate
 - whether shared prepared structure context is available
 - what Macro and Microscopic can and cannot realistically do
 - why the first round should gather both macro and microscopic evidence
+- why the case remains in portfolio screening rather than pairwise contraction

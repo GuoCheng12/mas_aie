@@ -3,7 +3,12 @@ from __future__ import annotations
 from collections import Counter
 from typing import Any
 
-from aie_mas.graph.state import AieMasState, WorkingMemoryAgentEntry, WorkingMemoryEntry
+from aie_mas.graph.state import (
+    AieMasState,
+    EvidenceFamily,
+    WorkingMemoryAgentEntry,
+    WorkingMemoryEntry,
+)
 
 
 _MICROSCOPIC_ACTION_LABELS: tuple[str, ...] = (
@@ -27,6 +32,22 @@ _MICROSCOPIC_ACTION_LABELS: tuple[str, ...] = (
     "run_targeted_state_characterization",
     "unsupported_excited_state_relaxation",
 )
+_EVIDENCE_FAMILY_BY_ACTION: dict[str, tuple[EvidenceFamily, ...]] = {
+    "run_torsion_snapshots": ("torsion_sensitivity",),
+    "parse_snapshot_outputs": ("torsion_sensitivity",),
+    "run_baseline_bundle": ("state_ordering_brightness",),
+    "run_targeted_state_characterization": ("state_ordering_brightness",),
+    "run_targeted_transition_dipole_analysis": ("state_ordering_brightness",),
+    "run_ris_state_characterization": ("state_ordering_brightness",),
+    "run_targeted_charge_analysis": ("charge_localization",),
+    "run_targeted_density_population_analysis": ("charge_localization",),
+    "run_targeted_localized_orbital_analysis": ("charge_localization",),
+    "run_targeted_natural_orbital_analysis": ("charge_localization",),
+    "extract_ct_descriptors_from_bundle": ("charge_localization",),
+    "extract_geometry_descriptors_from_bundle": ("geometry_precondition",),
+    "inspect_raw_artifact_bundle": ("raw_artifact_inspection",),
+    "verifier": ("external_precedent",),
+}
 
 
 class WorkingMemoryManager:
@@ -73,6 +94,7 @@ class WorkingMemoryManager:
         repeated_local_uncertainty_signals = self._repeated_local_uncertainties(state, agent_reports)
         planned_action_label = self._planned_action_label(state)
         executed_action_labels = self._executed_action_labels(state.active_round_reports)
+        executed_evidence_families = self._executed_evidence_families(executed_action_labels)
         planner_task_instruction = self._backfilled_task_instruction(
             planner_task_instruction=state.last_planner_decision.task_instruction,
             planner_agent_task_instructions=state.last_planner_decision.agent_task_instructions,
@@ -85,6 +107,12 @@ class WorkingMemoryManager:
             current_hypothesis=state.current_hypothesis or "unknown",
             confidence=state.confidence or 0.0,
             hypothesis_pool=list(state.hypothesis_pool),
+            reasoning_phase=state.last_planner_decision.reasoning_phase,
+            portfolio_screening_complete=state.last_planner_decision.portfolio_screening_complete,
+            coverage_debt_hypotheses=list(state.last_planner_decision.coverage_debt_hypotheses),
+            credible_alternative_hypotheses=list(state.last_planner_decision.credible_alternative_hypotheses),
+            hypothesis_screening_ledger=list(state.last_planner_decision.hypothesis_screening_ledger),
+            portfolio_screening_summary=state.last_planner_decision.portfolio_screening_summary,
             runner_up_hypothesis=state.runner_up_hypothesis,
             runner_up_confidence=state.runner_up_confidence,
             action_taken=action_taken,
@@ -130,6 +158,7 @@ class WorkingMemoryManager:
             pairwise_verifier_evidence_specificity=state.last_planner_decision.pairwise_verifier_evidence_specificity,
             planned_action_label=planned_action_label,
             executed_action_labels=executed_action_labels,
+            executed_evidence_families=executed_evidence_families,
             local_uncertainty_summary=local_uncertainty_summary,
             repeated_local_uncertainty_signals=repeated_local_uncertainty_signals,
             capability_lesson_candidates=list(state.last_planner_decision.capability_lesson_candidates),
@@ -138,6 +167,7 @@ class WorkingMemoryManager:
         state.working_memory.append(entry)
         state.planned_action_label = planned_action_label
         state.executed_action_labels = executed_action_labels
+        state.executed_evidence_families = executed_evidence_families
         state.round_idx += 1
         state.active_round_reports.clear()
         return state
@@ -156,6 +186,14 @@ class WorkingMemoryManager:
                     "round_id": entry.round_id,
                     "current_hypothesis": entry.current_hypothesis,
                     "confidence": entry.confidence,
+                    "reasoning_phase": entry.reasoning_phase,
+                    "portfolio_screening_complete": entry.portfolio_screening_complete,
+                    "coverage_debt_hypotheses": list(entry.coverage_debt_hypotheses),
+                    "credible_alternative_hypotheses": list(entry.credible_alternative_hypotheses),
+                    "hypothesis_screening_ledger": [
+                        record.model_dump(mode="json") for record in entry.hypothesis_screening_ledger
+                    ],
+                    "portfolio_screening_summary": self._truncate(entry.portfolio_screening_summary or "", 220),
                     "runner_up_hypothesis": entry.runner_up_hypothesis,
                     "runner_up_confidence": entry.runner_up_confidence,
                     "action_taken": entry.action_taken,
@@ -190,6 +228,7 @@ class WorkingMemoryManager:
                     "planner_task_instruction": self._truncate(entry.planner_task_instruction or "", 220),
                     "planned_action_label": entry.planned_action_label,
                     "executed_action_labels": list(entry.executed_action_labels),
+                    "executed_evidence_families": list(entry.executed_evidence_families),
                     "local_uncertainty_summary": self._truncate(entry.local_uncertainty_summary or "", 260),
                     "repeated_local_uncertainty_signals": entry.repeated_local_uncertainty_signals,
                     "capability_assessment": self._truncate(entry.capability_assessment or "", 220),
@@ -239,6 +278,13 @@ class WorkingMemoryManager:
             "repeated_main_gaps": repeated_gaps,
             "repeated_actions": repeated_actions,
             "repeated_local_uncertainties": repeated_uncertainties,
+            "recent_executed_evidence_families": list(
+                dict.fromkeys(
+                    family
+                    for entry in recent_entries
+                    for family in entry.executed_evidence_families
+                )
+            ),
             "low_information_round_ids": low_information_round_ids,
             "stagnation_round_ids": stagnation_round_ids,
         }
@@ -305,6 +351,14 @@ class WorkingMemoryManager:
             if label not in deduped:
                 deduped.append(label)
         return deduped
+
+    def _executed_evidence_families(self, action_labels: list[str]) -> list[EvidenceFamily]:
+        families: list[EvidenceFamily] = []
+        for label in action_labels:
+            for family in _EVIDENCE_FAMILY_BY_ACTION.get(label, ()):
+                if family not in families:
+                    families.append(family)
+        return families
 
     def _backfilled_task_instruction(
         self,
