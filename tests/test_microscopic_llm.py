@@ -648,6 +648,75 @@ def test_openai_microscopic_supports_semantic_contract_torsion_with_discovery(tm
     assert report.structured_results["unsupported_requests"] == ["full torsion scan"]
 
 
+def test_openai_microscopic_keeps_torsion_soft_preferences_broad_when_contract_is_not_explicit(
+    tmp_path: Path,
+) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Perform one bounded torsion follow-up on the best discoverable conjugated rotor.
+            </task_understanding>
+            <reasoning_summary>
+            Prefer a donor-aryl-like torsion if one is discoverable, otherwise use the next-best bounded rotor without over-constraining discovery.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability can only run one bounded torsion execution per round.
+            </capability_limit_note>
+            <expected_outputs>
+            snapshot geometry labels
+            torsion sensitivity summary
+            </expected_outputs>
+            <failure_policy>
+            If no suitable dihedral can be found, return a local failed microscopic report.
+            </failure_policy>
+            <microscopic_semantic_contract>
+            contract_version=2
+            local_goal=Collect one bounded torsion discriminator without narrowing discovery too early.
+            execution_action=run_torsion_snapshots
+            discovery_actions=list_rotatable_dihedrals
+            requested_route_summary=Discover a good torsion target and run one bounded torsion follow-up.
+            requested_deliverables=torsion sensitivity summary
+            unsupported_requests=
+            param.perform_new_calculation=true
+            param.snapshot_count=2
+            param.angle_offsets_deg=35,70
+            param.state_window=1,2
+            </microscopic_semantic_contract>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Prefer donor-aryl if discoverable, otherwise use the next-best conjugated rotor for one bounded torsion follow-up.",
+        current_hypothesis="TICT",
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="torsion-soft-preferences",
+            objective="Collect torsion-sensitive microscopic evidence without over-constraining discovery.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    request = plan["microscopic_tool_request"]
+    discovery_request = plan["microscopic_tool_plan"]["calls"][0]["request"]
+    assert request["capability_name"] == "run_torsion_snapshots"
+    assert request["preferred_bond_types"] == []
+    assert request["min_relevance"] == "medium"
+    assert request["include_peripheral"] is True
+    assert request["allow_fallback"] is True
+    assert request["selection_relaxation_allowed"] is True
+    assert discovery_request["capability_name"] == "list_rotatable_dihedrals"
+    assert discovery_request["preferred_bond_types"] == []
+    assert discovery_request["min_relevance"] == "medium"
+    assert discovery_request["include_peripheral"] is True
+    assert discovery_request["selection_relaxation_allowed"] is True
+
+
 def test_semantic_contract_is_not_reinterpreted_from_task_text(tmp_path: Path) -> None:
     agent, _ = _build_agent(
         tmp_path,

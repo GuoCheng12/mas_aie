@@ -29,6 +29,7 @@ from aie_mas.graph.state import (
     ConformerDescriptor,
     DihedralBondType,
     DihedralDescriptor,
+    DihedralRelevance,
     MicroscopicCapabilityName,
     MicroscopicExecutionPlan,
     MicroscopicTargetSelectionMode,
@@ -207,6 +208,22 @@ class AmespBaselineRunResult(BaseModel):
     route_summary: dict[str, Any] = Field(default_factory=dict)
     raw_step_results: dict[str, Any] = Field(default_factory=dict)
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
+
+
+class DihedralSelectionResolution(BaseModel):
+    selected_descriptor: Optional[DihedralDescriptor] = None
+    requested_selection_policy: dict[str, Any] = Field(default_factory=dict)
+    applied_selection_policy: dict[str, Any] = Field(default_factory=dict)
+    selection_relaxations_applied: list[str] = Field(default_factory=list)
+    hard_constraint_summary: list[str] = Field(default_factory=list)
+    candidate_count_initial: int = 0
+    candidate_count_after_hard_constraints: int = 0
+    candidate_count_after_relaxation: int = 0
+    selected_dihedral_id: Optional[str] = None
+    selected_dihedral_metadata: dict[str, Any] = Field(default_factory=dict)
+    selection_rationale: str = ""
+    failure_reason_code: Optional[str] = None
+    failure_reason_detail: Optional[str] = None
 
 
 AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefinition] = {
@@ -717,10 +734,12 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "allow_fallback",
             "dihedral_id",
             "exclude_dihedral_ids",
+            "hard_exclude_dihedral_ids",
             "prefer_adjacent_to_nsnc_core",
             "min_relevance",
             "include_peripheral",
             "preferred_bond_types",
+            "selection_relaxation_allowed",
             "source_round_selector",
         ],
         python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
@@ -734,11 +753,13 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "honor_exact_target": _action_param("honor_exact_target", "bool", "Whether the exact dihedral target must be honored.", default=True),
             "allow_fallback": _action_param("allow_fallback", "bool", "Whether bounded fallback is permitted.", default=False),
             "dihedral_id": _action_param("dihedral_id", "dihedral_id", "Explicit stable dihedral target ID."),
-            "exclude_dihedral_ids": _action_param("exclude_dihedral_ids", "text_list", "Dihedral IDs that must be excluded from selection."),
+            "exclude_dihedral_ids": _action_param("exclude_dihedral_ids", "text_list", "Dihedral IDs that should be avoided when alternatives exist."),
+            "hard_exclude_dihedral_ids": _action_param("hard_exclude_dihedral_ids", "text_list", "Dihedral IDs that must never be selected."),
             "prefer_adjacent_to_nsnc_core": _action_param("prefer_adjacent_to_nsnc_core", "bool", "Prefer torsions adjacent to the NSNC core.", default=None),
             "min_relevance": _action_param("min_relevance", "min_relevance", "Requested relevance bucket for dihedral selection.", enum_values=["high", "medium", "low"]),
             "include_peripheral": _action_param("include_peripheral", "bool", "Whether peripheral dihedrals may be considered.", default=False),
             "preferred_bond_types": _action_param("preferred_bond_types", "bond_type_list", "Preferred bond-type classes for torsion selection.", enum_values=["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]),
+            "selection_relaxation_allowed": _action_param("selection_relaxation_allowed", "bool", "Whether torsion selection may automatically relax soft preferences before failing.", default=True),
             "source_round_selector": _action_param(
                 "source_round_selector",
                 "source_round_selector",
@@ -752,8 +773,9 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "optimize_ground_state": False,
             "reuse_existing_artifacts_only": False,
             "honor_exact_target": True,
-            "allow_fallback": False,
-            "include_peripheral": False,
+            "allow_fallback": True,
+            "include_peripheral": True,
+            "selection_relaxation_allowed": True,
             "source_round_selector": "latest_available",
         },
         allowed_discovery_actions=["list_rotatable_dihedrals"],
@@ -1382,17 +1404,19 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
                     "angle_offsets_deg": [35, 70],
                     "state_window": [1, 2, 3],
                     "honor_exact_target": True,
-                    "allow_fallback": False,
+                    "allow_fallback": True,
                     "exclude_dihedral_ids": ["dih_0_1_2_3"],
                     "prefer_adjacent_to_nsnc_core": True,
-                    "min_relevance": "high",
-                    "include_peripheral": False,
+                    "min_relevance": "medium",
+                    "include_peripheral": True,
                     "preferred_bond_types": ["aryl-vinyl", "heteroaryl-linkage"],
+                    "selection_relaxation_allowed": True,
                     "source_round_selector": "latest_available",
                 },
                 "unsupported_parts": ["excited-state relaxation", "solvent response"],
                 "local_execution_rationale": (
-                    "Run a bounded torsion snapshot screen on one high-relevance dihedral near the NSNC core."
+                    "Run a bounded torsion snapshot screen on one preferred dihedral near the NSNC core, "
+                    "while allowing automatic fallback if the preferred rotor is not discoverable."
                 ),
             },
             ensure_ascii=False,
@@ -1763,6 +1787,10 @@ class AmespMicroscopicTool:
             exc.generated_artifacts["resolved_target_ids"] = dict(
                 resolution_payload.get("resolved_target_ids", {})
             )
+            if resolution_payload.get("selection_report"):
+                exc.generated_artifacts["selection_report"] = dict(
+                    resolution_payload.get("selection_report", {})
+                )
             if exc.status == "partial":
                 exc.generated_artifacts.setdefault("bundle_completion_status", "partial")
             if isinstance(exc.structured_results, dict):
@@ -1778,6 +1806,11 @@ class AmespMicroscopicTool:
                     "unmet_constraints",
                     list(resolution_payload.get("unmet_constraints", [])),
                 )
+                if resolution_payload.get("selection_report"):
+                    exc.structured_results.setdefault(
+                        "selection_report",
+                        dict(resolution_payload.get("selection_report", {})),
+                    )
             artifact_bundle_entry = _artifact_bundle_entry_from_generated_artifacts(
                 source_capability=resolved_request.capability_name,
                 source_round=round_index,
@@ -1804,6 +1837,11 @@ class AmespMicroscopicTool:
         result.honored_constraints = list(resolution_payload.get("honored_constraints", []))
         result.unmet_constraints = list(resolution_payload.get("unmet_constraints", []))
         result.generated_artifacts["resolved_target_ids"] = dict(result.resolved_target_ids)
+        if resolution_payload.get("selection_report"):
+            selection_report = dict(resolution_payload.get("selection_report", {}))
+            result.generated_artifacts["selection_report"] = selection_report
+            result.route_summary.update(selection_report)
+            result.raw_step_results["selection_report"] = selection_report
         result.generated_artifacts["source_round"] = round_index
         result.generated_artifacts.setdefault("bundle_completion_status", "complete")
         artifact_bundle_entry = _artifact_bundle_entry_from_generated_artifacts(
@@ -2014,6 +2052,7 @@ class AmespMicroscopicTool:
         resolved_target_ids: dict[str, Any] = {}
         honored_constraints: list[str] = []
         unmet_constraints: list[str] = []
+        selection_report: dict[str, Any] = {}
 
         if resolved_request.dihedral_id and not resolved_request.dihedral_atom_indices:
             parsed_atoms = _dihedral_atoms_from_id(resolved_request.dihedral_id)
@@ -2065,24 +2104,30 @@ class AmespMicroscopicTool:
 
         if request.capability_name == "run_torsion_snapshots" and not resolved_request.dihedral_id:
             dihedral_items = self._collect_discovery_items(discovery_results, "list_rotatable_dihedrals")
-            descriptor = _select_dihedral_descriptor(dihedral_items, selection_policy)
+            selection_resolution = _select_dihedral_descriptor(dihedral_items, selection_policy)
+            selection_report = selection_resolution.model_dump(mode="json", exclude={"selected_descriptor"})
+            descriptor = selection_resolution.selected_descriptor
             if descriptor is None:
+                failure_reason_code = selection_resolution.failure_reason_code or "soft_preferences_exhausted"
+                failure_reason_detail = selection_resolution.failure_reason_detail or (
+                    "No discovery-listed rotatable dihedral satisfied the requested torsion-selection policy."
+                )
                 raise AmespExecutionError(
                     "precondition_missing",
-                    "No discovery-listed rotatable dihedral satisfied the requested selection policy for torsion snapshots.",
+                    failure_reason_detail,
                     status="failed",
                     structured_results={
                         "executed_capability": "run_torsion_snapshots",
                         "performed_new_calculations": True,
                         "reused_existing_artifacts": False,
+                        "selection_failure_reason": failure_reason_code,
+                        **selection_report,
                     },
                 )
             resolved_request.dihedral_id = descriptor.dihedral_id
             resolved_request.dihedral_atom_indices = list(descriptor.atom_indices)
             resolved_target_ids["dihedral_id"] = descriptor.dihedral_id
-            honored_constraints.extend(
-                _describe_dihedral_constraints(descriptor=descriptor, policy=selection_policy)
-            )
+            honored_constraints.extend(_describe_dihedral_constraints(resolution=selection_resolution))
 
         if request.capability_name in {
             "run_targeted_charge_analysis",
@@ -2123,22 +2168,27 @@ class AmespMicroscopicTool:
         elif request.capability_name == "run_conformer_bundle" and request.conformer_id:
             resolved_target_ids["conformer_id"] = request.conformer_id
 
+        if resolved_request.dihedral_id and selection_policy.hard_exclude_dihedral_ids:
+            if resolved_request.dihedral_id in selection_policy.hard_exclude_dihedral_ids:
+                unmet_constraints.append(
+                    f"Resolved dihedral `{resolved_request.dihedral_id}` violated hard_exclude_dihedral_ids."
+                )
+                raise AmespExecutionError(
+                    "precondition_missing",
+                    f"The requested dihedral `{resolved_request.dihedral_id}` is explicitly hard-excluded by the selection policy.",
+                    status="failed",
+                    structured_results={
+                        "executed_capability": request.capability_name,
+                        "performed_new_calculations": request.perform_new_calculation,
+                        "reused_existing_artifacts": request.reuse_existing_artifacts_only,
+                        "selection_failure_reason": "hard_exclusions_exhausted",
+                    },
+                )
         if resolved_request.dihedral_id and selection_policy.exclude_dihedral_ids:
             if resolved_request.dihedral_id in selection_policy.exclude_dihedral_ids:
-                unmet_constraints.append(
-                    f"Resolved dihedral `{resolved_request.dihedral_id}` violated exclude_dihedral_ids."
+                honored_constraints.append(
+                    f"Resolved dihedral `{resolved_request.dihedral_id}` matched soft exclude_dihedral_ids, but exact targeting or fallback semantics allowed execution."
                 )
-                if not resolved_request.allow_fallback:
-                    raise AmespExecutionError(
-                        "precondition_missing",
-                        f"The requested dihedral `{resolved_request.dihedral_id}` is explicitly excluded by the selection policy.",
-                        status="failed",
-                        structured_results={
-                            "executed_capability": request.capability_name,
-                            "performed_new_calculations": request.perform_new_calculation,
-                            "reused_existing_artifacts": request.reuse_existing_artifacts_only,
-                        },
-                    )
 
         if request.capability_name == "run_conformer_bundle" and request.conformer_ids:
             available_ids = {
@@ -2166,6 +2216,7 @@ class AmespMicroscopicTool:
             "resolved_target_ids": resolved_target_ids,
             "honored_constraints": honored_constraints,
             "unmet_constraints": unmet_constraints,
+            "selection_report": selection_report,
         }
 
     def _collect_discovery_items(
@@ -2851,6 +2902,7 @@ class AmespMicroscopicTool:
                     "executed_capability": "run_torsion_snapshots",
                     "performed_new_calculations": True,
                     "reused_existing_artifacts": False,
+                    "selection_failure_reason": "exact_target_missing" if request.dihedral_id else "no_rotatable_dihedral",
                 },
             )
 
@@ -6462,40 +6514,223 @@ def _relevance_rank(relevance: Literal["high", "medium", "low"]) -> int:
     return 2
 
 
+def _selection_policy_summary(policy: SelectionPolicy) -> dict[str, Any]:
+    return {
+        "exclude_dihedral_ids": list(policy.exclude_dihedral_ids),
+        "hard_exclude_dihedral_ids": list(policy.hard_exclude_dihedral_ids),
+        "prefer_adjacent_to_nsnc_core": policy.prefer_adjacent_to_nsnc_core,
+        "min_relevance": policy.min_relevance,
+        "include_peripheral": policy.include_peripheral,
+        "preferred_bond_types": list(policy.preferred_bond_types),
+        "selection_relaxation_allowed": policy.selection_relaxation_allowed,
+    }
+
+
+def _dihedral_selection_sort_key(
+    descriptor: DihedralDescriptor,
+    *,
+    policy: SelectionPolicy,
+) -> tuple[int, int, int, int, str]:
+    return (
+        _relevance_rank(descriptor.central_conjugation_relevance),
+        0 if (not policy.prefer_adjacent_to_nsnc_core or descriptor.adjacent_to_nsnc_core) else 1,
+        0 if descriptor.dihedral_id not in policy.exclude_dihedral_ids else 1,
+        0 if not descriptor.peripheral else 1,
+        descriptor.dihedral_id,
+    )
+
+
+def _apply_soft_dihedral_preferences(
+    descriptors: list[DihedralDescriptor],
+    *,
+    min_relevance: DihedralRelevance,
+    include_peripheral: bool,
+    preferred_bond_types: list[DihedralBondType],
+    prefer_adjacent_to_nsnc_core: bool,
+    exclude_dihedral_ids: list[str],
+    allow_soft_exclude_fallback: bool,
+) -> list[DihedralDescriptor]:
+    filtered = [
+        descriptor
+        for descriptor in descriptors
+        if _relevance_rank(descriptor.central_conjugation_relevance) <= _relevance_rank(min_relevance)
+    ]
+    if not filtered:
+        return []
+    if not include_peripheral:
+        filtered = [descriptor for descriptor in filtered if not descriptor.peripheral]
+        if not filtered:
+            return []
+    if preferred_bond_types:
+        filtered = [descriptor for descriptor in filtered if descriptor.bond_type in preferred_bond_types]
+        if not filtered:
+            return []
+    if prefer_adjacent_to_nsnc_core:
+        core_adjacent = [descriptor for descriptor in filtered if descriptor.adjacent_to_nsnc_core]
+        if core_adjacent:
+            filtered = core_adjacent
+    if exclude_dihedral_ids:
+        preferred = [descriptor for descriptor in filtered if descriptor.dihedral_id not in exclude_dihedral_ids]
+        if preferred:
+            filtered = preferred
+        elif not allow_soft_exclude_fallback:
+            return []
+    return filtered
+
+
 def _select_dihedral_descriptor(
     items: list[dict[str, Any]],
     policy: SelectionPolicy,
-) -> Optional[DihedralDescriptor]:
+) -> DihedralSelectionResolution:
     descriptors = [DihedralDescriptor.model_validate(item) for item in items]
-    filtered = [item for item in descriptors if item.dihedral_id not in policy.exclude_dihedral_ids]
-    if policy.preferred_bond_types:
-        preferred = [item for item in filtered if item.bond_type in policy.preferred_bond_types]
-        if preferred:
-            filtered = preferred
-    filtered = [
-        item
-        for item in filtered
-        if _relevance_rank(item.central_conjugation_relevance) <= _relevance_rank(policy.min_relevance)
-    ]
-    if not policy.include_peripheral:
-        non_peripheral = [item for item in filtered if not item.peripheral]
-        if non_peripheral:
-            filtered = non_peripheral
-    if policy.prefer_adjacent_to_nsnc_core:
-        core_adjacent = [item for item in filtered if item.adjacent_to_nsnc_core]
-        if core_adjacent:
-            filtered = core_adjacent
-    if not filtered:
-        return None
-    filtered.sort(
-        key=lambda item: (
-            _relevance_rank(item.central_conjugation_relevance),
-            0 if item.adjacent_to_nsnc_core else 1,
-            1 if item.peripheral else 0,
-            item.dihedral_id,
-        )
+    resolution = DihedralSelectionResolution(
+        requested_selection_policy=_selection_policy_summary(policy),
+        applied_selection_policy=_selection_policy_summary(policy),
+        candidate_count_initial=len(descriptors),
     )
-    return filtered[0]
+    if not descriptors:
+        resolution.failure_reason_code = "no_rotatable_dihedral"
+        resolution.failure_reason_detail = "No discovery-listed rotatable dihedrals were available for selection."
+        resolution.selection_rationale = resolution.failure_reason_detail
+        return resolution
+
+    hard_filtered = [
+        descriptor
+        for descriptor in descriptors
+        if descriptor.dihedral_id not in policy.hard_exclude_dihedral_ids
+    ]
+    resolution.candidate_count_after_hard_constraints = len(hard_filtered)
+    if policy.hard_exclude_dihedral_ids:
+        resolution.hard_constraint_summary.append(
+            f"Applied hard dihedral exclusions: {sorted(policy.hard_exclude_dihedral_ids)}."
+        )
+    if not hard_filtered:
+        resolution.failure_reason_code = "hard_exclusions_exhausted"
+        resolution.failure_reason_detail = "Hard dihedral exclusions removed every discoverable torsion candidate."
+        resolution.selection_rationale = resolution.failure_reason_detail
+        return resolution
+
+    current_min_relevance = policy.min_relevance
+    current_include_peripheral = policy.include_peripheral
+    current_preferred_bond_types = list(policy.preferred_bond_types)
+    soft_exclude_fallback_enabled = False
+    known_bond_types = sorted({descriptor.bond_type for descriptor in hard_filtered})
+
+    candidate_pool = _apply_soft_dihedral_preferences(
+        hard_filtered,
+        min_relevance=current_min_relevance,
+        include_peripheral=current_include_peripheral,
+        preferred_bond_types=current_preferred_bond_types,
+        prefer_adjacent_to_nsnc_core=policy.prefer_adjacent_to_nsnc_core,
+        exclude_dihedral_ids=policy.exclude_dihedral_ids,
+        allow_soft_exclude_fallback=soft_exclude_fallback_enabled,
+    )
+    if not candidate_pool and policy.selection_relaxation_allowed:
+        if current_min_relevance == "high":
+            current_min_relevance = "medium"
+            resolution.selection_relaxations_applied.append("min_relevance: high -> medium")
+            candidate_pool = _apply_soft_dihedral_preferences(
+                hard_filtered,
+                min_relevance=current_min_relevance,
+                include_peripheral=current_include_peripheral,
+                preferred_bond_types=current_preferred_bond_types,
+                prefer_adjacent_to_nsnc_core=policy.prefer_adjacent_to_nsnc_core,
+                exclude_dihedral_ids=policy.exclude_dihedral_ids,
+                allow_soft_exclude_fallback=soft_exclude_fallback_enabled,
+            )
+        if not candidate_pool and not current_include_peripheral:
+            current_include_peripheral = True
+            resolution.selection_relaxations_applied.append("include_peripheral: false -> true")
+            candidate_pool = _apply_soft_dihedral_preferences(
+                hard_filtered,
+                min_relevance=current_min_relevance,
+                include_peripheral=current_include_peripheral,
+                preferred_bond_types=current_preferred_bond_types,
+                prefer_adjacent_to_nsnc_core=policy.prefer_adjacent_to_nsnc_core,
+                exclude_dihedral_ids=policy.exclude_dihedral_ids,
+                allow_soft_exclude_fallback=soft_exclude_fallback_enabled,
+            )
+        if not candidate_pool and current_preferred_bond_types:
+            current_preferred_bond_types = known_bond_types
+            resolution.selection_relaxations_applied.append("preferred_bond_types: broadened to all known torsion bond types")
+            candidate_pool = _apply_soft_dihedral_preferences(
+                hard_filtered,
+                min_relevance=current_min_relevance,
+                include_peripheral=current_include_peripheral,
+                preferred_bond_types=current_preferred_bond_types,
+                prefer_adjacent_to_nsnc_core=policy.prefer_adjacent_to_nsnc_core,
+                exclude_dihedral_ids=policy.exclude_dihedral_ids,
+                allow_soft_exclude_fallback=soft_exclude_fallback_enabled,
+            )
+        if not candidate_pool and policy.exclude_dihedral_ids:
+            soft_exclude_fallback_enabled = True
+            resolution.selection_relaxations_applied.append(
+                "exclude_dihedral_ids: softened to avoid-only when alternatives exist"
+            )
+            candidate_pool = _apply_soft_dihedral_preferences(
+                hard_filtered,
+                min_relevance=current_min_relevance,
+                include_peripheral=current_include_peripheral,
+                preferred_bond_types=current_preferred_bond_types,
+                prefer_adjacent_to_nsnc_core=policy.prefer_adjacent_to_nsnc_core,
+                exclude_dihedral_ids=policy.exclude_dihedral_ids,
+                allow_soft_exclude_fallback=soft_exclude_fallback_enabled,
+            )
+
+    resolution.candidate_count_after_relaxation = len(candidate_pool)
+    resolution.applied_selection_policy = {
+        "exclude_dihedral_ids": list(policy.exclude_dihedral_ids),
+        "hard_exclude_dihedral_ids": list(policy.hard_exclude_dihedral_ids),
+        "prefer_adjacent_to_nsnc_core": policy.prefer_adjacent_to_nsnc_core,
+        "min_relevance": current_min_relevance,
+        "include_peripheral": current_include_peripheral,
+        "preferred_bond_types": list(current_preferred_bond_types),
+        "selection_relaxation_allowed": policy.selection_relaxation_allowed,
+        "soft_exclude_fallback_enabled": soft_exclude_fallback_enabled,
+    }
+    if not candidate_pool:
+        resolution.failure_reason_code = "soft_preferences_exhausted"
+        resolution.failure_reason_detail = (
+            "No discovery-listed rotatable dihedral satisfied the requested soft-preference policy, even after relaxation."
+        )
+        resolution.selection_rationale = resolution.failure_reason_detail
+        return resolution
+
+    candidate_pool.sort(key=lambda descriptor: _dihedral_selection_sort_key(descriptor, policy=policy))
+    selected_descriptor = candidate_pool[0]
+    resolution.selected_descriptor = selected_descriptor
+    resolution.selected_dihedral_id = selected_descriptor.dihedral_id
+    resolution.selected_dihedral_metadata = {
+        "dihedral_id": selected_descriptor.dihedral_id,
+        "atom_indices": list(selected_descriptor.atom_indices),
+        "bond_type": selected_descriptor.bond_type,
+        "relevance": selected_descriptor.central_conjugation_relevance,
+        "is_peripheral": selected_descriptor.peripheral,
+        "adjacent_to_nsnc_core": selected_descriptor.adjacent_to_nsnc_core,
+    }
+    rationale_bits = [
+        f"Selected `{selected_descriptor.dihedral_id}` as the highest-ranked hard-eligible torsion candidate.",
+        f"bond_type=`{selected_descriptor.bond_type}`",
+        f"relevance=`{selected_descriptor.central_conjugation_relevance}`",
+        f"peripheral={selected_descriptor.peripheral}",
+        f"adjacent_to_nsnc_core={selected_descriptor.adjacent_to_nsnc_core}",
+    ]
+    if policy.prefer_adjacent_to_nsnc_core and not selected_descriptor.adjacent_to_nsnc_core:
+        rationale_bits.append("preferred an NSNC-adjacent torsion, but no hard-eligible candidate satisfied that preference")
+    if policy.preferred_bond_types and selected_descriptor.bond_type not in policy.preferred_bond_types:
+        rationale_bits.append(
+            f"preferred bond types were {policy.preferred_bond_types}, but fallback selected `{selected_descriptor.bond_type}`"
+        )
+    if policy.exclude_dihedral_ids and selected_descriptor.dihedral_id in policy.exclude_dihedral_ids:
+        rationale_bits.append(
+            f"soft exclusions preferred avoiding `{selected_descriptor.dihedral_id}`, but no alternative candidate remained after relaxation"
+        )
+    if resolution.selection_relaxations_applied:
+        rationale_bits.append(
+            "after applying relaxations: " + "; ".join(resolution.selection_relaxations_applied)
+        )
+    resolution.selection_rationale = ", ".join(rationale_bits) + "."
+    return resolution
 
 
 def _select_artifact_bundle_descriptor(
@@ -6520,22 +6755,25 @@ def _select_artifact_bundle_descriptor(
 
 def _describe_dihedral_constraints(
     *,
-    descriptor: DihedralDescriptor,
-    policy: SelectionPolicy,
+    resolution: DihedralSelectionResolution,
 ) -> list[str]:
+    descriptor = resolution.selected_descriptor
+    if descriptor is None:
+        return []
     notes = [f"Resolved dihedral target to `{descriptor.dihedral_id}` with atoms {descriptor.atom_indices}."]
-    if policy.prefer_adjacent_to_nsnc_core and descriptor.adjacent_to_nsnc_core:
-        notes.append("Honored constraint: selected a dihedral adjacent to the NSNC-like core.")
-    if descriptor.central_conjugation_relevance == policy.min_relevance or (
-        policy.min_relevance == "medium" and descriptor.central_conjugation_relevance == "high"
-    ) or (policy.min_relevance == "low"):
+    if descriptor.adjacent_to_nsnc_core:
+        notes.append("Selected a dihedral adjacent to the NSNC-like core.")
+    notes.append(
+        f"Selected central conjugation relevance `{descriptor.central_conjugation_relevance}` and bond type `{descriptor.bond_type}`."
+    )
+    if not descriptor.peripheral:
+        notes.append("Selected a non-peripheral dihedral candidate.")
+    if resolution.selection_relaxations_applied:
         notes.append(
-            f"Honored constraint: central conjugation relevance is `{descriptor.central_conjugation_relevance}`."
+            "Applied torsion-selection relaxations before execution: "
+            + "; ".join(resolution.selection_relaxations_applied)
+            + "."
         )
-    if not policy.include_peripheral and not descriptor.peripheral:
-        notes.append("Honored constraint: avoided peripheral dihedral candidates.")
-    if policy.preferred_bond_types and descriptor.bond_type in policy.preferred_bond_types:
-        notes.append(f"Honored constraint: selected preferred bond type `{descriptor.bond_type}`.")
     return notes
 
 

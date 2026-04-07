@@ -217,6 +217,8 @@ class MicroscopicToolRequestDraft(BaseModel):
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    hard_exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    selection_relaxation_allowed: Optional[bool] = None
     dihedral_id: Optional[str] = None
     dihedral_atom_indices: list[int] = Field(default_factory=list)
     conformer_id: Optional[str] = None
@@ -289,10 +291,12 @@ class MicroscopicSemanticConstraintsDraft(BaseModel):
 
 class MicroscopicSemanticSelectionDraft(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    hard_exclude_dihedral_ids: list[str] = Field(default_factory=list)
     prefer_adjacent_to_nsnc_core: Optional[bool] = None
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    selection_relaxation_allowed: Optional[bool] = None
     artifact_kind: Optional[
         Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]
     ] = None
@@ -433,10 +437,12 @@ class MicroscopicActionDecision(BaseModel):
 
 class SelectionPolicyDraft(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    hard_exclude_dihedral_ids: list[str] = Field(default_factory=list)
     prefer_adjacent_to_nsnc_core: Optional[bool] = None
     min_relevance: Optional[Literal["high", "medium", "low"]] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    selection_relaxation_allowed: Optional[bool] = None
     artifact_kind: Optional[
         Literal["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]
     ] = None
@@ -521,10 +527,12 @@ _TAGGED_PROTOCOL_ROOT_KEYS = {
 }
 _TAGGED_PROTOCOL_SELECTION_KEYS = {
     "exclude_dihedral_ids",
+    "hard_exclude_dihedral_ids",
     "prefer_adjacent_to_nsnc_core",
     "min_relevance",
     "include_peripheral",
     "preferred_bond_types",
+    "selection_relaxation_allowed",
     "artifact_kind",
     "source_round_preference",
 }
@@ -546,6 +554,8 @@ _TAGGED_PROTOCOL_CALL_KEYS = {
     "min_relevance",
     "include_peripheral",
     "preferred_bond_types",
+    "hard_exclude_dihedral_ids",
+    "selection_relaxation_allowed",
     "dihedral_id",
     "dihedral_atom_indices",
     "conformer_id",
@@ -587,10 +597,12 @@ _TAGGED_CONTRACT_CONSTRAINT_KEYS = {
 }
 _TAGGED_CONTRACT_SELECTION_KEYS = {
     "exclude_dihedral_ids",
+    "hard_exclude_dihedral_ids",
     "prefer_adjacent_to_nsnc_core",
     "min_relevance",
     "include_peripheral",
     "preferred_bond_types",
+    "selection_relaxation_allowed",
     "artifact_kind",
     "source_round_selector",
 }
@@ -910,7 +922,9 @@ def _build_semantic_contract_draft(
     for key, value in selection_values.items():
         if key == "exclude_dihedral_ids":
             selection_payload[key] = _parse_symbolic_list(value)
-        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
+        elif key == "hard_exclude_dihedral_ids":
+            selection_payload[key] = _parse_symbolic_list(value)
+        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral", "selection_relaxation_allowed"}:
             selection_payload[key] = _parse_bool(value)
         elif key == "preferred_bond_types":
             selection_payload[key] = _parse_symbolic_list(value)
@@ -1190,10 +1204,12 @@ def _semantic_contract_from_action_card(
                 constraints_payload[key] = params[key]
         for key in (
             "exclude_dihedral_ids",
+            "hard_exclude_dihedral_ids",
             "prefer_adjacent_to_nsnc_core",
             "min_relevance",
             "include_peripheral",
             "preferred_bond_types",
+            "selection_relaxation_allowed",
             "source_round_selector",
         ):
             if key in params:
@@ -1582,6 +1598,8 @@ def _action_decision_from_execution_plan(
             if value in (None, [], {}):
                 if param_name == "exclude_dihedral_ids":
                     value = list(selection_policy.exclude_dihedral_ids)
+                elif param_name == "hard_exclude_dihedral_ids":
+                    value = list(selection_policy.hard_exclude_dihedral_ids)
                 elif param_name == "prefer_adjacent_to_nsnc_core":
                     value = selection_policy.prefer_adjacent_to_nsnc_core
                 elif param_name == "min_relevance":
@@ -1590,6 +1608,8 @@ def _action_decision_from_execution_plan(
                     value = selection_policy.include_peripheral
                 elif param_name == "preferred_bond_types":
                     value = list(selection_policy.preferred_bond_types)
+                elif param_name == "selection_relaxation_allowed":
+                    value = selection_policy.selection_relaxation_allowed
                 elif param_name == "artifact_kind":
                     value = selection_policy.artifact_kind
                 elif param_name == "source_round_selector":
@@ -1659,10 +1679,16 @@ def _selection_policy_from_semantic_contract(
 ) -> SelectionPolicy:
     return SelectionPolicy(
         exclude_dihedral_ids=list(contract.selection.exclude_dihedral_ids),
+        hard_exclude_dihedral_ids=list(contract.selection.hard_exclude_dihedral_ids),
         prefer_adjacent_to_nsnc_core=bool(contract.selection.prefer_adjacent_to_nsnc_core or False),
         min_relevance=contract.selection.min_relevance or "medium",
         include_peripheral=True if contract.selection.include_peripheral is None else contract.selection.include_peripheral,
         preferred_bond_types=list(contract.selection.preferred_bond_types),
+        selection_relaxation_allowed=(
+            True
+            if contract.selection.selection_relaxation_allowed is None
+            else contract.selection.selection_relaxation_allowed
+        ),
         artifact_kind=contract.selection.artifact_kind,
         source_round_preference=_source_round_preference_from_selector(
             contract.selection.source_round_selector,
@@ -1953,6 +1979,8 @@ def compile_semantic_contract_to_tool_plan(
         min_relevance=selection_policy.min_relevance,
         include_peripheral=selection_policy.include_peripheral,
         preferred_bond_types=list(selection_policy.preferred_bond_types),
+        hard_exclude_dihedral_ids=list(selection_policy.hard_exclude_dihedral_ids),
+        selection_relaxation_allowed=selection_policy.selection_relaxation_allowed,
         dihedral_id=contract.target.dihedral_id if effective_capability == "run_torsion_snapshots" else None,
         conformer_id=contract.target.conformer_id if effective_capability == "run_conformer_bundle" else None,
         conformer_ids=list(contract.target.conformer_ids) if effective_capability == "run_conformer_bundle" else [],
@@ -1975,11 +2003,30 @@ def compile_semantic_contract_to_tool_plan(
         angle_offsets_deg=list(contract.constraints.angle_offsets_deg) if effective_capability == "run_torsion_snapshots" else [],
         state_window=list(contract.constraints.state_window),
         honor_exact_target=contract.constraints.honor_exact_target if contract.constraints.honor_exact_target is not None else True,
-        allow_fallback=contract.constraints.allow_fallback if contract.constraints.allow_fallback is not None else False,
+        allow_fallback=(
+            contract.constraints.allow_fallback
+            if contract.constraints.allow_fallback is not None
+            else effective_capability == "run_torsion_snapshots" and contract.target.dihedral_id is None
+        ),
         deliverables=list(contract.requested_deliverables),
         budget_profile=budget_profile,
         requested_route_summary=contract.requested_route_summary,
     )
+    if discovery_need == "rotatable_dihedrals":
+        for index, call in enumerate(calls):
+            if call.request.capability_name != "list_rotatable_dihedrals":
+                continue
+            discovery_request = execution_request.model_copy(deep=True)
+            discovery_request.capability_name = "list_rotatable_dihedrals"
+            discovery_request.requested_route_summary = (
+                "Discover stable rotatable dihedral targets before bounded torsion execution."
+            )
+            calls[index] = MicroscopicToolCall(
+                call_id=call.call_id,
+                call_kind="discovery",
+                request=discovery_request,
+            )
+            break
     calls.append(
         MicroscopicToolCall(
             call_id=f"{'discover' if effective_capability == 'list_artifact_bundle_members' else 'execute'}_{effective_capability}",
@@ -2021,10 +2068,12 @@ def _selection_policy_from_reasoning_draft(draft: Optional[SelectionPolicyDraft]
         return SelectionPolicy()
     return SelectionPolicy(
         exclude_dihedral_ids=list(draft.exclude_dihedral_ids),
+        hard_exclude_dihedral_ids=list(draft.hard_exclude_dihedral_ids),
         prefer_adjacent_to_nsnc_core=bool(draft.prefer_adjacent_to_nsnc_core or False),
         min_relevance=draft.min_relevance or "medium",
         include_peripheral=True if draft.include_peripheral is None else draft.include_peripheral,
         preferred_bond_types=list(draft.preferred_bond_types),
+        selection_relaxation_allowed=True if draft.selection_relaxation_allowed is None else draft.selection_relaxation_allowed,
         artifact_kind=draft.artifact_kind,
         source_round_preference=draft.source_round_preference,
     )
@@ -2340,6 +2389,21 @@ def _normalize_tool_request_from_draft(
         if draft.preferred_bond_types
         else list(selection_policy.preferred_bond_types)
     )
+    if capability_name == "run_torsion_snapshots" and draft.dihedral_id is None:
+        if draft.min_relevance is None and selection_policy.min_relevance == "medium":
+            min_relevance = "medium"
+        if draft.include_peripheral is None and selection_policy.include_peripheral:
+            include_peripheral = True
+    hard_exclude_dihedral_ids = (
+        list(draft.hard_exclude_dihedral_ids)
+        if draft.hard_exclude_dihedral_ids
+        else list(selection_policy.hard_exclude_dihedral_ids)
+    )
+    selection_relaxation_allowed = (
+        draft.selection_relaxation_allowed
+        if draft.selection_relaxation_allowed is not None
+        else selection_policy.selection_relaxation_allowed
+    )
     return MicroscopicToolRequest(
         capability_name=capability_name,
         structure_source=(
@@ -2378,6 +2442,8 @@ def _normalize_tool_request_from_draft(
         min_relevance=min_relevance,
         include_peripheral=include_peripheral,
         preferred_bond_types=preferred_bond_types,
+        hard_exclude_dihedral_ids=hard_exclude_dihedral_ids,
+        selection_relaxation_allowed=selection_relaxation_allowed,
         dihedral_id=draft.dihedral_id,
         dihedral_atom_indices=list(draft.dihedral_atom_indices),
         conformer_id=draft.conformer_id,
@@ -2388,7 +2454,11 @@ def _normalize_tool_request_from_draft(
         angle_offsets_deg=list(draft.angle_offsets_deg),
         state_window=state_window,
         honor_exact_target=draft.honor_exact_target if draft.honor_exact_target is not None else True,
-        allow_fallback=draft.allow_fallback if draft.allow_fallback is not None else False,
+        allow_fallback=(
+            draft.allow_fallback
+            if draft.allow_fallback is not None
+            else capability_name == "run_torsion_snapshots" and draft.dihedral_id is None
+        ),
         deliverables=list(draft.deliverables) if draft.deliverables else list(requested_deliverables),
         budget_profile=draft.budget_profile or budget_profile,
         requested_route_summary=draft.requested_route_summary or _default_requested_route_summary_for_capability(capability_name),
@@ -2442,22 +2512,16 @@ def _insert_required_discovery_calls(
             and not call.request.dihedral_id
             and not has_dihedral_discovery
         ):
+            discovery_request = call.request.model_copy(deep=True)
+            discovery_request.capability_name = "list_rotatable_dihedrals"
+            discovery_request.requested_route_summary = (
+                "Discover stable rotatable dihedral targets before bounded torsion execution."
+            )
             normalized.append(
                 MicroscopicToolCall(
                     call_id="discover_rotatable_dihedrals",
                     call_kind="discovery",
-                    request=MicroscopicToolRequest(
-                        capability_name="list_rotatable_dihedrals",
-                        structure_source=_structure_source_for_semantic_capability(
-                            "list_rotatable_dihedrals",
-                            task_mode=task_mode,
-                            has_reusable_structure=has_reusable_structure,
-                        ),
-                        min_relevance=selection_policy.min_relevance,
-                        include_peripheral=selection_policy.include_peripheral,
-                        preferred_bond_types=list(selection_policy.preferred_bond_types),
-                        requested_route_summary="Discover stable rotatable dihedral targets before bounded torsion execution.",
-                    ),
+                    request=discovery_request,
                 )
             )
             has_dihedral_discovery = True
@@ -3011,7 +3075,9 @@ def _build_tagged_selection_policy(selection_values: dict[str, str]) -> Optional
     for key, value in selection_values.items():
         if key == "exclude_dihedral_ids":
             payload[key] = _parse_symbolic_list(value)
-        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral"}:
+        elif key == "hard_exclude_dihedral_ids":
+            payload[key] = _parse_symbolic_list(value)
+        elif key in {"prefer_adjacent_to_nsnc_core", "include_peripheral", "selection_relaxation_allowed"}:
             payload[key] = _parse_bool(value)
         elif key == "source_round_preference":
             payload[key] = _parse_source_round_preference_value(value)
@@ -3067,6 +3133,7 @@ def _build_tagged_tool_calls(
                 "honor_exact_target",
                 "allow_fallback",
                 "include_peripheral",
+                "selection_relaxation_allowed",
             }:
                 request_payload[key] = _parse_bool(value)
             elif key in {
@@ -3085,7 +3152,7 @@ def _build_tagged_tool_calls(
                 request_payload[key] = _parse_int_list(value)
             elif key in {"deliverables"}:
                 request_payload[key] = _parse_pipe_list(value)
-            elif key in {"conformer_ids", "preferred_bond_types"}:
+            elif key in {"conformer_ids", "preferred_bond_types", "hard_exclude_dihedral_ids"}:
                 request_payload[key] = _parse_symbolic_list(value)
             else:
                 request_payload[key] = value

@@ -2289,7 +2289,184 @@ def test_amesp_tool_uses_discovery_before_torsion_execution_when_dihedral_id_is_
     assert result.executed_capability == "run_torsion_snapshots"
     assert result.resolved_target_ids["dihedral_id"] == "dih_0_1_2_3"
     assert any("NSNC-like core" in note or "NSNC-like" in note for note in result.honored_constraints)
+    assert result.route_summary["requested_selection_policy"]["min_relevance"] == "high"
+    assert result.route_summary["selected_dihedral_id"] == "dih_0_1_2_3"
+    assert result.route_summary["candidate_count_initial"] == 2
+    assert result.route_summary["selection_relaxations_applied"] == []
     assert all(record["dihedral_atoms"] == [0, 1, 2, 3] for record in result.route_records)
+
+
+def test_amesp_torsion_selection_relaxes_soft_preferences_before_execution(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr("aie_mas.tools.amesp._generate_torsion_snapshot_bundle", _fake_torsion_snapshot_bundle)
+    monkeypatch.setattr(
+        "aie_mas.tools.amesp._list_rotatable_dihedral_descriptors",
+        lambda prepared: [
+            DihedralDescriptor(
+                dihedral_id="dih_9_10_11_12",
+                atom_indices=[9, 10, 11, 12],
+                central_bond_indices=[10, 11],
+                label="peripheral medium rotor",
+                bond_type="aryl-aryl",
+                adjacent_to_nsnc_core=False,
+                central_conjugation_relevance="medium",
+                peripheral=True,
+                rotatable=True,
+            ),
+        ],
+    )
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    result = tool.execute(
+        plan=MicroscopicExecutionPlan(
+            local_goal="Try a donor-aryl preference first, but allow bounded fallback if unavailable.",
+            requested_deliverables=["torsion sensitivity summary"],
+            capability_route="torsion_snapshot_follow_up",
+            microscopic_tool_plan=MicroscopicToolPlan(
+                calls=[
+                    MicroscopicToolCall(
+                        call_id="discover_dihedrals",
+                        call_kind="discovery",
+                        request=MicroscopicToolRequest(
+                            capability_name="list_rotatable_dihedrals",
+                            structure_source="round_s0_optimized_geometry",
+                            min_relevance="high",
+                            include_peripheral=False,
+                            requested_route_summary="Discover usable dihedral IDs.",
+                        ),
+                    ),
+                    MicroscopicToolCall(
+                        call_id="execute_torsion",
+                        call_kind="execution",
+                        request=MicroscopicToolRequest(
+                            capability_name="run_torsion_snapshots",
+                            perform_new_calculation=True,
+                            snapshot_count=2,
+                            angle_offsets_deg=[35.0, 70.0],
+                            state_window=[1, 2],
+                            deliverables=["torsion sensitivity summary"],
+                            requested_route_summary="Use the best available torsion if the preferred one is unavailable.",
+                        ),
+                    ),
+                ],
+                selection_policy=SelectionPolicy(
+                    exclude_dihedral_ids=["dih_9_10_11_12"],
+                    prefer_adjacent_to_nsnc_core=True,
+                    min_relevance="high",
+                    include_peripheral=False,
+                    preferred_bond_types=["heteroaryl-linkage"],
+                    selection_relaxation_allowed=True,
+                ),
+            ),
+            structure_source="prepared_from_smiles",
+            failure_reporting="Return partial or failed if Amesp fails.",
+        ),
+        smiles="N",
+        label="relaxed_torsion_case",
+        workdir=tmp_path / "relaxed_torsion_workdir",
+        available_artifacts={},
+    )
+
+    assert result.executed_capability == "run_torsion_snapshots"
+    assert result.resolved_target_ids["dihedral_id"] == "dih_9_10_11_12"
+    assert result.route_summary["selected_dihedral_id"] == "dih_9_10_11_12"
+    assert result.route_summary["candidate_count_initial"] == 1
+    assert result.route_summary["candidate_count_after_hard_constraints"] == 1
+    assert result.route_summary["candidate_count_after_relaxation"] == 1
+    assert result.route_summary["selection_relaxations_applied"] == [
+        "min_relevance: high -> medium",
+        "include_peripheral: false -> true",
+        "preferred_bond_types: broadened to all known torsion bond types",
+        "exclude_dihedral_ids: softened to avoid-only when alternatives exist",
+    ]
+    assert "highest-ranked hard-eligible torsion candidate" in result.route_summary["selection_rationale"]
+
+
+def test_amesp_torsion_hard_exclusions_still_fail_when_they_exhaust_candidates(
+    tmp_path: Path, monkeypatch
+) -> None:
+    amesp_bin = tmp_path / "amesp"
+    amesp_bin.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "aie_mas.tools.amesp._list_rotatable_dihedral_descriptors",
+        lambda prepared: [
+            DihedralDescriptor(
+                dihedral_id="dih_9_10_11_12",
+                atom_indices=[9, 10, 11, 12],
+                central_bond_indices=[10, 11],
+                label="only rotor",
+                bond_type="aryl-aryl",
+                adjacent_to_nsnc_core=False,
+                central_conjugation_relevance="medium",
+                peripheral=True,
+                rotatable=True,
+            ),
+        ],
+    )
+    tool = AmespBaselineMicroscopicTool(
+        amesp_bin=amesp_bin,
+        structure_preparer=_fake_structure_preparer,
+        subprocess_runner=_fake_subprocess_success,
+    )
+
+    try:
+        tool.execute(
+            plan=MicroscopicExecutionPlan(
+                local_goal="Require a torsion that is also hard-excluded.",
+                requested_deliverables=["torsion sensitivity summary"],
+                capability_route="torsion_snapshot_follow_up",
+                microscopic_tool_plan=MicroscopicToolPlan(
+                    calls=[
+                        MicroscopicToolCall(
+                            call_id="discover_dihedrals",
+                            call_kind="discovery",
+                            request=MicroscopicToolRequest(
+                                capability_name="list_rotatable_dihedrals",
+                                structure_source="round_s0_optimized_geometry",
+                                requested_route_summary="Discover usable dihedral IDs.",
+                            ),
+                        ),
+                        MicroscopicToolCall(
+                            call_id="execute_torsion",
+                            call_kind="execution",
+                            request=MicroscopicToolRequest(
+                                capability_name="run_torsion_snapshots",
+                                perform_new_calculation=True,
+                                snapshot_count=2,
+                                angle_offsets_deg=[35.0, 70.0],
+                                state_window=[1, 2],
+                                deliverables=["torsion sensitivity summary"],
+                                requested_route_summary="Use a discoverable torsion if possible.",
+                            ),
+                        ),
+                    ],
+                    selection_policy=SelectionPolicy(
+                        hard_exclude_dihedral_ids=["dih_9_10_11_12"],
+                        selection_relaxation_allowed=True,
+                    ),
+                ),
+                structure_source="prepared_from_smiles",
+                failure_reporting="Return partial or failed if Amesp fails.",
+            ),
+            smiles="N",
+            label="hard_excluded_torsion_case",
+            workdir=tmp_path / "hard_excluded_torsion_workdir",
+            available_artifacts={},
+        )
+    except AmespExecutionError as exc:
+        assert exc.code == "precondition_missing"
+        assert exc.structured_results["selection_failure_reason"] == "hard_exclusions_exhausted"
+        assert exc.structured_results["candidate_count_initial"] == 1
+        assert exc.structured_results["candidate_count_after_hard_constraints"] == 0
+    else:  # pragma: no cover
+        raise AssertionError("Expected hard-excluded torsion discovery to fail.")
 
 
 def test_amesp_parse_snapshot_outputs_fails_when_artifacts_are_missing(tmp_path: Path) -> None:

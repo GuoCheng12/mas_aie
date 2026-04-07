@@ -389,10 +389,12 @@ class ArtifactBundleRegistryEntry(BaseModel):
 
 class SelectionPolicy(BaseModel):
     exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    hard_exclude_dihedral_ids: list[str] = Field(default_factory=list)
     prefer_adjacent_to_nsnc_core: bool = False
     min_relevance: DihedralRelevance = "medium"
     include_peripheral: bool = True
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    selection_relaxation_allowed: bool = True
     artifact_kind: Optional[ArtifactBundleKind] = None
     source_round_preference: Optional[int] = None
 
@@ -416,6 +418,8 @@ class MicroscopicToolRequest(BaseModel):
     min_relevance: Optional[DihedralRelevance] = None
     include_peripheral: Optional[bool] = None
     preferred_bond_types: list[DihedralBondType] = Field(default_factory=list)
+    hard_exclude_dihedral_ids: list[str] = Field(default_factory=list)
+    selection_relaxation_allowed: bool = True
     dihedral_id: Optional[str] = None
     dihedral_atom_indices: list[int] = Field(default_factory=list)
     conformer_id: Optional[str] = None
