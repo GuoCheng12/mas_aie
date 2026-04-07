@@ -140,13 +140,16 @@ def test_mentioned_microscopic_capabilities_includes_new_targeted_interfaces() -
     ]
 
 
-def test_mentioned_microscopic_capabilities_ignores_temporarily_disabled_interfaces() -> None:
+def test_mentioned_microscopic_capabilities_includes_orbital_interfaces() -> None:
     instruction = (
         "Try run_targeted_localized_orbital_analysis first, then run_targeted_natural_orbital_analysis "
         "if the first route fails."
     )
 
-    assert _mentioned_microscopic_capabilities(instruction) == []
+    assert _mentioned_microscopic_capabilities(instruction) == [
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+    ]
 
 
 def test_single_action_microscopic_task_instruction_for_supported_targeted_interface_is_neutral() -> None:

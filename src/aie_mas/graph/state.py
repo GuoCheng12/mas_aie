@@ -58,10 +58,7 @@ MicroscopicCapabilityName = Literal[
     "unsupported_excited_state_relaxation",
 ]
 AmespCapabilityName = MicroscopicCapabilityName
-TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES: tuple[str, ...] = (
-    "run_targeted_localized_orbital_analysis",
-    "run_targeted_natural_orbital_analysis",
-)
+TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES: tuple[str, ...] = ()
 MicroscopicBudgetProfile = Literal["conservative", "balanced", "aggressive"]
 MicroscopicToolCallKind = Literal["discovery", "execution"]
 DihedralBondType = Literal["aryl-aryl", "aryl-vinyl", "heteroaryl-linkage", "other"]

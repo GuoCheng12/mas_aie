@@ -1446,8 +1446,6 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             indent=2,
         ),
     }
-    examples.pop("targeted_localized_orbital_analysis", None)
-    examples.pop("targeted_natural_orbital_analysis", None)
     return examples
 
 
@@ -1718,25 +1716,6 @@ class AmespMicroscopicTool:
         current_hypothesis: Optional[str],
     ) -> AmespBaselineRunResult:
         capability = AMESP_CAPABILITY_REGISTRY[request.capability_name]
-        if _is_temporarily_disabled_amesp_capability(request.capability_name):
-            keyword_family = (
-                "lmo"
-                if request.capability_name == "run_targeted_localized_orbital_analysis"
-                else "natorb"
-            )
-            raise AmespExecutionError(
-                "capability_unsupported",
-                (
-                    f"Amesp capability '{request.capability_name}' is temporarily disabled because the current "
-                    f"validated backend rejects the `{keyword_family}` keyword family in probe runs."
-                ),
-                status="failed",
-                structured_results={
-                    "executed_capability": request.capability_name,
-                    "performed_new_calculations": False,
-                    "reused_existing_artifacts": bool(request.reuse_existing_artifacts_only),
-                },
-            )
         if capability.requires_new_calculation and not self._amesp_bin.exists():
             raise AmespExecutionError(
                 "amesp_binary_missing",
@@ -2734,6 +2713,7 @@ class AmespMicroscopicTool:
                 executed_capability=capability_name,
                 performed_new_calculations=True,
                 reused_existing_artifacts=True,
+                analysis_method_lines=profile.get("analysis_method_lines"),
                 analysis_ope_lines=profile["analysis_ope_lines"],
                 ground_state_profile=profile.get("ground_state_profile"),
                 excitation_profile=profile.get("excitation_profile"),
@@ -3364,6 +3344,7 @@ class AmespMicroscopicTool:
         executed_capability: MicroscopicCapabilityName,
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
+        analysis_method_lines: Sequence[str] | None = None,
         analysis_ope_lines: Sequence[str] | None = None,
         ground_state_profile: dict[str, Any] | None = None,
         excitation_profile: dict[str, Any] | None = None,
@@ -3388,6 +3369,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
+                analysis_method_lines=analysis_method_lines,
                 analysis_ope_lines=analysis_ope_lines,
             )
         else:
@@ -3401,6 +3383,7 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
+                analysis_method_lines=analysis_method_lines,
                 analysis_ope_lines=analysis_ope_lines,
                 ground_state_profile=ground_state_profile,
             )
@@ -3461,12 +3444,15 @@ class AmespMicroscopicTool:
     def _build_s0_block_lines(
         self,
         *,
+        analysis_method_lines: Sequence[str] | None = None,
         analysis_ope_lines: Sequence[str] | None = None,
     ) -> list[tuple[str, list[str]]]:
         block_lines = [
             ("opt", ["maxcyc 2000", "gediis off", "maxstep 0.3"]),
             ("scf", ["maxcyc 2000", "vshift 500"]),
         ]
+        if analysis_method_lines:
+            block_lines.append(("method", list(analysis_method_lines)))
         if analysis_ope_lines:
             block_lines.append(("ope", list(analysis_ope_lines)))
         return block_lines
@@ -3489,6 +3475,7 @@ class AmespMicroscopicTool:
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
+        analysis_method_lines: Sequence[str] | None = None,
         analysis_ope_lines: Sequence[str] | None = None,
     ) -> tuple[AmespGroundStateResult, list[list[float]], dict[str, Any], dict[str, Any]]:
         raw_results: dict[str, Any] = {}
@@ -3498,7 +3485,10 @@ class AmespMicroscopicTool:
             label=f"{label}_s0",
             workdir=workdir,
             keywords=self._build_s0_keywords(),
-            block_lines=self._build_s0_block_lines(analysis_ope_lines=analysis_ope_lines),
+            block_lines=self._build_s0_block_lines(
+                analysis_method_lines=analysis_method_lines,
+                analysis_ope_lines=analysis_ope_lines,
+            ),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -3561,6 +3551,7 @@ class AmespMicroscopicTool:
         round_index: int,
         case_id: Optional[str],
         current_hypothesis: Optional[str],
+        analysis_method_lines: Sequence[str] | None = None,
         analysis_ope_lines: Sequence[str] | None = None,
         ground_state_profile: dict[str, Any] | None = None,
     ) -> tuple[AmespGroundStateResult, list[list[float]], dict[str, Any], dict[str, Any]]:
@@ -3577,7 +3568,10 @@ class AmespMicroscopicTool:
             label=f"{label}_s0sp",
             workdir=workdir,
             keywords=keywords,
-            block_lines=_build_ground_state_singlepoint_block_lines(analysis_ope_lines=analysis_ope_lines),
+            block_lines=_build_ground_state_singlepoint_block_lines(
+                analysis_method_lines=analysis_method_lines,
+                analysis_ope_lines=analysis_ope_lines,
+            ),
             charge=prepared.charge,
             multiplicity=prepared.multiplicity,
             symbols=symbols,
@@ -4218,9 +4212,12 @@ def _write_amesp_input(
 
 def _build_ground_state_singlepoint_block_lines(
     *,
+    analysis_method_lines: Sequence[str] | None = None,
     analysis_ope_lines: Sequence[str] | None = None,
 ) -> list[tuple[str, list[str]]]:
     block_lines = [("scf", ["maxcyc 2000", "vshift 500"])]
+    if analysis_method_lines:
+        block_lines.append(("method", list(analysis_method_lines)))
     if analysis_ope_lines:
         block_lines.append(("ope", list(analysis_ope_lines)))
     return block_lines
@@ -5041,9 +5038,11 @@ def _targeted_property_profile_for_capability(
     descriptor_scope: Sequence[str],
 ) -> dict[str, Any]:
     normalized_scope = [_normalize_descriptor_name(item) for item in descriptor_scope if str(item).strip()]
+    targeted_state_method_lines = _targeted_state_characterization_method_lines(normalized_scope)
     if capability_name == "run_targeted_charge_analysis":
         return {
             "descriptor_scope": ["hirshfeld_charges", "mulliken_charges", "ground_state_dipole"],
+            "analysis_method_lines": [],
             "analysis_ope_lines": ["charge hirshfeld"],
             "availability_key": "charge_availability",
             "available_key": "available_charge_observables",
@@ -5053,7 +5052,8 @@ def _targeted_property_profile_for_capability(
     if capability_name == "run_targeted_localized_orbital_analysis":
         return {
             "descriptor_scope": ["localized_orbitals_pm", "molecular_orbital_files"],
-            "analysis_ope_lines": ["mofile on", "lmo pm"],
+            "analysis_method_lines": ["lmo pm"],
+            "analysis_ope_lines": ["mofile on"],
             "availability_key": "localized_orbital_availability",
             "available_key": "available_localized_orbital_observables",
             "missing_key": "missing_localized_orbital_observables",
@@ -5063,7 +5063,8 @@ def _targeted_property_profile_for_capability(
     if capability_name == "run_targeted_natural_orbital_analysis":
         return {
             "descriptor_scope": ["natural_orbitals_no", "molecular_orbital_files"],
-            "analysis_ope_lines": ["mofile on", "natorb no"],
+            "analysis_method_lines": ["natorb no"],
+            "analysis_ope_lines": ["mofile on"],
             "availability_key": "natural_orbital_availability",
             "available_key": "available_natural_orbital_observables",
             "missing_key": "missing_natural_orbital_observables",
@@ -5073,6 +5074,7 @@ def _targeted_property_profile_for_capability(
     if capability_name == "run_targeted_density_population_analysis":
         return {
             "descriptor_scope": ["density_matrix", "gross_orbital_populations", "mayer_bond_order"],
+            "analysis_method_lines": [],
             "analysis_ope_lines": ["out 2"],
             "availability_key": "density_population_availability",
             "available_key": "available_density_population_observables",
@@ -5085,6 +5087,7 @@ def _targeted_property_profile_for_capability(
                 "ground_to_excited_transition_dipoles",
                 "excited_to_excited_transition_dipoles",
             ],
+            "analysis_method_lines": [],
             "analysis_ope_lines": [],
             "availability_key": "transition_dipole_availability",
             "available_key": "available_transition_dipole_observables",
@@ -5100,6 +5103,7 @@ def _targeted_property_profile_for_capability(
                 "mulliken_charges",
                 "molecular_orbital_files",
             ],
+            "analysis_method_lines": [],
             "analysis_ope_lines": [],
             "availability_key": "ris_state_characterization_availability",
             "available_key": "available_ris_state_characterization_observables",
@@ -5115,13 +5119,29 @@ def _targeted_property_profile_for_capability(
             "mulliken_charges",
             "molecular_orbital_files",
         ],
+        "analysis_method_lines": targeted_state_method_lines,
         "analysis_ope_lines": _targeted_state_characterization_ope_lines(normalized_scope),
         "availability_key": "state_characterization_availability",
         "available_key": "available_state_character_descriptors",
         "missing_key": "missing_state_character_descriptors",
-        "ground_state_profile": {"mode": "atb_singlepoint", "method_label": "sp-atb"},
+        "ground_state_profile": {
+            "mode": "dft_singlepoint" if targeted_state_method_lines else "atb_singlepoint",
+            "method_label": "sp-b3lyp" if targeted_state_method_lines else "sp-atb",
+        },
         "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
     }
+
+
+def _targeted_state_characterization_method_lines(
+    descriptor_scope: Sequence[str],
+) -> list[str]:
+    scope = {_normalize_descriptor_name(item) for item in descriptor_scope}
+    lines: list[str] = []
+    if "localized_orbitals_pm" in scope:
+        lines.append("lmo pm")
+    if "natural_orbitals_no" in scope:
+        lines.append("natorb no")
+    return list(dict.fromkeys(lines))
 
 
 def _targeted_state_characterization_ope_lines(
@@ -5132,11 +5152,10 @@ def _targeted_state_characterization_ope_lines(
     if "hirshfeld_charges" in scope:
         lines.append("charge hirshfeld")
     if "localized_orbitals_pm" in scope:
-        lines.extend(["mofile on", "lmo pm"])
+        lines.append("mofile on")
     if "natural_orbitals_no" in scope:
         if "mofile on" not in lines:
             lines.append("mofile on")
-        lines.append("natorb no")
     if any(item in scope for item in {"density_matrix", "gross_orbital_populations", "mayer_bond_order"}):
         lines.append("out 2")
     return list(dict.fromkeys(lines))

@@ -382,29 +382,10 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         self,
         task_received: str,
     ) -> list[str]:
-        lowered = task_received.lower()
-        blocked: list[str] = []
-        phrase_mapping = {
-            "run_targeted_localized_orbital_analysis": (
-                "run_targeted_localized_orbital_analysis is temporarily disabled because the current Amesp backend rejects the lmo keyword family"
-            ),
-            "run_targeted_natural_orbital_analysis": (
-                "run_targeted_natural_orbital_analysis is temporarily disabled because the current Amesp backend rejects the natorb keyword family"
-            ),
-            "localized orbital analysis": (
-                "localized-orbital analysis is temporarily disabled because the current Amesp backend rejects the lmo keyword family"
-            ),
-            "natural orbital analysis": (
-                "natural-orbital analysis is temporarily disabled because the current Amesp backend rejects the natorb keyword family"
-            ),
-        }
-        for phrase, note in phrase_mapping.items():
-            if phrase in lowered:
-                blocked.append(note)
-        for capability_name in TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES:
-            if capability_name.lower() in lowered:
-                blocked.append(phrase_mapping[capability_name])
-        return list(dict.fromkeys(blocked))
+        del task_received
+        if not TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES:
+            return []
+        return []
 
     def _has_reusable_structure(self, available_artifacts: dict[str, Any]) -> bool:
         summary_path = available_artifacts.get("prepared_summary_path")
@@ -424,6 +405,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         return (
             "Current microscopic capability is Amesp low-cost multi-route execution with protocolized capabilities: "
             "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, run_targeted_charge_analysis, "
+            "run_targeted_localized_orbital_analysis, run_targeted_natural_orbital_analysis, "
             "run_targeted_density_population_analysis, run_targeted_transition_dipole_analysis, "
             "run_ris_state_characterization, run_targeted_state_characterization, parse_snapshot_outputs, "
             "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and "
