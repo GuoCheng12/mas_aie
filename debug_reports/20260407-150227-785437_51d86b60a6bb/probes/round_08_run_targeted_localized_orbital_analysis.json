@@ -1,0 +1,171 @@
+{
+  "round_index": 8,
+  "capability_name": "run_targeted_localized_orbital_analysis",
+  "status": "failed",
+  "plan": {
+    "plan_version": "amesp_baseline_v1",
+    "local_goal": "Probe microscopic capability 'run_targeted_localized_orbital_analysis' directly without Planner mediation.",
+    "requested_deliverables": [
+      "targeted localized-orbital analysis records",
+      "localized-orbital availability summary",
+      "bounded raw localized-orbital observables"
+    ],
+    "capability_route": "targeted_property_follow_up",
+    "microscopic_tool_plan": {
+      "calls": [],
+      "requested_route_summary": "No microscopic tool-plan summary was provided.",
+      "requested_deliverables": [],
+      "selection_policy": {
+        "exclude_dihedral_ids": [],
+        "prefer_adjacent_to_nsnc_core": false,
+        "min_relevance": "medium",
+        "include_peripheral": true,
+        "preferred_bond_types": [],
+        "artifact_kind": null,
+        "source_round_preference": null
+      },
+      "normalization_notes": [],
+      "failure_reporting": "Return a local failed or partial report if the selected microscopic capability cannot be completed."
+    },
+    "microscopic_tool_request": {
+      "capability_name": "run_targeted_localized_orbital_analysis",
+      "structure_source": null,
+      "perform_new_calculation": true,
+      "optimize_ground_state": false,
+      "reuse_existing_artifacts_only": false,
+      "artifact_source_round": 1,
+      "artifact_scope": "baseline_bundle",
+      "artifact_bundle_id": "round_01_baseline_bundle",
+      "artifact_kind": "baseline_bundle",
+      "descriptor_scope": [],
+      "requested_observable_scope": [],
+      "source_round_preference": null,
+      "min_relevance": null,
+      "include_peripheral": null,
+      "preferred_bond_types": [],
+      "dihedral_id": null,
+      "dihedral_atom_indices": [],
+      "conformer_id": null,
+      "conformer_ids": [],
+      "max_conformers": null,
+      "snapshot_count": null,
+      "target_count": 1,
+      "angle_offsets_deg": [],
+      "state_window": [
+        1,
+        2
+      ],
+      "honor_exact_target": true,
+      "allow_fallback": false,
+      "deliverables": [
+        "targeted localized-orbital analysis records",
+        "localized-orbital availability summary",
+        "bounded raw localized-orbital observables"
+      ],
+      "budget_profile": "balanced",
+      "requested_route_summary": "Probe capability 'run_targeted_localized_orbital_analysis' on reusable baseline artifact bundle 'round_01_baseline_bundle' with fixed-geometry follow-up for state_window=[1, 2]."
+    },
+    "budget_profile": "balanced",
+    "requested_route_summary": "Probe capability 'run_targeted_localized_orbital_analysis' on reusable baseline artifact bundle 'round_01_baseline_bundle' with fixed-geometry follow-up for state_window=[1, 2].",
+    "structure_source": "existing_prepared_structure",
+    "supported_scope": [],
+    "unsupported_requests": [],
+    "planning_unmet_constraints": [],
+    "steps": [],
+    "expected_outputs": [
+      "targeted localized-orbital analysis records",
+      "localized-orbital availability summary",
+      "bounded raw localized-orbital observables"
+    ],
+    "failure_reporting": "If the probe fails, capture the Amesp error payload, raw stdout/stderr, and generated artifacts."
+  },
+  "probe_events": [
+    {
+      "phase": "probe",
+      "round": 8,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "51d86b60a6bb",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint",
+        "probe_status": "start",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.aop",
+        "keywords": [
+          "b3lyp",
+          "sto-3g"
+        ],
+        "npara": 20,
+        "maxcore_mb": 12000,
+        "use_ricosx": true
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 8,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "51d86b60a6bb",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint_subprocess",
+        "probe_status": "start",
+        "pid": 33427,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 8,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "51d86b60a6bb",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint_subprocess",
+        "probe_status": "end",
+        "exit_code": 0,
+        "elapsed_seconds": 0.5231,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stderr.log"
+      }
+    }
+  ],
+  "error": {
+    "code": "normal_termination_missing",
+    "message": "Amesp step 's0_singlepoint' did not report normal termination.",
+    "generated_artifacts": {
+      "step_id": "s0_singlepoint",
+      "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.aip",
+      "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.aop",
+      "mo_path": null,
+      "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stdout.log",
+      "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_08_run_targeted_localized_orbital_analysis/targeted_property_follow_up/baseline_bundle/51d86b60a6bb_probe_r08_baseline_bundle_char_s0sp.stderr.log",
+      "exit_code": 0,
+      "terminated_normally": false,
+      "elapsed_seconds": 0.5231,
+      "source_round": 8,
+      "resolved_target_ids": {
+        "artifact_bundle_id": "round_01_baseline_bundle"
+      }
+    },
+    "raw_results": {
+      "stdout": "  Stop : error keyword: \"lmo\" in >ope!\n \n",
+      "stderr": ""
+    },
+    "structured_results": {
+      "resolved_target_ids": {
+        "artifact_bundle_id": "round_01_baseline_bundle"
+      },
+      "honored_constraints": [
+        "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization.",
+        "Execution request honored explicit canonical artifact bundle `round_01_baseline_bundle`."
+      ],
+      "unmet_constraints": []
+    },
+    "status": "failed"
+  },
+  "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/probes/round_08_run_targeted_localized_orbital_analysis.json"
+}

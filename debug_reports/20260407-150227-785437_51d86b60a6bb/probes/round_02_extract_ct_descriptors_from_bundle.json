@@ -1,0 +1,546 @@
+{
+  "round_index": 2,
+  "capability_name": "extract_ct_descriptors_from_bundle",
+  "status": "success",
+  "plan": {
+    "plan_version": "amesp_baseline_v1",
+    "local_goal": "Probe microscopic capability 'extract_ct_descriptors_from_bundle' directly without Planner mediation.",
+    "requested_deliverables": [
+      "CT-descriptor availability summary",
+      "bounded CT descriptor records",
+      "artifact-backed CT surrogate summary"
+    ],
+    "capability_route": "artifact_parse_only",
+    "microscopic_tool_plan": {
+      "calls": [],
+      "requested_route_summary": "No microscopic tool-plan summary was provided.",
+      "requested_deliverables": [],
+      "selection_policy": {
+        "exclude_dihedral_ids": [],
+        "prefer_adjacent_to_nsnc_core": false,
+        "min_relevance": "medium",
+        "include_peripheral": true,
+        "preferred_bond_types": [],
+        "artifact_kind": null,
+        "source_round_preference": null
+      },
+      "normalization_notes": [],
+      "failure_reporting": "Return a local failed or partial report if the selected microscopic capability cannot be completed."
+    },
+    "microscopic_tool_request": {
+      "capability_name": "extract_ct_descriptors_from_bundle",
+      "structure_source": null,
+      "perform_new_calculation": false,
+      "optimize_ground_state": true,
+      "reuse_existing_artifacts_only": true,
+      "artifact_source_round": 1,
+      "artifact_scope": "baseline_bundle",
+      "artifact_bundle_id": "round_01_baseline_bundle",
+      "artifact_kind": "baseline_bundle",
+      "descriptor_scope": [
+        "hole-electron-centroid-separation",
+        "hole-electron-overlap",
+        "qCT/charge_transferred",
+        "ct_overlap_index",
+        "mulliken_charges_summary"
+      ],
+      "requested_observable_scope": [],
+      "source_round_preference": null,
+      "min_relevance": null,
+      "include_peripheral": null,
+      "preferred_bond_types": [],
+      "dihedral_id": null,
+      "dihedral_atom_indices": [],
+      "conformer_id": null,
+      "conformer_ids": [],
+      "max_conformers": null,
+      "snapshot_count": null,
+      "target_count": null,
+      "angle_offsets_deg": [],
+      "state_window": [
+        1,
+        2
+      ],
+      "honor_exact_target": true,
+      "allow_fallback": false,
+      "deliverables": [
+        "CT-descriptor availability summary",
+        "bounded CT descriptor records",
+        "artifact-backed CT surrogate summary"
+      ],
+      "budget_profile": "balanced",
+      "requested_route_summary": "Probe parse-only CT extraction on artifact bundle 'round_01_baseline_bundle' for state_window=[1, 2]."
+    },
+    "budget_profile": "balanced",
+    "requested_route_summary": "Probe parse-only CT extraction on artifact bundle 'round_01_baseline_bundle' for state_window=[1, 2].",
+    "structure_source": "existing_prepared_structure",
+    "supported_scope": [],
+    "unsupported_requests": [],
+    "planning_unmet_constraints": [],
+    "steps": [],
+    "expected_outputs": [
+      "CT-descriptor availability summary",
+      "bounded CT descriptor records",
+      "artifact-backed CT surrogate summary"
+    ],
+    "failure_reporting": "If the probe fails, capture the Amesp error payload, raw stdout/stderr, and generated artifacts."
+  },
+  "probe_events": [],
+  "result_summary": {
+    "route": "artifact_parse_only",
+    "executed_capability": "extract_ct_descriptors_from_bundle",
+    "requested_capability": "extract_ct_descriptors_from_bundle",
+    "performed_new_calculations": false,
+    "reused_existing_artifacts": true,
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "missing_deliverables": [
+      "hole-electron-centroid-separation",
+      "hole-electron-overlap",
+      "qCT/charge transferred",
+      "ct overlap index",
+      "mulliken charges summary"
+    ]
+  },
+  "route_summary": {
+    "artifact_scope": "baseline_bundle",
+    "artifact_source_round": 1,
+    "source_bundle_completion_status": "complete",
+    "descriptor_scope": [
+      "hole-electron-centroid-separation",
+      "hole-electron-overlap",
+      "qCT/charge_transferred",
+      "ct_overlap_index",
+      "mulliken_charges_summary"
+    ],
+    "ct_proxy_availability": "partial_observable_only",
+    "available_ct_surrogates": [
+      "dominant_transitions",
+      "ground_state_dipole",
+      "mulliken_charges",
+      "oscillator_strengths",
+      "state_ordering",
+      "vertical_excitation_energies"
+    ],
+    "missing_ct_descriptors": [
+      "hole-electron-centroid-separation",
+      "hole-electron-overlap",
+      "qCT/charge_transferred",
+      "ct_overlap_index",
+      "mulliken_charges_summary"
+    ],
+    "artifact_reuse_note": "Inspected an existing artifact bundle for bounded CT-descriptor surrogates without generating new Amesp inputs.",
+    "state_window": [
+      1,
+      2
+    ]
+  },
+  "generated_artifacts": {
+    "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+    "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+    "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+    "source_round": 2,
+    "artifact_bundle_id": "round_01_baseline_bundle",
+    "artifact_bundle_kind": "baseline_bundle",
+    "parsed_snapshot_record_count": 1,
+    "reused_snapshot_artifacts": [
+      {
+        "member_label": "baseline_bundle",
+        "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+        "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+        "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+        "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.aip",
+        "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.aop",
+        "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.mo",
+        "s0_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.stderr.log",
+        "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.stdout.log",
+        "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.aip",
+        "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.aop",
+        "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.mo",
+        "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.stderr.log",
+        "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.stdout.log"
+      }
+    ],
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "bundle_completion_status": "complete"
+  },
+  "result": {
+    "route": "artifact_parse_only",
+    "executed_capability": "extract_ct_descriptors_from_bundle",
+    "performed_new_calculations": false,
+    "reused_existing_artifacts": true,
+    "requested_capability": "extract_ct_descriptors_from_bundle",
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "honored_constraints": [
+      "Execution request honored explicit canonical artifact bundle `round_01_baseline_bundle`."
+    ],
+    "unmet_constraints": [],
+    "missing_deliverables": [
+      "hole-electron-centroid-separation",
+      "hole-electron-overlap",
+      "qCT/charge transferred",
+      "ct overlap index",
+      "mulliken charges summary"
+    ],
+    "structure": {
+      "input_smiles": "COc3ccc(/C(=C(C#N)\\c1ccccc1)c2ccccc2)cc3",
+      "canonical_smiles": "COc1ccc(/C(=C(/C#N)c2ccccc2)c2ccccc2)cc1",
+      "charge": 0,
+      "multiplicity": 1,
+      "heavy_atom_count": 24,
+      "atom_count": 41,
+      "conformer_count": 10,
+      "selected_conformer_id": 2,
+      "force_field": "MMFF94",
+      "xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+      "sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+      "summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json"
+    },
+    "s0": {
+      "final_energy_hartree": -50.8834870987,
+      "dipole_debye": [
+        7.1571,
+        -2.2929,
+        -3.2107,
+        8.1725
+      ],
+      "mulliken_charges": [
+        0.326736,
+        -0.494296,
+        0.528032,
+        -0.211378,
+        -0.023597,
+        -0.019542,
+        0.055506,
+        -0.043211,
+        0.610952,
+        -0.754226,
+        0.070705,
+        -0.075643,
+        -0.02188,
+        -0.03798,
+        -0.015497,
+        -0.06301,
+        0.046065,
+        -0.045956,
+        -0.009116,
+        -0.024793,
+        -0.021929,
+        -0.059384,
+        -0.027708,
+        -0.154595,
+        -0.010558,
+        -0.00999,
+        0.003566,
+        0.043718,
+        0.032441,
+        0.030447,
+        0.030197,
+        0.029649,
+        0.031551,
+        0.041313,
+        0.039184,
+        0.033605,
+        0.029542,
+        0.029784,
+        0.030398,
+        0.033616,
+        0.047285
+      ],
+      "homo_lumo_gap_ev": 3.1728185,
+      "geometry_atom_count": 41,
+      "geometry_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+      "rmsd_from_prepared_structure_angstrom": 0.667381
+    },
+    "s1": {
+      "excited_states": [
+        {
+          "state_index": 1,
+          "total_energy_hartree": -966.209826559,
+          "oscillator_strength": 0.2875,
+          "spin_square": 0.0,
+          "excitation_energy_ev": 3.6776,
+          "dominant_transitions": [
+            {
+              "occupied_orbital": 82,
+              "virtual_orbital": 83,
+              "coefficient": 0.6896806
+            },
+            {
+              "occupied_orbital": 81,
+              "virtual_orbital": 83,
+              "coefficient": 0.1189106
+            }
+          ]
+        },
+        {
+          "state_index": 2,
+          "total_energy_hartree": -966.179401122,
+          "oscillator_strength": 0.3353,
+          "spin_square": 0.0,
+          "excitation_energy_ev": 4.5055,
+          "dominant_transitions": [
+            {
+              "occupied_orbital": 82,
+              "virtual_orbital": 83,
+              "coefficient": 0.1192603
+            },
+            {
+              "occupied_orbital": 82,
+              "virtual_orbital": 85,
+              "coefficient": -0.1059693
+            },
+            {
+              "occupied_orbital": 81,
+              "virtual_orbital": 83,
+              "coefficient": -0.6727501
+            }
+          ]
+        }
+      ],
+      "first_excitation_energy_ev": 3.6776,
+      "first_oscillator_strength": 0.2875,
+      "state_count": 2
+    },
+    "parsed_snapshot_records": [
+      {
+        "snapshot_label": "baseline_bundle",
+        "target_angle_deg": null,
+        "dihedral_atoms": null,
+        "conformer_rank": null,
+        "source_snapshot_status": "success",
+        "state_count": 2,
+        "ground_state_dipole_debye": 8.1725,
+        "mulliken_charge_count": 41,
+        "dominant_transitions": [
+          {
+            "state_index": 1,
+            "excitation_energy_ev": 3.6776,
+            "oscillator_strength": 0.2875,
+            "transitions": [
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 83,
+                "coefficient": 0.6896806
+              },
+              {
+                "occupied_orbital": 81,
+                "virtual_orbital": 83,
+                "coefficient": 0.1189106
+              }
+            ]
+          },
+          {
+            "state_index": 2,
+            "excitation_energy_ev": 4.5055,
+            "oscillator_strength": 0.3353,
+            "transitions": [
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 83,
+                "coefficient": 0.1192603
+              },
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 85,
+                "coefficient": -0.1059693
+              },
+              {
+                "occupied_orbital": 81,
+                "virtual_orbital": 83,
+                "coefficient": -0.6727501
+              }
+            ]
+          }
+        ],
+        "ct_localization_proxy": "not_available",
+        "source_file_availability": {
+          "prepared_xyz_path": true,
+          "prepared_sdf_path": true,
+          "prepared_summary_path": true,
+          "s0_aip_path": true,
+          "s1_aip_path": true,
+          "s0_aop_path": true,
+          "s1_aop_path": true,
+          "s0_stdout_path": true,
+          "s1_stdout_path": true,
+          "s0_stderr_path": true,
+          "s1_stderr_path": true,
+          "s0_mo_path": true,
+          "s1_mo_path": true
+        },
+        "available_ct_surrogates": [
+          "dominant_transitions",
+          "ground_state_dipole",
+          "mulliken_charges",
+          "oscillator_strengths",
+          "state_ordering",
+          "vertical_excitation_energies"
+        ],
+        "inspection_notes": []
+      }
+    ],
+    "route_records": [
+      {
+        "snapshot_label": "baseline_bundle",
+        "target_angle_deg": null,
+        "dihedral_atoms": null,
+        "conformer_rank": null,
+        "source_snapshot_status": "success",
+        "state_count": 2,
+        "ground_state_dipole_debye": 8.1725,
+        "mulliken_charge_count": 41,
+        "dominant_transitions": [
+          {
+            "state_index": 1,
+            "excitation_energy_ev": 3.6776,
+            "oscillator_strength": 0.2875,
+            "transitions": [
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 83,
+                "coefficient": 0.6896806
+              },
+              {
+                "occupied_orbital": 81,
+                "virtual_orbital": 83,
+                "coefficient": 0.1189106
+              }
+            ]
+          },
+          {
+            "state_index": 2,
+            "excitation_energy_ev": 4.5055,
+            "oscillator_strength": 0.3353,
+            "transitions": [
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 83,
+                "coefficient": 0.1192603
+              },
+              {
+                "occupied_orbital": 82,
+                "virtual_orbital": 85,
+                "coefficient": -0.1059693
+              },
+              {
+                "occupied_orbital": 81,
+                "virtual_orbital": 83,
+                "coefficient": -0.6727501
+              }
+            ]
+          }
+        ],
+        "ct_localization_proxy": "not_available",
+        "source_file_availability": {
+          "prepared_xyz_path": true,
+          "prepared_sdf_path": true,
+          "prepared_summary_path": true,
+          "s0_aip_path": true,
+          "s1_aip_path": true,
+          "s0_aop_path": true,
+          "s1_aop_path": true,
+          "s0_stdout_path": true,
+          "s1_stdout_path": true,
+          "s0_stderr_path": true,
+          "s1_stderr_path": true,
+          "s0_mo_path": true,
+          "s1_mo_path": true
+        },
+        "available_ct_surrogates": [
+          "dominant_transitions",
+          "ground_state_dipole",
+          "mulliken_charges",
+          "oscillator_strengths",
+          "state_ordering",
+          "vertical_excitation_energies"
+        ],
+        "inspection_notes": []
+      }
+    ],
+    "route_summary": {
+      "artifact_scope": "baseline_bundle",
+      "artifact_source_round": 1,
+      "source_bundle_completion_status": "complete",
+      "descriptor_scope": [
+        "hole-electron-centroid-separation",
+        "hole-electron-overlap",
+        "qCT/charge_transferred",
+        "ct_overlap_index",
+        "mulliken_charges_summary"
+      ],
+      "ct_proxy_availability": "partial_observable_only",
+      "available_ct_surrogates": [
+        "dominant_transitions",
+        "ground_state_dipole",
+        "mulliken_charges",
+        "oscillator_strengths",
+        "state_ordering",
+        "vertical_excitation_energies"
+      ],
+      "missing_ct_descriptors": [
+        "hole-electron-centroid-separation",
+        "hole-electron-overlap",
+        "qCT/charge_transferred",
+        "ct_overlap_index",
+        "mulliken_charges_summary"
+      ],
+      "artifact_reuse_note": "Inspected an existing artifact bundle for bounded CT-descriptor surrogates without generating new Amesp inputs.",
+      "state_window": [
+        1,
+        2
+      ]
+    },
+    "raw_step_results": {
+      "extract_ct_descriptors_from_bundle": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "descriptor_scope": [
+          "hole-electron-centroid-separation",
+          "hole-electron-overlap",
+          "qCT/charge_transferred",
+          "ct_overlap_index",
+          "mulliken_charges_summary"
+        ],
+        "parsed_record_count": 1
+      }
+    },
+    "generated_artifacts": {
+      "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+      "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+      "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+      "source_round": 2,
+      "artifact_bundle_id": "round_01_baseline_bundle",
+      "artifact_bundle_kind": "baseline_bundle",
+      "parsed_snapshot_record_count": 1,
+      "reused_snapshot_artifacts": [
+        {
+          "member_label": "baseline_bundle",
+          "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+          "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+          "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+          "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.aip",
+          "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.aop",
+          "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.mo",
+          "s0_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.stderr.log",
+          "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s0.stdout.log",
+          "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.aip",
+          "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.aop",
+          "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.mo",
+          "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.stderr.log",
+          "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/work/round_01_run_baseline_bundle/51d86b60a6bb_probe_r01_s1.stdout.log"
+        }
+      ],
+      "resolved_target_ids": {
+        "artifact_bundle_id": "round_01_baseline_bundle"
+      },
+      "bundle_completion_status": "complete"
+    }
+  },
+  "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-150227-785437_51d86b60a6bb/probes/round_02_extract_ct_descriptors_from_bundle.json"
+}
