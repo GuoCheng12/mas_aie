@@ -1,0 +1,831 @@
+{
+  "round_index": 6,
+  "capability_name": "run_targeted_transition_dipole_analysis",
+  "status": "success",
+  "plan": {
+    "plan_version": "amesp_baseline_v1",
+    "local_goal": "Probe microscopic capability 'run_targeted_transition_dipole_analysis' directly without Planner mediation.",
+    "requested_deliverables": [
+      "targeted transition-dipole analysis records",
+      "transition-dipole availability summary",
+      "bounded raw transition-dipole observables"
+    ],
+    "capability_route": "targeted_property_follow_up",
+    "microscopic_tool_plan": {
+      "calls": [],
+      "requested_route_summary": "No microscopic tool-plan summary was provided.",
+      "requested_deliverables": [],
+      "selection_policy": {
+        "exclude_dihedral_ids": [],
+        "prefer_adjacent_to_nsnc_core": false,
+        "min_relevance": "medium",
+        "include_peripheral": true,
+        "preferred_bond_types": [],
+        "artifact_kind": null,
+        "source_round_preference": null
+      },
+      "normalization_notes": [],
+      "failure_reporting": "Return a local failed or partial report if the selected microscopic capability cannot be completed."
+    },
+    "microscopic_tool_request": {
+      "capability_name": "run_targeted_transition_dipole_analysis",
+      "structure_source": null,
+      "perform_new_calculation": true,
+      "optimize_ground_state": false,
+      "reuse_existing_artifacts_only": false,
+      "artifact_source_round": 1,
+      "artifact_scope": "baseline_bundle",
+      "artifact_bundle_id": "round_01_baseline_bundle",
+      "artifact_kind": "baseline_bundle",
+      "descriptor_scope": [],
+      "requested_observable_scope": [],
+      "source_round_preference": null,
+      "min_relevance": null,
+      "include_peripheral": null,
+      "preferred_bond_types": [],
+      "dihedral_id": null,
+      "dihedral_atom_indices": [],
+      "conformer_id": null,
+      "conformer_ids": [],
+      "max_conformers": null,
+      "snapshot_count": null,
+      "target_count": 1,
+      "angle_offsets_deg": [],
+      "state_window": [
+        1,
+        2
+      ],
+      "honor_exact_target": true,
+      "allow_fallback": false,
+      "deliverables": [
+        "targeted transition-dipole analysis records",
+        "transition-dipole availability summary",
+        "bounded raw transition-dipole observables"
+      ],
+      "budget_profile": "balanced",
+      "requested_route_summary": "Probe capability 'run_targeted_transition_dipole_analysis' on reusable baseline artifact bundle 'round_01_baseline_bundle' with fixed-geometry follow-up for state_window=[1, 2]."
+    },
+    "budget_profile": "balanced",
+    "requested_route_summary": "Probe capability 'run_targeted_transition_dipole_analysis' on reusable baseline artifact bundle 'round_01_baseline_bundle' with fixed-geometry follow-up for state_window=[1, 2].",
+    "structure_source": "existing_prepared_structure",
+    "supported_scope": [],
+    "unsupported_requests": [],
+    "planning_unmet_constraints": [],
+    "steps": [],
+    "expected_outputs": [
+      "targeted transition-dipole analysis records",
+      "transition-dipole availability summary",
+      "bounded raw transition-dipole observables"
+    ],
+    "failure_reporting": "If the probe fails, capture the Amesp error payload, raw stdout/stderr, and generated artifacts."
+  },
+  "probe_events": [
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint",
+        "probe_status": "start",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+        "keywords": [
+          "atb",
+          "force"
+        ],
+        "npara": 20,
+        "maxcore_mb": 12000,
+        "use_ricosx": true
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint_subprocess",
+        "probe_status": "start",
+        "pid": 105391,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint_subprocess",
+        "probe_status": "end",
+        "exit_code": 0,
+        "elapsed_seconds": 1.016,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint",
+        "probe_status": "end",
+        "step_id": "s0_singlepoint",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+        "mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log",
+        "exit_code": 0,
+        "terminated_normally": true,
+        "elapsed_seconds": 1.016
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s0_singlepoint_parse",
+        "probe_status": "end",
+        "final_energy_hartree": -50.8834862462,
+        "dipole_debye": [
+          7.1571,
+          -2.2931,
+          -3.2106,
+          8.1725
+        ],
+        "mulliken_charges": [
+          0.326736,
+          -0.494297,
+          0.528032,
+          -0.211373,
+          -0.023592,
+          -0.019541,
+          0.055506,
+          -0.043212,
+          0.610949,
+          -0.754222,
+          0.070704,
+          -0.07564,
+          -0.021878,
+          -0.037978,
+          -0.015497,
+          -0.063012,
+          0.046066,
+          -0.045956,
+          -0.009117,
+          -0.024796,
+          -0.021931,
+          -0.059384,
+          -0.027712,
+          -0.154599,
+          -0.010558,
+          -0.00999,
+          0.003565,
+          0.043718,
+          0.032441,
+          0.030447,
+          0.030197,
+          0.029649,
+          0.03155,
+          0.041312,
+          0.039185,
+          0.033605,
+          0.029542,
+          0.029784,
+          0.030398,
+          0.033615,
+          0.047284
+        ],
+        "homo_lumo_gap_ev": 2.2192349,
+        "geometry_atom_count": 41,
+        "geometry_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/s0_singlepoint.xyz",
+        "rmsd_from_prepared_structure_angstrom": 0.0
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s1_vertical_excitation",
+        "probe_status": "start",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+        "keywords": [
+          "atb",
+          "tda"
+        ],
+        "npara": 20,
+        "maxcore_mb": 12000,
+        "use_ricosx": true
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s1_vertical_excitation_subprocess",
+        "probe_status": "start",
+        "pid": 105427,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s1_vertical_excitation_subprocess",
+        "probe_status": "end",
+        "exit_code": 0,
+        "elapsed_seconds": 1.0215,
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log"
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s1_vertical_excitation",
+        "probe_status": "end",
+        "step_id": "s1_vertical_excitation",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+        "mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo",
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log",
+        "exit_code": 0,
+        "terminated_normally": true,
+        "elapsed_seconds": 1.0215
+      }
+    },
+    {
+      "phase": "probe",
+      "round": 6,
+      "node": "run_microscopic",
+      "agent": "microscopic",
+      "case_id": "13c501618e2d",
+      "current_hypothesis": "probe",
+      "details": {
+        "probe_stage": "s1_parse",
+        "probe_status": "end",
+        "excited_states": [
+          {
+            "state_index": 1,
+            "total_energy_hartree": -50.658374232,
+            "oscillator_strength": 0.3149,
+            "spin_square": 0.0,
+            "excitation_energy_ev": 2.9563,
+            "dominant_transitions": [
+              {
+                "occupied_orbital": 58,
+                "virtual_orbital": 59,
+                "coefficient": 0.6756488
+              },
+              {
+                "occupied_orbital": 57,
+                "virtual_orbital": 59,
+                "coefficient": -0.1473557
+              }
+            ]
+          },
+          {
+            "state_index": 2,
+            "total_energy_hartree": -50.638894605,
+            "oscillator_strength": 0.2941,
+            "spin_square": 0.0,
+            "excitation_energy_ev": 3.4864,
+            "dominant_transitions": [
+              {
+                "occupied_orbital": 58,
+                "virtual_orbital": 59,
+                "coefficient": -0.1349126
+              },
+              {
+                "occupied_orbital": 58,
+                "virtual_orbital": 60,
+                "coefficient": 0.1265626
+              },
+              {
+                "occupied_orbital": 57,
+                "virtual_orbital": 59,
+                "coefficient": -0.6630148
+              }
+            ]
+          }
+        ],
+        "first_excitation_energy_ev": 2.9563,
+        "first_oscillator_strength": 0.3149,
+        "state_count": 2
+      }
+    }
+  ],
+  "result_summary": {
+    "route": "targeted_property_follow_up",
+    "executed_capability": "run_targeted_transition_dipole_analysis",
+    "requested_capability": "run_targeted_transition_dipole_analysis",
+    "performed_new_calculations": true,
+    "reused_existing_artifacts": true,
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "missing_deliverables": []
+  },
+  "route_summary": {
+    "artifact_scope": "baseline_bundle",
+    "artifact_source_round": 1,
+    "source_bundle_completion_status": "complete",
+    "descriptor_scope": [
+      "ground_to_excited_transition_dipoles",
+      "excited_to_excited_transition_dipoles"
+    ],
+    "selected_target_members": [
+      "baseline_bundle"
+    ],
+    "selected_target_count": 1,
+    "transition_dipole_availability": "proxy_only",
+    "available_transition_dipole_observables": [
+      "excited_to_excited_transition_dipoles",
+      "ground_to_excited_transition_dipoles"
+    ],
+    "missing_transition_dipole_observables": [],
+    "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+    "optimize_ground_state": false,
+    "state_window": [
+      1,
+      2
+    ]
+  },
+  "generated_artifacts": {
+    "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+    "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+    "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+    "s0_singlepoint_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+    "s0_singlepoint_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+    "s0_singlepoint_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+    "s0_singlepoint_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log",
+    "s0_singlepoint_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+    "s0_singlepoint_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/s0_singlepoint.xyz",
+    "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aip",
+    "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+    "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+    "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log",
+    "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo",
+    "s1_method": "tda-atb-excdip",
+    "source_round": 6,
+    "artifact_bundle_id": "round_01_baseline_bundle",
+    "artifact_bundle_kind": "baseline_bundle",
+    "selected_target_count": 1,
+    "selected_target_members": [
+      "baseline_bundle"
+    ],
+    "characterization_artifacts": [
+      {
+        "member_label": "baseline_bundle",
+        "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+        "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+        "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+        "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+        "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+        "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+        "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+        "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+        "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo"
+      }
+    ],
+    "reused_snapshot_artifacts": [
+      {
+        "member_label": "baseline_bundle",
+        "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+        "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+        "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+        "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.aip",
+        "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.aop",
+        "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.mo",
+        "s0_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.stderr.log",
+        "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.stdout.log",
+        "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.aip",
+        "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.aop",
+        "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.mo",
+        "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.stderr.log",
+        "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.stdout.log"
+      }
+    ],
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "bundle_completion_status": "complete"
+  },
+  "result": {
+    "route": "targeted_property_follow_up",
+    "executed_capability": "run_targeted_transition_dipole_analysis",
+    "performed_new_calculations": true,
+    "reused_existing_artifacts": true,
+    "requested_capability": "run_targeted_transition_dipole_analysis",
+    "resolved_target_ids": {
+      "artifact_bundle_id": "round_01_baseline_bundle"
+    },
+    "honored_constraints": [
+      "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization.",
+      "Execution request honored explicit canonical artifact bundle `round_01_baseline_bundle`."
+    ],
+    "unmet_constraints": [],
+    "missing_deliverables": [],
+    "structure": {
+      "input_smiles": "COc3ccc(/C(=C(C#N)\\c1ccccc1)c2ccccc2)cc3",
+      "canonical_smiles": "COc1ccc(/C(=C(/C#N)c2ccccc2)c2ccccc2)cc1",
+      "charge": 0,
+      "multiplicity": 1,
+      "heavy_atom_count": 24,
+      "atom_count": 41,
+      "conformer_count": 10,
+      "selected_conformer_id": 2,
+      "force_field": "MMFF94",
+      "xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+      "sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+      "summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json"
+    },
+    "s0": {
+      "final_energy_hartree": -50.8834862462,
+      "dipole_debye": [
+        7.1571,
+        -2.2931,
+        -3.2106,
+        8.1725
+      ],
+      "mulliken_charges": [
+        0.326736,
+        -0.494297,
+        0.528032,
+        -0.211373,
+        -0.023592,
+        -0.019541,
+        0.055506,
+        -0.043212,
+        0.610949,
+        -0.754222,
+        0.070704,
+        -0.07564,
+        -0.021878,
+        -0.037978,
+        -0.015497,
+        -0.063012,
+        0.046066,
+        -0.045956,
+        -0.009117,
+        -0.024796,
+        -0.021931,
+        -0.059384,
+        -0.027712,
+        -0.154599,
+        -0.010558,
+        -0.00999,
+        0.003565,
+        0.043718,
+        0.032441,
+        0.030447,
+        0.030197,
+        0.029649,
+        0.03155,
+        0.041312,
+        0.039185,
+        0.033605,
+        0.029542,
+        0.029784,
+        0.030398,
+        0.033615,
+        0.047284
+      ],
+      "homo_lumo_gap_ev": 2.2192349,
+      "geometry_atom_count": 41,
+      "geometry_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/s0_singlepoint.xyz",
+      "rmsd_from_prepared_structure_angstrom": 0.0
+    },
+    "s1": {
+      "excited_states": [
+        {
+          "state_index": 1,
+          "total_energy_hartree": -50.658374232,
+          "oscillator_strength": 0.3149,
+          "spin_square": 0.0,
+          "excitation_energy_ev": 2.9563,
+          "dominant_transitions": [
+            {
+              "occupied_orbital": 58,
+              "virtual_orbital": 59,
+              "coefficient": 0.6756488
+            },
+            {
+              "occupied_orbital": 57,
+              "virtual_orbital": 59,
+              "coefficient": -0.1473557
+            }
+          ]
+        },
+        {
+          "state_index": 2,
+          "total_energy_hartree": -50.638894605,
+          "oscillator_strength": 0.2941,
+          "spin_square": 0.0,
+          "excitation_energy_ev": 3.4864,
+          "dominant_transitions": [
+            {
+              "occupied_orbital": 58,
+              "virtual_orbital": 59,
+              "coefficient": -0.1349126
+            },
+            {
+              "occupied_orbital": 58,
+              "virtual_orbital": 60,
+              "coefficient": 0.1265626
+            },
+            {
+              "occupied_orbital": 57,
+              "virtual_orbital": 59,
+              "coefficient": -0.6630148
+            }
+          ]
+        }
+      ],
+      "first_excitation_energy_ev": 2.9563,
+      "first_oscillator_strength": 0.3149,
+      "state_count": 2
+    },
+    "parsed_snapshot_records": [
+      {
+        "snapshot_label": "baseline_bundle",
+        "target_angle_deg": null,
+        "dihedral_atoms": null,
+        "conformer_rank": null,
+        "source_snapshot_status": "success",
+        "geometry_source": "s0_optimized_aop",
+        "final_energy_hartree": -50.8834862462,
+        "ground_state_dipole_debye": 8.1725,
+        "mulliken_charge_count": 41,
+        "state_count": 2,
+        "molecular_orbital_files_available": true,
+        "transition_dipole_method": "tda-atb-excdip",
+        "ground_to_excited_transition_dipoles": [
+          {
+            "state_from": 0,
+            "state_to": 1,
+            "x": -1.8933,
+            "y": -0.7696,
+            "z": 0.4128,
+            "dip": 4.3472,
+            "oscillator_strength": 0.3149
+          },
+          {
+            "state_from": 0,
+            "state_to": 2,
+            "x": 0.2078,
+            "y": 1.8394,
+            "z": 0.128,
+            "dip": 3.4431,
+            "oscillator_strength": 0.2941
+          }
+        ],
+        "excited_to_excited_transition_dipoles": [
+          {
+            "state_from": 1,
+            "state_to": 1,
+            "x": -0.0,
+            "y": 0.0,
+            "z": -0.0,
+            "oscillator_strength": 0.0
+          },
+          {
+            "state_from": 1,
+            "state_to": 2,
+            "x": 0.0835,
+            "y": -0.0342,
+            "z": -0.0694,
+            "oscillator_strength": 0.0002
+          }
+        ],
+        "transition_dipole_section_presence": {
+          "ground_to_excited_section_present": true,
+          "excited_to_excited_section_present": true
+        },
+        "available_transition_dipole_observables": [
+          "ground_to_excited_transition_dipoles",
+          "excited_to_excited_transition_dipoles"
+        ]
+      }
+    ],
+    "route_records": [
+      {
+        "snapshot_label": "baseline_bundle",
+        "target_angle_deg": null,
+        "dihedral_atoms": null,
+        "conformer_rank": null,
+        "source_snapshot_status": "success",
+        "geometry_source": "s0_optimized_aop",
+        "final_energy_hartree": -50.8834862462,
+        "ground_state_dipole_debye": 8.1725,
+        "mulliken_charge_count": 41,
+        "state_count": 2,
+        "molecular_orbital_files_available": true,
+        "transition_dipole_method": "tda-atb-excdip",
+        "ground_to_excited_transition_dipoles": [
+          {
+            "state_from": 0,
+            "state_to": 1,
+            "x": -1.8933,
+            "y": -0.7696,
+            "z": 0.4128,
+            "dip": 4.3472,
+            "oscillator_strength": 0.3149
+          },
+          {
+            "state_from": 0,
+            "state_to": 2,
+            "x": 0.2078,
+            "y": 1.8394,
+            "z": 0.128,
+            "dip": 3.4431,
+            "oscillator_strength": 0.2941
+          }
+        ],
+        "excited_to_excited_transition_dipoles": [
+          {
+            "state_from": 1,
+            "state_to": 1,
+            "x": -0.0,
+            "y": 0.0,
+            "z": -0.0,
+            "oscillator_strength": 0.0
+          },
+          {
+            "state_from": 1,
+            "state_to": 2,
+            "x": 0.0835,
+            "y": -0.0342,
+            "z": -0.0694,
+            "oscillator_strength": 0.0002
+          }
+        ],
+        "transition_dipole_section_presence": {
+          "ground_to_excited_section_present": true,
+          "excited_to_excited_section_present": true
+        },
+        "available_transition_dipole_observables": [
+          "ground_to_excited_transition_dipoles",
+          "excited_to_excited_transition_dipoles"
+        ]
+      }
+    ],
+    "route_summary": {
+      "artifact_scope": "baseline_bundle",
+      "artifact_source_round": 1,
+      "source_bundle_completion_status": "complete",
+      "descriptor_scope": [
+        "ground_to_excited_transition_dipoles",
+        "excited_to_excited_transition_dipoles"
+      ],
+      "selected_target_members": [
+        "baseline_bundle"
+      ],
+      "selected_target_count": 1,
+      "transition_dipole_availability": "proxy_only",
+      "available_transition_dipole_observables": [
+        "excited_to_excited_transition_dipoles",
+        "ground_to_excited_transition_dipoles"
+      ],
+      "missing_transition_dipole_observables": [],
+      "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
+      "optimize_ground_state": false,
+      "state_window": [
+        1,
+        2
+      ]
+    },
+    "raw_step_results": {
+      "s0_singlepoint": {
+        "step_id": "s0_singlepoint",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+        "mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log",
+        "exit_code": 0,
+        "terminated_normally": true,
+        "elapsed_seconds": 1.016
+      },
+      "s1_vertical_excitation": {
+        "step_id": "s1_vertical_excitation",
+        "aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aip",
+        "aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+        "mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo",
+        "stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+        "stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log",
+        "exit_code": 0,
+        "terminated_normally": true,
+        "elapsed_seconds": 1.0215
+      },
+      "run_targeted_transition_dipole_analysis": {
+        "artifact_scope": "baseline_bundle",
+        "artifact_source_round": 1,
+        "descriptor_scope": [
+          "ground_to_excited_transition_dipoles",
+          "excited_to_excited_transition_dipoles"
+        ],
+        "selected_target_count": 1
+      }
+    },
+    "generated_artifacts": {
+      "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+      "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+      "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+      "s0_singlepoint_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+      "s0_singlepoint_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+      "s0_singlepoint_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+      "s0_singlepoint_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stderr.log",
+      "s0_singlepoint_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+      "s0_singlepoint_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/s0_singlepoint.xyz",
+      "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aip",
+      "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+      "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+      "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stderr.log",
+      "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo",
+      "s1_method": "tda-atb-excdip",
+      "source_round": 6,
+      "artifact_bundle_id": "round_01_baseline_bundle",
+      "artifact_bundle_kind": "baseline_bundle",
+      "selected_target_count": 1,
+      "selected_target_members": [
+        "baseline_bundle"
+      ],
+      "characterization_artifacts": [
+        {
+          "member_label": "baseline_bundle",
+          "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+          "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+          "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aip",
+          "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.aop",
+          "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.aop",
+          "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.stdout.log",
+          "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.stdout.log",
+          "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s0sp.mo",
+          "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_06_run_targeted_transition_dipole_analysis/targeted_property_follow_up/baseline_bundle/13c501618e2d_probe_r06_baseline_bundle_char_s1.mo"
+        }
+      ],
+      "reused_snapshot_artifacts": [
+        {
+          "member_label": "baseline_bundle",
+          "prepared_sdf_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.sdf",
+          "prepared_summary_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/structure_prep_summary.json",
+          "prepared_xyz_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/structure_prep/prepared_structure.xyz",
+          "s0_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.aip",
+          "s0_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.aop",
+          "s0_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.mo",
+          "s0_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.stderr.log",
+          "s0_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s0.stdout.log",
+          "s1_aip_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.aip",
+          "s1_aop_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.aop",
+          "s1_mo_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.mo",
+          "s1_stderr_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.stderr.log",
+          "s1_stdout_path": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/work/round_01_run_baseline_bundle/13c501618e2d_probe_r01_s1.stdout.log"
+        }
+      ],
+      "resolved_target_ids": {
+        "artifact_bundle_id": "round_01_baseline_bundle"
+      },
+      "bundle_completion_status": "complete"
+    }
+  },
+  "result_file": "/datasets/workspace/mas_aie/debug_reports/20260407-164329-917043_13c501618e2d/probes/round_06_run_targeted_transition_dipole_analysis.json"
+}
