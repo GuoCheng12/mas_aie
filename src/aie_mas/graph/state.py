@@ -25,6 +25,7 @@ PairwiseTaskOutcome = Literal[
 ]
 FinalizationMode = Literal["none", "decisive", "best_available"]
 ReasoningPhase = Literal["portfolio_screening", "pairwise_contraction"]
+AgentFramingMode = Literal["portfolio_neutral", "hypothesis_anchored"]
 HypothesisScreeningStatus = Literal[
     "untested",
     "indirectly_weakened",
@@ -242,11 +243,14 @@ class PlannerDecision(BaseModel):
     current_hypothesis: str
     confidence: float
     reasoning_phase: ReasoningPhase = "portfolio_screening"
+    agent_framing_mode: AgentFramingMode = "portfolio_neutral"
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
     portfolio_screening_summary: Optional[str] = None
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: Optional[str] = None
     needs_verifier: bool = False
     finalize: bool = False
     planned_agents: list[PendingAgent] = Field(default_factory=list)
@@ -296,11 +300,14 @@ class WorkingMemoryEntry(BaseModel):
     confidence: float
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
     reasoning_phase: ReasoningPhase = "portfolio_screening"
+    agent_framing_mode: AgentFramingMode = "portfolio_neutral"
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
     portfolio_screening_summary: Optional[str] = None
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: Optional[str] = None
     runner_up_hypothesis: Optional[str] = None
     runner_up_confidence: Optional[float] = None
     action_taken: str
@@ -605,11 +612,14 @@ class AieMasState(BaseModel):
     runner_up_hypothesis: Optional[str] = None
     runner_up_confidence: Optional[float] = None
     reasoning_phase: ReasoningPhase = "portfolio_screening"
+    agent_framing_mode: AgentFramingMode = "portfolio_neutral"
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
     portfolio_screening_summary: Optional[str] = None
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: Optional[str] = None
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
     verifier_supplement_target_pair: Optional[str] = None
