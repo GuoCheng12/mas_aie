@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 from typing import Any, Optional, Type
 
 from pydantic import BaseModel
@@ -9,6 +10,32 @@ from aie_mas.config import AieMasConfig
 
 
 class OpenAICompatibleJsonSchemaClient:
+    _TRANSIENT_RETRY_DELAYS_SECONDS: tuple[float, ...] = (1.0, 2.0, 4.0)
+    _TRANSIENT_STATUS_CODES: frozenset[int] = frozenset({408, 429})
+    _TRANSIENT_ERROR_MARKERS: tuple[str, ...] = (
+        "upstream connect error",
+        "disconnect/reset before headers",
+        "connection termination",
+        "connection reset",
+        "remote protocol error",
+        "gateway timeout",
+        "bad gateway",
+        "service unavailable",
+        "temporarily unavailable",
+        "timed out",
+        "timeout",
+    )
+    _RESPONSE_FORMAT_COMPATIBILITY_MARKERS: tuple[str, ...] = (
+        "response_format",
+        "json_object",
+        "unsupported parameter",
+        "does not support",
+        "not support",
+        "invalid parameter",
+        "extra inputs are not permitted",
+        "unexpected field",
+    )
+
     def __init__(
         self,
         *,
@@ -66,11 +93,7 @@ class OpenAICompatibleJsonSchemaClient:
         if response_format is not None:
             request_kwargs["response_format"] = response_format
 
-        try:
-            completion = client.chat.completions.create(**request_kwargs)
-        except Exception:
-            request_kwargs.pop("response_format", None)
-            completion = client.chat.completions.create(**request_kwargs)
+        completion = self._create_completion(client, request_kwargs)
 
         return self._extract_content(completion)
 
@@ -95,6 +118,73 @@ class OpenAICompatibleJsonSchemaClient:
             timeout=self._timeout_seconds,
         )
         return self._client
+
+    def _create_completion(self, client: Any, request_kwargs: dict[str, Any]) -> Any:
+        try:
+            return self._create_completion_with_transient_retry(client, request_kwargs)
+        except Exception as exc:
+            if self._should_retry_without_response_format(exc, request_kwargs):
+                fallback_kwargs = dict(request_kwargs)
+                fallback_kwargs.pop("response_format", None)
+                return self._create_completion_with_transient_retry(client, fallback_kwargs)
+            raise
+
+    def _create_completion_with_transient_retry(self, client: Any, request_kwargs: dict[str, Any]) -> Any:
+        retry_delays = (0.0, *self._TRANSIENT_RETRY_DELAYS_SECONDS)
+        last_exc: Exception | None = None
+        for attempt_index, delay_seconds in enumerate(retry_delays):
+            if attempt_index > 0:
+                self._sleep_for_retry(delay_seconds)
+            try:
+                return client.chat.completions.create(**request_kwargs)
+            except Exception as exc:
+                last_exc = exc
+                if attempt_index >= len(retry_delays) - 1 or not self._is_transient_request_error(exc):
+                    raise
+        assert last_exc is not None
+        raise last_exc
+
+    def _sleep_for_retry(self, delay_seconds: float) -> None:
+        time.sleep(delay_seconds)
+
+    def _should_retry_without_response_format(
+        self,
+        exc: Exception,
+        request_kwargs: dict[str, Any],
+    ) -> bool:
+        if "response_format" not in request_kwargs:
+            return False
+        status_code = self._extract_status_code(exc)
+        if status_code is not None and status_code >= 500:
+            return False
+        message = str(exc).lower()
+        return any(marker in message for marker in self._RESPONSE_FORMAT_COMPATIBILITY_MARKERS)
+
+    def _is_transient_request_error(self, exc: Exception) -> bool:
+        status_code = self._extract_status_code(exc)
+        if status_code is not None:
+            if status_code >= 500 or status_code in self._TRANSIENT_STATUS_CODES:
+                return True
+            if 400 <= status_code < 500:
+                return False
+
+        class_name = exc.__class__.__name__.lower()
+        if class_name in {"apiconnectionerror", "apitimeouterror", "internalservererror"}:
+            return True
+
+        message = str(exc).lower()
+        return any(marker in message for marker in self._TRANSIENT_ERROR_MARKERS)
+
+    def _extract_status_code(self, exc: Exception) -> int | None:
+        for candidate in (
+            getattr(exc, "status_code", None),
+            getattr(exc, "status", None),
+            getattr(getattr(exc, "response", None), "status_code", None),
+            getattr(getattr(exc, "response", None), "status", None),
+        ):
+            if isinstance(candidate, int):
+                return candidate
+        return None
 
     def _extract_content(self, completion: Any) -> str:
         message = completion.choices[0].message
