@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 from aie_mas.compat.langchain import prompt_value_to_messages
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
+    AgentFramingMode,
     AieMasState,
     CapabilityLessonEntry,
     DecisionGateStatus,
@@ -27,11 +28,14 @@ class PlannerInitialResponse(BaseModel):
     current_hypothesis: str
     confidence: float
     reasoning_phase: str = "portfolio_screening"
+    agent_framing_mode: str = "portfolio_neutral"
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
     portfolio_screening_summary: str = ""
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: str = ""
     diagnosis: str
     action: str = "macro_and_microscopic"
     task_instruction: str = ""
@@ -63,11 +67,14 @@ class PlannerInitialResponse(BaseModel):
 class PlannerRoundResponse(BaseModel):
     hypothesis_pool: list[HypothesisEntry] = Field(default_factory=list)
     reasoning_phase: str = "portfolio_screening"
+    agent_framing_mode: str = "portfolio_neutral"
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
     portfolio_screening_summary: str = ""
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: str = ""
     diagnosis: str
     action: str
     current_hypothesis: str
@@ -626,6 +633,18 @@ def _normalize_reasoning_phase(raw_phase: str | None) -> str:
     return "portfolio_screening"
 
 
+def _normalize_agent_framing_mode(
+    raw_mode: str | None,
+    *,
+    reasoning_phase: str,
+) -> AgentFramingMode:
+    if reasoning_phase == "portfolio_screening":
+        return "portfolio_neutral"
+    if raw_mode == "hypothesis_anchored":
+        return "hypothesis_anchored"
+    return "hypothesis_anchored"
+
+
 def _normalize_hypothesis_name_list(
     raw_items: list[str],
     *,
@@ -902,12 +921,15 @@ def _planner_normalized_payload(
     payload["hypothesis_reweight_explanation"] = dict(decision.hypothesis_reweight_explanation)
     payload["reasoning_phase"] = decision.reasoning_phase
     payload["portfolio_screening_complete"] = decision.portfolio_screening_complete
+    payload["agent_framing_mode"] = decision.agent_framing_mode
     payload["coverage_debt_hypotheses"] = list(decision.coverage_debt_hypotheses)
     payload["credible_alternative_hypotheses"] = list(decision.credible_alternative_hypotheses)
     payload["hypothesis_screening_ledger"] = [
         record.model_dump(mode="json") for record in decision.hypothesis_screening_ledger
     ]
     payload["portfolio_screening_summary"] = decision.portfolio_screening_summary
+    payload["screening_focus_hypotheses"] = list(decision.screening_focus_hypotheses)
+    payload["screening_focus_summary"] = decision.screening_focus_summary
     payload["decision_pair"] = list(decision.decision_pair)
     payload["decision_gate_status"] = decision.decision_gate_status
     payload["verifier_supplement_target_pair"] = decision.verifier_supplement_target_pair
@@ -969,6 +991,147 @@ def _default_initial_agent_task_instructions(
             f"mechanism discrimination beyond current microscopic capability. Capability note: {capability_assessment}"
         ),
     }
+
+
+def _default_screening_focus_hypotheses(
+    *,
+    reasoning_phase: str,
+    coverage_debt_hypotheses: list[str],
+    credible_alternative_hypotheses: list[str],
+    decision_pair: list[str],
+    current_hypothesis: str,
+    runner_up_hypothesis: str | None,
+) -> list[str]:
+    if reasoning_phase == "pairwise_contraction":
+        if decision_pair:
+            return list(dict.fromkeys([item for item in decision_pair if item]))
+        if runner_up_hypothesis:
+            return [current_hypothesis, runner_up_hypothesis]
+        return [current_hypothesis]
+    if coverage_debt_hypotheses:
+        return list(dict.fromkeys(coverage_debt_hypotheses))
+    if credible_alternative_hypotheses:
+        return list(dict.fromkeys(credible_alternative_hypotheses))
+    if runner_up_hypothesis:
+        return [runner_up_hypothesis]
+    return []
+
+
+def _default_screening_focus_summary(
+    *,
+    reasoning_phase: str,
+    current_hypothesis: str,
+    runner_up_hypothesis: str | None,
+    screening_focus_hypotheses: list[str],
+    coverage_debt_hypotheses: list[str],
+    portfolio_screening_summary: str | None,
+    main_gap: str,
+) -> str:
+    if reasoning_phase == "pairwise_contraction":
+        challenger = runner_up_hypothesis or "unknown"
+        return (
+            f"Pairwise contraction is active. Anchor the bounded task to current champion "
+            f"'{current_hypothesis}' versus challenger '{challenger}'. Current pairwise gap: {main_gap}"
+        )
+    base_summary = (portfolio_screening_summary or "").strip()
+    if base_summary:
+        return base_summary
+    focus_text = ", ".join(screening_focus_hypotheses) if screening_focus_hypotheses else "no explicit focus hypotheses"
+    debt_text = ", ".join(coverage_debt_hypotheses) if coverage_debt_hypotheses else "no remaining coverage debt"
+    return (
+        "Portfolio screening remains active. Treat the current top1 as provisional only. "
+        f"Still-credible screening focus hypotheses: {focus_text}. "
+        f"Coverage debt still open: {debt_text}. "
+        f"Current bounded screening gap: {main_gap}"
+    )
+
+
+def _screening_task_preamble(
+    *,
+    decision: PlannerDecision,
+    agent_name: str,
+) -> str:
+    focus_text = ", ".join(decision.screening_focus_hypotheses) if decision.screening_focus_hypotheses else "none"
+    summary_text = (
+        decision.screening_focus_summary
+        or "Screen still-credible alternatives without treating the provisional top1 as settled."
+    )
+    if decision.agent_framing_mode == "portfolio_neutral":
+        return (
+            f"Current reasoning phase: {decision.reasoning_phase}. "
+            f"Agent framing mode: {decision.agent_framing_mode}. "
+            f"The current_hypothesis '{decision.current_hypothesis}' is only a provisional top1 for bookkeeping in this stage. "
+            f"Do not anchor this {agent_name} task to it as if the mechanism were settled. "
+            f"Screening focus hypotheses: {focus_text}. "
+            f"Screening focus summary: {summary_text}"
+        )
+    challenger = decision.runner_up_hypothesis or "unknown"
+    return (
+        f"Current reasoning phase: {decision.reasoning_phase}. "
+        f"Agent framing mode: {decision.agent_framing_mode}. "
+        f"This {agent_name} task is anchored to current working hypothesis '{decision.current_hypothesis}' "
+        f"against challenger '{challenger}'. "
+        f"Screening focus summary: {summary_text}"
+    )
+
+
+def _apply_stage_aware_instruction(
+    *,
+    instruction: str | None,
+    decision: PlannerDecision,
+    agent_name: str,
+) -> str | None:
+    stripped = (instruction or "").strip()
+    if not stripped:
+        return None
+    if stripped.startswith("Current reasoning phase:"):
+        return stripped
+    return f"{_screening_task_preamble(decision=decision, agent_name=agent_name)} Task: {stripped}"
+
+
+def _apply_stage_aware_agent_framing(
+    decision: PlannerDecision,
+    *,
+    main_gap: str,
+) -> PlannerDecision:
+    decision.agent_framing_mode = _normalize_agent_framing_mode(
+        decision.agent_framing_mode,
+        reasoning_phase=decision.reasoning_phase,
+    )
+    decision.screening_focus_hypotheses = _default_screening_focus_hypotheses(
+        reasoning_phase=decision.reasoning_phase,
+        coverage_debt_hypotheses=list(decision.coverage_debt_hypotheses),
+        credible_alternative_hypotheses=list(decision.credible_alternative_hypotheses),
+        decision_pair=list(decision.decision_pair),
+        current_hypothesis=decision.current_hypothesis,
+        runner_up_hypothesis=decision.runner_up_hypothesis,
+    )
+    decision.screening_focus_summary = _default_screening_focus_summary(
+        reasoning_phase=decision.reasoning_phase,
+        current_hypothesis=decision.current_hypothesis,
+        runner_up_hypothesis=decision.runner_up_hypothesis,
+        screening_focus_hypotheses=list(decision.screening_focus_hypotheses),
+        coverage_debt_hypotheses=list(decision.coverage_debt_hypotheses),
+        portfolio_screening_summary=decision.portfolio_screening_summary,
+        main_gap=main_gap,
+    )
+    reframed_instructions: dict[str, str] = {}
+    for agent_name, instruction in dict(decision.agent_task_instructions).items():
+        reframed = _apply_stage_aware_instruction(
+            instruction=instruction,
+            decision=decision,
+            agent_name=agent_name,
+        )
+        if reframed:
+            reframed_instructions[agent_name] = reframed
+    decision.agent_task_instructions = _normalize_agent_task_instructions(reframed_instructions)
+    task_agent = decision.action if decision.action in {"macro", "microscopic", "verifier"} else "screening"
+    decision.task_instruction = _apply_stage_aware_instruction(
+        instruction=decision.task_instruction,
+        decision=decision,
+        agent_name=task_agent,
+    )
+    return decision
 
 
 def _default_follow_up_task_instruction(
@@ -1156,6 +1319,10 @@ class OpenAIPlannerBackend:
             action="macro_and_microscopic",
             current_hypothesis=current_hypothesis,
             confidence=self._clamp_confidence(_normalize_confidence(hypothesis_pool[0].confidence)),
+            agent_framing_mode=_normalize_agent_framing_mode(
+                response.agent_framing_mode,
+                reasoning_phase=reasoning_phase,
+            ),
             needs_verifier=False,
             finalize=False,
             planned_agents=["macro", "microscopic"],
@@ -1177,6 +1344,11 @@ class OpenAIPlannerBackend:
             credible_alternative_hypotheses=credible_alternative_hypotheses,
             hypothesis_screening_ledger=hypothesis_screening_ledger,
             portfolio_screening_summary=portfolio_screening_summary,
+            screening_focus_hypotheses=_normalize_hypothesis_name_list(
+                response.screening_focus_hypotheses,
+                hypothesis_pool=hypothesis_pool,
+            ),
+            screening_focus_summary=response.screening_focus_summary.strip() or None,
             decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
             decision_gate_status="not_ready" if portfolio_screening_complete else "needs_portfolio_screening",
             verifier_supplement_target_pair=(
@@ -1208,6 +1380,7 @@ class OpenAIPlannerBackend:
             pairwise_resolution_summary=response.pairwise_resolution_summary.strip() or None,
             finalization_mode="none",
         )
+        decision = _apply_stage_aware_agent_framing(decision, main_gap="Initial portfolio screening is still open.")
         decision.planned_action_label = _planned_action_label_for_decision(decision)
         decision.executed_action_labels = []
         return {
@@ -1341,6 +1514,10 @@ class OpenAIPlannerBackend:
             ),
             current_hypothesis=current_hypothesis,
             confidence=self._clamp_confidence(_normalize_confidence(hypothesis_pool[0].confidence)),
+            agent_framing_mode=_normalize_agent_framing_mode(
+                response.agent_framing_mode,
+                reasoning_phase=reasoning_phase,
+            ),
             needs_verifier=response.needs_verifier,
             finalize=response.finalize,
             planned_agents=[],
@@ -1367,6 +1544,11 @@ class OpenAIPlannerBackend:
             credible_alternative_hypotheses=credible_alternative_hypotheses,
             hypothesis_screening_ledger=hypothesis_screening_ledger,
             portfolio_screening_summary=portfolio_screening_summary,
+            screening_focus_hypotheses=_normalize_hypothesis_name_list(
+                response.screening_focus_hypotheses,
+                hypothesis_pool=hypothesis_pool,
+            ),
+            screening_focus_summary=response.screening_focus_summary.strip() or None,
             decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
             decision_gate_status=response.decision_gate_status,
             verifier_supplement_target_pair=response.verifier_supplement_target_pair.strip()
@@ -1502,6 +1684,7 @@ class OpenAIPlannerBackend:
             decision=decision,
             main_gap=main_gap,
         )
+        decision = _apply_stage_aware_agent_framing(decision, main_gap=main_gap)
         decision.planned_action_label = _planned_action_label_for_decision(decision)
         decision.executed_action_labels = []
 
@@ -2523,6 +2706,7 @@ class PlannerAgent:
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
             "reasoning_phase": state.reasoning_phase,
+            "agent_framing_mode": state.agent_framing_mode,
             "portfolio_screening_complete": state.portfolio_screening_complete,
             "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
             "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
@@ -2530,6 +2714,8 @@ class PlannerAgent:
                 record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
             ],
             "portfolio_screening_summary": state.portfolio_screening_summary,
+            "screening_focus_hypotheses": list(state.screening_focus_hypotheses),
+            "screening_focus_summary": state.screening_focus_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
@@ -2589,6 +2775,7 @@ class PlannerAgent:
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
             "reasoning_phase": state.reasoning_phase,
+            "agent_framing_mode": state.agent_framing_mode,
             "portfolio_screening_complete": state.portfolio_screening_complete,
             "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
             "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
@@ -2596,6 +2783,8 @@ class PlannerAgent:
                 record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
             ],
             "portfolio_screening_summary": state.portfolio_screening_summary,
+            "screening_focus_hypotheses": list(state.screening_focus_hypotheses),
+            "screening_focus_summary": state.screening_focus_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,

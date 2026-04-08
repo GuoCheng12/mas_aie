@@ -6,7 +6,7 @@ from pathlib import Path
 from aie_mas.config import AieMasConfig
 from aie_mas.agents.macro import MacroAgent
 from aie_mas.agents.microscopic import MicroscopicAgent
-from aie_mas.graph.state import AgentReport, MoleculeIdentityContext
+from aie_mas.graph.state import AgentFramingMode, AgentReport, MoleculeIdentityContext, ReasoningPhase
 from aie_mas.tools.verifier import OpenAIVerifierEvidenceTool
 from aie_mas.utils.prompts import PromptRepository
 
@@ -34,6 +34,10 @@ class VerifierAgent:
         *,
         champion_hypothesis: str | None = None,
         challenger_hypothesis: str | None = None,
+        reasoning_phase: ReasoningPhase = "portfolio_screening",
+        agent_framing_mode: AgentFramingMode = "portfolio_neutral",
+        screening_focus_hypotheses: list[str] | None = None,
+        screening_focus_summary: str | None = None,
         pairwise_decision_question: str | None = None,
         main_gap: str,
         molecule_identity_context: MoleculeIdentityContext | None = None,
@@ -42,6 +46,7 @@ class VerifierAgent:
     ) -> AgentReport:
         champion_hypothesis = champion_hypothesis or current_hypothesis
         challenger_hypothesis = challenger_hypothesis or "unknown"
+        screening_focus_hypotheses = screening_focus_hypotheses or []
         pairwise_decision_question = pairwise_decision_question or (
             f"Distinguish '{champion_hypothesis}' versus '{challenger_hypothesis}' for the current molecule. "
             f"The unresolved discriminator is: {main_gap}"
@@ -51,6 +56,13 @@ class VerifierAgent:
             {
                 "task_received": task_received,
                 "current_hypothesis": current_hypothesis,
+                "framing_note": self._framing_note(
+                    current_hypothesis=current_hypothesis,
+                    reasoning_phase=reasoning_phase,
+                    agent_framing_mode=agent_framing_mode,
+                    screening_focus_hypotheses=screening_focus_hypotheses,
+                    screening_focus_summary=screening_focus_summary,
+                ),
                 "tool_name": self._tool.name,
                 "task_completion_text": "Task completion is pending verifier evidence retrieval.",
                 "source_count": "pending",
@@ -85,6 +97,13 @@ class VerifierAgent:
             {
                 "task_received": task_received,
                 "current_hypothesis": current_hypothesis,
+                "framing_note": self._framing_note(
+                    current_hypothesis=current_hypothesis,
+                    reasoning_phase=reasoning_phase,
+                    agent_framing_mode=agent_framing_mode,
+                    screening_focus_hypotheses=screening_focus_hypotheses,
+                    screening_focus_summary=screening_focus_summary,
+                ),
                 "tool_name": self._tool.name,
                 "task_completion_text": task_completion_text,
                 "source_count": raw_result["source_count"],
@@ -120,6 +139,33 @@ class VerifierAgent:
             generated_artifacts={},
             status=self._report_status(raw_result),
             planner_readable_report=rendered["planner_readable_report"],
+        )
+
+    def _framing_note(
+        self,
+        *,
+        current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: str | None,
+    ) -> str:
+        focus_text = ", ".join(screening_focus_hypotheses) if screening_focus_hypotheses else "none"
+        summary_text = screening_focus_summary or "No screening focus summary was provided."
+        if agent_framing_mode == "portfolio_neutral":
+            return (
+                f"Current reasoning phase: {reasoning_phase}. "
+                f"Agent framing mode: {agent_framing_mode}. "
+                f"The provisional top1 is '{current_hypothesis}' for bookkeeping only; do not treat it as settled. "
+                f"Use verifier retrieval to reduce coverage debt or clarify still-credible alternatives. "
+                f"Screening focus hypotheses: {focus_text}. "
+                f"Screening focus summary: {summary_text}"
+            )
+        return (
+            f"Current reasoning phase: {reasoning_phase}. "
+            f"Agent framing mode: {agent_framing_mode}. "
+            f"Anchor this verifier task to current working hypothesis '{current_hypothesis}'. "
+            f"Screening focus summary: {summary_text}"
         )
 
     def _task_completion(self, raw_result: dict[str, object]) -> tuple[str, str]:

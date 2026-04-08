@@ -2,7 +2,7 @@
 {task_completion_text}
 
 ## task_understanding
-Interpret the Planner instruction as a bounded low-cost microscopic Amesp task for the current working hypothesis "{current_hypothesis}": {task_received}
+Interpret the Planner instruction as a bounded low-cost microscopic Amesp task. {framing_note} Task received: {task_received}
 Requested local focus: {requested_focus}
 Requested Amesp route summary: {requested_route_summary}
 Requested capability: {requested_capability}

@@ -2,7 +2,7 @@
 {task_completion_text}
 
 ## task_understanding
-Interpret the Planner instruction as a macro-level structural analysis task for the current working hypothesis "{current_hypothesis}": {task_received}
+Interpret the Planner instruction as a bounded macro-level structural analysis task. {framing_note} Task received: {task_received}
 {shared_context_note}
 This agent should only summarize low-cost structural evidence and should not make a global mechanism judgment or recommend a system-level next action.
 

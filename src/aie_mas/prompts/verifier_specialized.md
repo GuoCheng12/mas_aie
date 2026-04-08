@@ -2,7 +2,7 @@
 {task_completion_text}
 
 ## task_understanding
-Interpret the Planner instruction as an external supervision retrieval task for the current working hypothesis "{current_hypothesis}": {task_received}
+Interpret the Planner instruction as an external supervision retrieval task. {framing_note} Task received: {task_received}
 This agent should only retrieve and summarize relevant raw evidence cards and should not decide whether the hypothesis should be kept, switched, strengthened, weakened, supported, or conflicted.
 
 ## execution_plan

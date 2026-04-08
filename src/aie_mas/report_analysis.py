@@ -68,11 +68,14 @@ class RoundReportContext(BaseModel):
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
     reasoning_phase: Optional[str] = None
+    agent_framing_mode: Optional[str] = None
     portfolio_screening_complete: Optional[bool] = None
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[dict[str, Any]] = Field(default_factory=list)
     portfolio_screening_summary: Optional[str] = None
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: Optional[str] = None
     planner_task_instruction: Optional[str] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
@@ -124,11 +127,14 @@ class AnalyzedRound(BaseModel):
     confidence: Optional[float] = None
     top3: list[HypothesisScore] = Field(default_factory=list)
     reasoning_phase: Optional[str] = None
+    agent_framing_mode: Optional[str] = None
     portfolio_screening_complete: Optional[bool] = None
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
     hypothesis_screening_ledger: list[dict[str, Any]] = Field(default_factory=list)
     portfolio_screening_summary: Optional[str] = None
+    screening_focus_hypotheses: list[str] = Field(default_factory=list)
+    screening_focus_summary: Optional[str] = None
     planner_task_instruction: Optional[str] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
@@ -204,6 +210,7 @@ def load_report_context(report_dir: Path) -> ReportContext:
                 confidence=_optional_float(entry.get("confidence")),
                 top3=_top3_from_pool(entry.get("hypothesis_pool") or []),
                 reasoning_phase=_optional_text(entry.get("reasoning_phase")),
+                agent_framing_mode=_optional_text(entry.get("agent_framing_mode")),
                 portfolio_screening_complete=_optional_bool(entry.get("portfolio_screening_complete")),
                 coverage_debt_hypotheses=[str(item) for item in (entry.get("coverage_debt_hypotheses") or [])],
                 credible_alternative_hypotheses=[
@@ -213,6 +220,8 @@ def load_report_context(report_dir: Path) -> ReportContext:
                     item for item in (entry.get("hypothesis_screening_ledger") or []) if isinstance(item, dict)
                 ],
                 portfolio_screening_summary=_optional_text(entry.get("portfolio_screening_summary")),
+                screening_focus_hypotheses=[str(item) for item in (entry.get("screening_focus_hypotheses") or [])],
+                screening_focus_summary=_optional_text(entry.get("screening_focus_summary")),
                 planner_task_instruction=_optional_text(entry.get("planner_task_instruction")),
                 planned_action_label=_optional_text(entry.get("planned_action_label")),
                 executed_action_labels=[str(item) for item in (entry.get("executed_action_labels") or [])],
@@ -291,11 +300,14 @@ def analyze_report_with_llm(
                 confidence=round_context.confidence,
                 top3=round_context.top3,
                 reasoning_phase=round_context.reasoning_phase,
+                agent_framing_mode=round_context.agent_framing_mode,
                 portfolio_screening_complete=round_context.portfolio_screening_complete,
                 coverage_debt_hypotheses=round_context.coverage_debt_hypotheses,
                 credible_alternative_hypotheses=round_context.credible_alternative_hypotheses,
                 hypothesis_screening_ledger=round_context.hypothesis_screening_ledger,
                 portfolio_screening_summary=round_context.portfolio_screening_summary,
+                screening_focus_hypotheses=round_context.screening_focus_hypotheses,
+                screening_focus_summary=round_context.screening_focus_summary,
                 planner_task_instruction=round_context.planner_task_instruction,
                 planned_action_label=round_context.planned_action_label,
                 executed_action_labels=round_context.executed_action_labels,

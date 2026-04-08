@@ -121,7 +121,12 @@ class AieMasWorkflow:
             state.smiles,
             exclude_case_ids={state.case_id},
         )
-        state.strategy_memory_hits = self.long_term_memory.load_strategy_hits(state.current_hypothesis)
+        strategy_hypothesis = (
+            state.current_hypothesis
+            if state.reasoning_phase == "pairwise_contraction"
+            else None
+        )
+        state.strategy_memory_hits = self.long_term_memory.load_strategy_hits(strategy_hypothesis)
         state.reliability_memory_hits = self.long_term_memory.load_reliability_hits()
         state.long_term_memory_path = str(self.long_term_memory.memory_dir)
         return state
@@ -135,11 +140,14 @@ class AieMasWorkflow:
         state.runner_up_hypothesis = decision.runner_up_hypothesis
         state.runner_up_confidence = decision.runner_up_confidence
         state.reasoning_phase = decision.reasoning_phase
+        state.agent_framing_mode = decision.agent_framing_mode
         state.portfolio_screening_complete = decision.portfolio_screening_complete
         state.coverage_debt_hypotheses = list(decision.coverage_debt_hypotheses)
         state.credible_alternative_hypotheses = list(decision.credible_alternative_hypotheses)
         state.hypothesis_screening_ledger = list(decision.hypothesis_screening_ledger)
         state.portfolio_screening_summary = decision.portfolio_screening_summary
+        state.screening_focus_hypotheses = list(decision.screening_focus_hypotheses)
+        state.screening_focus_summary = decision.screening_focus_summary
         state.decision_pair = list(decision.decision_pair)
         state.decision_gate_status = decision.decision_gate_status
         state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair
@@ -240,6 +248,10 @@ class AieMasWorkflow:
             smiles=state.smiles,
             task_received=task_instruction,
             current_hypothesis=state.current_hypothesis or "unknown",
+            reasoning_phase=state.reasoning_phase,
+            agent_framing_mode=state.agent_framing_mode,
+            screening_focus_hypotheses=list(state.screening_focus_hypotheses),
+            screening_focus_summary=state.screening_focus_summary,
             recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
             shared_structure_context=state.shared_structure_context,
             case_id=state.case_id,
@@ -264,6 +276,10 @@ class AieMasWorkflow:
             task_received=task_instruction,
             task_spec=task_spec,
             current_hypothesis=state.current_hypothesis or "unknown",
+            reasoning_phase=state.reasoning_phase,
+            agent_framing_mode=state.agent_framing_mode,
+            screening_focus_hypotheses=list(state.screening_focus_hypotheses),
+            screening_focus_summary=state.screening_focus_summary,
             recent_rounds_context=self.working_memory.build_recent_rounds_context(state),
             available_artifacts=self._microscopic_available_artifacts(state),
             shared_structure_context=state.shared_structure_context,
@@ -294,6 +310,10 @@ class AieMasWorkflow:
             current_hypothesis=state.current_hypothesis or "unknown",
             champion_hypothesis=state.current_hypothesis or "unknown",
             challenger_hypothesis=state.runner_up_hypothesis or "unknown",
+            reasoning_phase=state.reasoning_phase,
+            agent_framing_mode=state.agent_framing_mode,
+            screening_focus_hypotheses=list(state.screening_focus_hypotheses),
+            screening_focus_summary=state.screening_focus_summary,
             pairwise_decision_question=(
                 f"Distinguish '{state.current_hypothesis or 'unknown'}' versus "
                 f"'{state.runner_up_hypothesis or 'unknown'}' for the current molecule. "
@@ -333,6 +353,7 @@ class AieMasWorkflow:
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
             "reasoning_phase": state.reasoning_phase,
+            "agent_framing_mode": state.agent_framing_mode,
             "portfolio_screening_complete": state.portfolio_screening_complete,
             "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
             "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
@@ -340,6 +361,8 @@ class AieMasWorkflow:
                 record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
             ],
             "portfolio_screening_summary": state.portfolio_screening_summary,
+            "screening_focus_hypotheses": list(state.screening_focus_hypotheses),
+            "screening_focus_summary": state.screening_focus_summary,
             "decision_pair": list(state.decision_pair),
             "decision_gate_status": state.decision_gate_status,
             "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
@@ -426,11 +449,14 @@ class AieMasWorkflow:
         state.runner_up_hypothesis = decision.runner_up_hypothesis  # type: ignore[union-attr]
         state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
         state.reasoning_phase = decision.reasoning_phase  # type: ignore[union-attr]
+        state.agent_framing_mode = decision.agent_framing_mode  # type: ignore[union-attr]
         state.portfolio_screening_complete = decision.portfolio_screening_complete  # type: ignore[union-attr]
         state.coverage_debt_hypotheses = list(decision.coverage_debt_hypotheses)  # type: ignore[union-attr]
         state.credible_alternative_hypotheses = list(decision.credible_alternative_hypotheses)  # type: ignore[union-attr]
         state.hypothesis_screening_ledger = list(decision.hypothesis_screening_ledger)  # type: ignore[union-attr]
         state.portfolio_screening_summary = decision.portfolio_screening_summary  # type: ignore[union-attr]
+        state.screening_focus_hypotheses = list(decision.screening_focus_hypotheses)  # type: ignore[union-attr]
+        state.screening_focus_summary = decision.screening_focus_summary  # type: ignore[union-attr]
         state.decision_pair = list(decision.decision_pair)  # type: ignore[union-attr]
         state.decision_gate_status = decision.decision_gate_status  # type: ignore[union-attr]
         state.verifier_supplement_target_pair = decision.verifier_supplement_target_pair  # type: ignore[union-attr]

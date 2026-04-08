@@ -54,11 +54,14 @@ Return:
 - `current_hypothesis`
 - `confidence`
 - `reasoning_phase`
+- `agent_framing_mode`
 - `portfolio_screening_complete`
 - `coverage_debt_hypotheses`
 - `credible_alternative_hypotheses`
 - `hypothesis_screening_ledger`
 - `portfolio_screening_summary`
+- `screening_focus_hypotheses`
+- `screening_focus_summary`
 - `diagnosis`
 - `action`
 - `task_instruction`
@@ -85,6 +88,7 @@ Hypothesis-pool rules:
 
 Portfolio-screening rules:
 - In the initial round, `reasoning_phase` should normally be `portfolio_screening`.
+- In the initial round, `agent_framing_mode` should normally be `portfolio_neutral`.
 - In the initial round, `portfolio_screening_complete` should normally be `false`.
 - `credible_alternative_hypotheses` should list non-top1 hypotheses that still deserve explicit screening later.
 - `coverage_debt_hypotheses` should include each still-credible alternative that has not yet been directly screened, blocked by capability, or dropped with reason.
@@ -96,6 +100,8 @@ Portfolio-screening rules:
   - `dropped_with_reason`
 - In the initial round, Macro and the bounded Microscopic baseline provide indirect evidence only; they do not count as `directly_screened` for still-credible third alternatives.
 - `portfolio_screening_summary` should briefly explain which still-credible alternatives remain untested and why the case is still in portfolio screening.
+- `screening_focus_hypotheses` should name the still-credible alternatives that the next bounded screening action should clarify.
+- `screening_focus_summary` should explain how the next bounded action reduces portfolio coverage debt.
 
 `decision_gate_status` rules:
 - In the initial round it should normally be `needs_portfolio_screening`.
@@ -117,3 +123,6 @@ The diagnosis should explain:
 - what Macro and Microscopic can and cannot realistically do
 - why the first round should gather both macro and microscopic evidence
 - why the case remains in portfolio screening rather than pairwise contraction
+
+Agent-instruction framing rule:
+- In `portfolio_screening`, write specialized-agent instructions around screening focus hypotheses and open coverage debt, not as if `current_hypothesis` were already settled.

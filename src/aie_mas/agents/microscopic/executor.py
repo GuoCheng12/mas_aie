@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
-from aie_mas.graph.state import AgentReport, MicroscopicTaskSpec, SharedStructureContext, SharedStructureStatus
+from aie_mas.graph.state import (
+    AgentFramingMode,
+    AgentReport,
+    MicroscopicTaskSpec,
+    ReasoningPhase,
+    SharedStructureContext,
+    SharedStructureStatus,
+)
 from aie_mas.tools.amesp import AmespExecutionError
 
 from .compiler import MicroscopicReasoningParseError
@@ -17,6 +24,10 @@ class MicroscopicExecutorMixin:
         task_spec: Optional[MicroscopicTaskSpec] = None,
         current_hypothesis: str = "unknown",
         *,
+        reasoning_phase: ReasoningPhase = "portfolio_screening",
+        agent_framing_mode: AgentFramingMode = "portfolio_neutral",
+        screening_focus_hypotheses: Optional[list[str]] = None,
+        screening_focus_summary: Optional[str] = None,
         recent_rounds_context: Optional[list[dict[str, object]]] = None,
         available_artifacts: Optional[dict[str, Any]] = None,
         shared_structure_context: Optional[SharedStructureContext] = None,
@@ -32,6 +43,7 @@ class MicroscopicExecutorMixin:
         )
         recent_rounds_context = recent_rounds_context or []
         available_artifacts = available_artifacts or {}
+        screening_focus_hypotheses = screening_focus_hypotheses or []
         resolved_case_id = case_id or "ad_hoc_case"
 
         self._emit_probe(
@@ -49,6 +61,10 @@ class MicroscopicExecutorMixin:
 
         reasoning_payload = self._build_reasoning_payload(
             current_hypothesis=current_hypothesis,
+            reasoning_phase=reasoning_phase,
+            agent_framing_mode=agent_framing_mode,
+            screening_focus_hypotheses=screening_focus_hypotheses,
+            screening_focus_summary=screening_focus_summary,
             task_instruction=task_received,
             task_spec=task_spec,
             recent_rounds_context=recent_rounds_context,
@@ -77,6 +93,10 @@ class MicroscopicExecutorMixin:
                 task_received=task_received,
                 task_spec=task_spec,
                 current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
                 parse_error=exc,
             )
         reasoning = outcome.reasoning_response
@@ -131,6 +151,10 @@ class MicroscopicExecutorMixin:
                 task_received=task_received,
                 task_spec=task_spec,
                 current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
                 outcome=outcome,
                 registry_blocked_requests=list(action_decision.unsupported_parts),
             )
@@ -139,6 +163,10 @@ class MicroscopicExecutorMixin:
                 task_received=task_received,
                 task_spec=task_spec,
                 current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
                 outcome=outcome,
                 registry_blocked_requests=registry_blocked_requests,
             )
@@ -153,6 +181,10 @@ class MicroscopicExecutorMixin:
                 task_received=task_received,
                 task_spec=task_spec,
                 current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
                 outcome=outcome,
                 shared_structure_status=shared_structure_status,
             )
@@ -163,6 +195,10 @@ class MicroscopicExecutorMixin:
                     task_received=task_received,
                     task_spec=task_spec,
                     current_hypothesis=current_hypothesis,
+                    reasoning_phase=reasoning_phase,
+                    agent_framing_mode=agent_framing_mode,
+                    screening_focus_hypotheses=screening_focus_hypotheses,
+                    screening_focus_summary=screening_focus_summary,
                     parse_error=MicroscopicReasoningParseError(
                         "Microscopic action decision did not compile into an execution plan.",
                         raw_text="",
@@ -175,6 +211,10 @@ class MicroscopicExecutorMixin:
                 task_received=task_received,
                 task_spec=task_spec,
                 current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
                 outcome=outcome,
                 recent_rounds_context=recent_rounds_context,
                 available_artifacts=available_artifacts,
@@ -193,6 +233,10 @@ class MicroscopicExecutorMixin:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: Optional[str],
         outcome: MicroscopicReasoningOutcome,
         recent_rounds_context: list[dict[str, object]],
         available_artifacts: dict[str, Any],
@@ -209,6 +253,13 @@ class MicroscopicExecutorMixin:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
+            "framing_note": self._framing_note(
+                current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
+            ),
             "requested_focus": ", ".join(plan.requested_deliverables),
             "capability_route": plan.capability_route,
             "requested_capability": plan.microscopic_tool_request.capability_name,

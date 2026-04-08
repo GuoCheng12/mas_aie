@@ -85,11 +85,14 @@ Output requirements:
 Return:
 - `hypothesis_pool`
 - `reasoning_phase`
+- `agent_framing_mode`
 - `portfolio_screening_complete`
 - `coverage_debt_hypotheses`
 - `credible_alternative_hypotheses`
 - `hypothesis_screening_ledger`
 - `portfolio_screening_summary`
+- `screening_focus_hypotheses`
+- `screening_focus_summary`
 - `diagnosis`
 - `action`
 - `current_hypothesis`
@@ -129,6 +132,9 @@ Rules for these fields:
 - `current_hypothesis` must be the top1 label from that pool.
 - `confidence` must equal the top1 confidence.
 - `reasoning_phase` must be either `portfolio_screening` or `pairwise_contraction`.
+- `agent_framing_mode` must be:
+  - `portfolio_neutral` while `reasoning_phase=portfolio_screening`
+  - `hypothesis_anchored` while `reasoning_phase=pairwise_contraction`
 - While `coverage_debt_hypotheses` is non-empty, keep `reasoning_phase=portfolio_screening`, `portfolio_screening_complete=false`, and do not set `finalize=true`.
 - A hypothesis may leave `coverage_debt_hypotheses` only if its ledger status is:
   - `directly_screened`
@@ -166,3 +172,7 @@ The diagnosis must explicitly include:
 - whether the case is still in portfolio screening or has legitimately moved into pairwise contraction
 - whether closure justification is already sufficient, still collecting, or blocked
 - whether the case is ready for decisive finalize, best-available finalize, or further follow-up
+
+Agent-instruction framing rule:
+- In `portfolio_screening`, write specialized-agent instructions around screening focus hypotheses and remaining coverage debt.
+- Do not default to phrasing local tasks as if `current_hypothesis` were already settled while screening debt remains.

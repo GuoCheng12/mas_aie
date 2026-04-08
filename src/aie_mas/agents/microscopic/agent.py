@@ -7,6 +7,9 @@ from typing import Any, Callable, Optional
 
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
+    AgentFramingMode,
+    MicroscopicTaskSpec,
+    ReasoningPhase,
     SharedStructureContext,
     TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES,
     WorkflowProgressEvent,
@@ -85,6 +88,10 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         self,
         *,
         current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: Optional[str],
         task_instruction: str,
         task_spec: MicroscopicTaskSpec,
         recent_rounds_context: list[dict[str, object]],
@@ -98,6 +105,10 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         reasoned_examples = render_reasoned_microscopic_examples()
         return {
             "current_hypothesis": current_hypothesis,
+            "reasoning_phase": reasoning_phase,
+            "agent_framing_mode": agent_framing_mode,
+            "screening_focus_hypotheses": screening_focus_hypotheses,
+            "screening_focus_summary": screening_focus_summary,
             "task_instruction": task_instruction,
             "task_mode": task_spec.mode,
             "current_round_index": round_index,

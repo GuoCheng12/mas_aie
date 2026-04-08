@@ -69,4 +69,7 @@ def test_recent_rounds_context_keeps_latest_action_gap_and_summaries() -> None:
     assert "local_uncertainty_summary" in context[1]
     assert "repeated_local_uncertainty_signals" in context[2]
     assert "reasoning_phase" in context[0]
+    assert "agent_framing_mode" in context[0]
+    assert "screening_focus_hypotheses" in context[1]
+    assert "screening_focus_summary" in context[2]
     assert "executed_evidence_families" in context[2]

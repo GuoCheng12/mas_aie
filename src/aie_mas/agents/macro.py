@@ -8,9 +8,11 @@ from pydantic import BaseModel, Field
 from aie_mas.compat.langchain import prompt_value_to_messages
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
+    AgentFramingMode,
     AgentReport,
     MacroExecutionPlan,
     MacroExecutionStep,
+    ReasoningPhase,
     SharedStructureContext,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMacroClient
@@ -80,6 +82,10 @@ class MacroAgent:
         task_received: str,
         current_hypothesis: str = "unknown",
         *,
+        reasoning_phase: ReasoningPhase = "portfolio_screening",
+        agent_framing_mode: AgentFramingMode = "portfolio_neutral",
+        screening_focus_hypotheses: Optional[list[str]] = None,
+        screening_focus_summary: Optional[str] = None,
         recent_rounds_context: Optional[list[dict[str, object]]] = None,
         shared_structure_context: Optional[SharedStructureContext] = None,
         case_id: Optional[str] = None,
@@ -87,8 +93,13 @@ class MacroAgent:
     ) -> AgentReport:
         del case_id, round_index
         recent_rounds_context = recent_rounds_context or []
+        screening_focus_hypotheses = screening_focus_hypotheses or []
         reasoning_payload = {
             "current_hypothesis": current_hypothesis,
+            "reasoning_phase": reasoning_phase,
+            "agent_framing_mode": agent_framing_mode,
+            "screening_focus_hypotheses": screening_focus_hypotheses,
+            "screening_focus_summary": screening_focus_summary,
             "task_instruction": task_received,
             "recent_rounds_context": recent_rounds_context,
             "shared_structure_context": (
@@ -110,6 +121,13 @@ class MacroAgent:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
+            "framing_note": self._framing_note(
+                current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
+            ),
             "tool_name": self._tool.name,
             "task_completion_text": task_completion_text,
             "shared_context_note": self._shared_context_note(shared_structure_context),
@@ -162,6 +180,33 @@ class MacroAgent:
             generated_artifacts={},
             status="success",
             planner_readable_report=rendered["planner_readable_report"],
+        )
+
+    def _framing_note(
+        self,
+        *,
+        current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: Optional[str],
+    ) -> str:
+        focus_text = ", ".join(screening_focus_hypotheses) if screening_focus_hypotheses else "none"
+        summary_text = screening_focus_summary or "No screening focus summary was provided."
+        if agent_framing_mode == "portfolio_neutral":
+            return (
+                f"Current reasoning phase: {reasoning_phase}. "
+                f"Agent framing mode: {agent_framing_mode}. "
+                f"The provisional top1 is '{current_hypothesis}' for bookkeeping only; do not treat it as settled. "
+                f"Use this macro task to screen still-credible alternatives. "
+                f"Screening focus hypotheses: {focus_text}. "
+                f"Screening focus summary: {summary_text}"
+            )
+        return (
+            f"Current reasoning phase: {reasoning_phase}. "
+            f"Agent framing mode: {agent_framing_mode}. "
+            f"Anchor this macro task to current working hypothesis '{current_hypothesis}'. "
+            f"Screening focus summary: {summary_text}"
         )
 
     def _build_reasoning_backend(

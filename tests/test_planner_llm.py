@@ -1029,7 +1029,8 @@ def test_planner_diagnosis_contracts_multi_action_microscopic_task_to_single_act
 
     instruction = result["decision"].task_instruction or ""
     assert result["decision"].action == "microscopic"
-    assert instruction.startswith("Execute ONLY `run_torsion_snapshots`")
+    assert instruction.startswith("Current reasoning phase:")
+    assert "Execute ONLY `run_torsion_snapshots`" in instruction
     assert "parse_snapshot_outputs" not in instruction
     assert "extract_ct_descriptors_from_bundle" not in instruction
     assert result["decision"].agent_task_instructions["microscopic"] == instruction
@@ -1865,6 +1866,151 @@ def test_portfolio_screening_gate_blocks_finalize_when_coverage_debt_remains(tmp
     assert decision.decision_pair == []
 
 
+def test_initial_portfolio_screening_uses_portfolio_neutral_agent_framing(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.46},
+                {"name": "TICT", "confidence": 0.31},
+                {"name": "ESIPT", "confidence": 0.17},
+                {"name": "neutral aromatic", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.02}
+              ],
+              "current_hypothesis": "ICT",
+              "confidence": 0.46,
+              "reasoning_phase": "portfolio_screening",
+              "portfolio_screening_complete": false,
+              "credible_alternative_hypotheses": ["TICT", "ESIPT"],
+              "coverage_debt_hypotheses": ["TICT", "ESIPT"],
+              "hypothesis_screening_ledger": [
+                {
+                  "hypothesis": "TICT",
+                  "screening_status": "untested",
+                  "screening_priority": "high",
+                  "evidence_families_covered": [],
+                  "screening_note": "Needs direct screening."
+                },
+                {
+                  "hypothesis": "ESIPT",
+                  "screening_status": "indirectly_weakened",
+                  "screening_priority": "normal",
+                  "evidence_families_covered": ["state_ordering_brightness"],
+                  "screening_note": "Still needs direct screening."
+                }
+              ],
+              "portfolio_screening_summary": "TICT and ESIPT remain coverage-debt hypotheses.",
+              "screening_focus_hypotheses": ["TICT", "ESIPT"],
+              "screening_focus_summary": "Use the first round to screen TICT and ESIPT without anchoring on ICT.",
+              "diagnosis": "Remain in portfolio screening.",
+              "action": "macro_and_microscopic",
+              "task_instruction": "Dispatch first-round screening tasks.",
+              "agent_task_instructions": {
+                "macro": "Assess low-cost structural readiness for the still-credible alternatives.",
+                "microscopic": "Run the bounded baseline bundle to reduce portfolio uncertainty."
+              }
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_initial(
+        AieMasState(
+            user_query="Assess the likely AIE mechanism for this molecule.",
+            smiles="C1=CC=CC=C1",
+        )
+    )
+
+    decision = result["decision"]
+    assert decision.agent_framing_mode == "portfolio_neutral"
+    assert decision.screening_focus_hypotheses == ["TICT", "ESIPT"]
+    assert decision.screening_focus_summary is not None
+    assert decision.agent_task_instructions["macro"].startswith("Current reasoning phase: portfolio_screening.")
+    assert "provisional top1" in decision.agent_task_instructions["macro"]
+    assert "Screening focus hypotheses: TICT, ESIPT." in decision.agent_task_instructions["microscopic"]
+
+
+def test_pairwise_contraction_uses_hypothesis_anchored_agent_framing(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.73},
+                {"name": "TICT", "confidence": 0.21},
+                {"name": "ESIPT", "confidence": 0.03},
+                {"name": "neutral aromatic", "confidence": 0.02},
+                {"name": "unknown", "confidence": 0.01}
+              ],
+              "reasoning_phase": "pairwise_contraction",
+              "portfolio_screening_complete": true,
+              "credible_alternative_hypotheses": [],
+              "coverage_debt_hypotheses": [],
+              "hypothesis_screening_ledger": [],
+              "portfolio_screening_summary": "Portfolio screening is complete.",
+              "screening_focus_hypotheses": ["ICT", "TICT"],
+              "screening_focus_summary": "The remaining task is pairwise contraction between ICT and TICT.",
+              "diagnosis": "Enter pairwise contraction.",
+              "action": "microscopic",
+              "current_hypothesis": "ICT",
+              "confidence": 0.73,
+              "needs_verifier": false,
+              "finalize": false,
+              "task_instruction": "Run one bounded discriminative microscopic task.",
+              "agent_task_instructions": {
+                "microscopic": "Run one bounded discriminative microscopic task."
+              },
+              "evidence_summary": "Portfolio screening is complete.",
+              "main_gap": "Need one more pairwise discriminator between ICT and TICT.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "The champion still needs one more pairwise discriminator.",
+              "final_hypothesis_rationale": "",
+              "capability_assessment": "A bounded microscopic follow-up is still available.",
+              "stagnation_assessment": "No stagnation is present.",
+              "contraction_reason": "Pairwise contraction is now appropriate.",
+              "information_gain_assessment": "One more discriminative task should be enough.",
+              "gap_trend": "narrowing",
+              "stagnation_detected": false,
+              "capability_lesson_candidates": [],
+              "hypothesis_reweight_explanation": {
+                "ICT": "Current champion after screening.",
+                "TICT": "Current challenger after screening.",
+                "ESIPT": "Dropped after screening.",
+                "neutral aromatic": "Weak fallback.",
+                "unknown": "Residual uncertainty."
+              },
+              "decision_gate_status": "not_ready",
+              "verifier_supplement_status": "missing",
+              "verifier_information_gain": "none",
+              "verifier_evidence_relation": "no_new_info",
+              "closure_justification_status": "missing",
+              "closure_justification_evidence_source": "",
+              "closure_justification_basis": "",
+              "finalization_mode": "none"
+            }
+            """
+        ],
+    )
+    state = _base_state(
+        reasoning_phase="pairwise_contraction",
+        portfolio_screening_complete=True,
+        coverage_debt_hypotheses=[],
+        credible_alternative_hypotheses=[],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.reasoning_phase == "pairwise_contraction"
+    assert decision.agent_framing_mode == "hypothesis_anchored"
+    assert decision.screening_focus_hypotheses == ["ICT", "TICT"]
+    assert decision.agent_task_instructions["microscopic"].startswith("Current reasoning phase: pairwise_contraction.")
+    assert "anchored to current working hypothesis 'ICT' against challenger 'TICT'" in decision.agent_task_instructions["microscopic"]
+
+
 def test_working_memory_records_portfolio_fields_and_evidence_families() -> None:
     manager = WorkingMemoryManager()
     state = _base_state()
@@ -1878,6 +2024,7 @@ def test_working_memory_records_portfolio_fields_and_evidence_families() -> None
         current_hypothesis="ICT",
         confidence=0.66,
         reasoning_phase="portfolio_screening",
+        agent_framing_mode="portfolio_neutral",
         portfolio_screening_complete=False,
         coverage_debt_hypotheses=["ESIPT"],
         credible_alternative_hypotheses=["TICT", "ESIPT"],
@@ -1889,6 +2036,8 @@ def test_working_memory_records_portfolio_fields_and_evidence_families() -> None
             )
         ],
         portfolio_screening_summary="ESIPT remains a coverage-debt hypothesis.",
+        screening_focus_hypotheses=["ESIPT"],
+        screening_focus_summary="Use one bounded screening action to reduce ESIPT coverage debt.",
         planned_agents=["microscopic"],
         task_instruction="Use run_torsion_snapshots for one bounded direct screen.",
         agent_task_instructions={
@@ -1915,6 +2064,9 @@ def test_working_memory_records_portfolio_fields_and_evidence_families() -> None
 
     entry = state.working_memory[-1]
     assert entry.reasoning_phase == "portfolio_screening"
+    assert entry.agent_framing_mode == "portfolio_neutral"
     assert entry.coverage_debt_hypotheses == ["ESIPT"]
     assert entry.hypothesis_screening_ledger[0].hypothesis == "ESIPT"
+    assert entry.screening_focus_hypotheses == ["ESIPT"]
+    assert entry.screening_focus_summary == "Use one bounded screening action to reduce ESIPT coverage debt."
     assert entry.executed_evidence_families == ["torsion_sensitivity"]

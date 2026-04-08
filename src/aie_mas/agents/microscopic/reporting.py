@@ -1,18 +1,55 @@
 from __future__ import annotations
 
-from aie_mas.graph.state import AgentReport, MicroscopicTaskSpec, SharedStructureStatus
+from aie_mas.graph.state import (
+    AgentFramingMode,
+    AgentReport,
+    MicroscopicTaskSpec,
+    ReasoningPhase,
+    SharedStructureStatus,
+)
 
 from .interpreter import MicroscopicReasoningOutcome
 from .compiler import MicroscopicReasoningParseError, _closest_supported_actions_for_unsupported_parts
 
 
 class MicroscopicReportingMixin:
+    def _framing_note(
+        self,
+        *,
+        current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: str | None,
+    ) -> str:
+        focus_text = ", ".join(screening_focus_hypotheses) if screening_focus_hypotheses else "none"
+        summary_text = screening_focus_summary or "No screening focus summary was provided."
+        if agent_framing_mode == "portfolio_neutral":
+            return (
+                f"Current reasoning phase: {reasoning_phase}. "
+                f"Agent framing mode: {agent_framing_mode}. "
+                f"The provisional top1 is '{current_hypothesis}' for bookkeeping only; do not treat it as settled. "
+                f"Use this microscopic task to screen still-credible alternatives or reduce coverage debt. "
+                f"Screening focus hypotheses: {focus_text}. "
+                f"Screening focus summary: {summary_text}"
+            )
+        return (
+            f"Current reasoning phase: {reasoning_phase}. "
+            f"Agent framing mode: {agent_framing_mode}. "
+            f"Anchor this microscopic task to current working hypothesis '{current_hypothesis}'. "
+            f"Screening focus summary: {summary_text}"
+        )
+
     def _reasoning_parse_failure_report(
         self,
         *,
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: str | None,
         parse_error: MicroscopicReasoningParseError,
     ) -> AgentReport:
         contract_errors = list(parse_error.contract_errors)
@@ -28,6 +65,13 @@ class MicroscopicReportingMixin:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
+            "framing_note": self._framing_note(
+                current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
+            ),
             "requested_focus": ", ".join(self._requested_deliverables(task_received, task_spec)),
             "capability_route": "baseline_bundle",
             "requested_capability": "unknown",
@@ -129,6 +173,10 @@ class MicroscopicReportingMixin:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: str | None,
         outcome: MicroscopicReasoningOutcome,
         shared_structure_status: SharedStructureStatus,
     ) -> AgentReport:
@@ -148,6 +196,13 @@ class MicroscopicReportingMixin:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
+            "framing_note": self._framing_note(
+                current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
+            ),
             "requested_focus": ", ".join(plan.requested_deliverables),
             "capability_route": plan.capability_route,
             "requested_capability": plan.microscopic_tool_request.capability_name,
@@ -247,6 +302,10 @@ class MicroscopicReportingMixin:
         task_received: str,
         task_spec: MicroscopicTaskSpec,
         current_hypothesis: str,
+        reasoning_phase: ReasoningPhase,
+        agent_framing_mode: AgentFramingMode,
+        screening_focus_hypotheses: list[str],
+        screening_focus_summary: str | None,
         outcome: MicroscopicReasoningOutcome,
         registry_blocked_requests: list[str],
     ) -> AgentReport:
@@ -292,6 +351,13 @@ class MicroscopicReportingMixin:
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
+            "framing_note": self._framing_note(
+                current_hypothesis=current_hypothesis,
+                reasoning_phase=reasoning_phase,
+                agent_framing_mode=agent_framing_mode,
+                screening_focus_hypotheses=screening_focus_hypotheses,
+                screening_focus_summary=screening_focus_summary,
+            ),
             "requested_focus": ", ".join(requested_deliverables),
             "capability_route": plan.capability_route if plan is not None else "unsupported",
             "requested_capability": "registry-blocked request",
