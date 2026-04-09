@@ -1,0 +1,8 @@
+{
+  "case_id": "8e060a4f4431",
+  "smiles": "O=C(C=C1NCCCC)N(CC2=CC=CC=C2)C1=O",
+  "user_query": "Assess the likely AIE mechanism for this molecule.",
+  "error_type": "BadRequestError",
+  "error_message": "Error code: 400 - {'error': {'message': 'Input tokens exceed the configured limit of 272000 tokens. Your messages resulted in 285598 tokens. Please reduce the length of the messages.', 'type': 'invalid_request_error', 'param': 'messages', 'code': 'context_length_exceeded'}}",
+  "report_dir": "/datasets/workspace/mas_aie/var/reports/20260409-033847-315066_8e060a4f4431"
+}
