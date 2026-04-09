@@ -80,6 +80,9 @@ class RoundReportContext(BaseModel):
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
     executed_evidence_families: list[str] = Field(default_factory=list)
+    planner_context_budget_status: Optional[str] = None
+    planner_context_compaction_level: Optional[str] = None
+    planner_context_estimated_tokens: Optional[int] = None
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -139,6 +142,9 @@ class AnalyzedRound(BaseModel):
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
     executed_evidence_families: list[str] = Field(default_factory=list)
+    planner_context_budget_status: Optional[str] = None
+    planner_context_compaction_level: Optional[str] = None
+    planner_context_estimated_tokens: Optional[int] = None
     planner_agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     diagnosis_summary: Optional[str] = None
     evidence_summary: Optional[str] = None
@@ -228,6 +234,13 @@ def load_report_context(report_dir: Path) -> ReportContext:
                 executed_evidence_families=[
                     str(item) for item in (entry.get("executed_evidence_families") or [])
                 ],
+                planner_context_budget_status=_optional_text(entry.get("planner_context_budget_status")),
+                planner_context_compaction_level=_optional_text(entry.get("planner_context_compaction_level")),
+                planner_context_estimated_tokens=(
+                    int(entry.get("planner_context_estimated_tokens"))
+                    if entry.get("planner_context_estimated_tokens") is not None
+                    else None
+                ),
                 planner_agent_task_instructions={
                     str(key): str(value)
                     for key, value in (entry.get("planner_agent_task_instructions") or {}).items()

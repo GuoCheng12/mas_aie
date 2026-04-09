@@ -42,6 +42,8 @@ EvidenceFamily = Literal[
     "external_precedent",
     "raw_artifact_inspection",
 ]
+PlannerContextBudgetStatus = Literal["ok", "soft_compacted", "aggressive_compacted"]
+PlannerContextCompactionLevel = Literal["none", "soft", "aggressive"]
 MicroscopicTaskMode = Literal["baseline_s0_s1", "targeted_follow_up"]
 MicroscopicPlanStepType = Literal[
     "structure_prep",
@@ -227,6 +229,7 @@ class WorkingMemoryAgentEntry(BaseModel):
     result_summary: str
     remaining_local_uncertainty: str
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
+    planner_compact_summary: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
 
 
@@ -292,6 +295,9 @@ class PlannerDecision(BaseModel):
     pairwise_verifier_evidence_specificity: Optional[VerifierEvidenceSpecificity] = None
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
+    planner_context_budget_status: PlannerContextBudgetStatus = "ok"
+    planner_context_compaction_level: PlannerContextCompactionLevel = "none"
+    planner_context_estimated_tokens: int = 0
 
 
 class WorkingMemoryEntry(BaseModel):
@@ -352,10 +358,36 @@ class WorkingMemoryEntry(BaseModel):
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
     executed_evidence_families: list[EvidenceFamily] = Field(default_factory=list)
+    planner_context_budget_status: PlannerContextBudgetStatus = "ok"
+    planner_context_compaction_level: PlannerContextCompactionLevel = "none"
+    planner_context_estimated_tokens: int = 0
     local_uncertainty_summary: Optional[str] = None
     repeated_local_uncertainty_signals: list[str] = Field(default_factory=list)
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
     agent_reports: list[WorkingMemoryAgentEntry] = Field(default_factory=list)
+
+
+class PlannerArtifactReference(BaseModel):
+    artifact_bundle_id: str
+    artifact_kind: Optional[ArtifactBundleKind] = None
+    selected_member_ids: list[str] = Field(default_factory=list)
+    source_capability: Optional[str] = None
+    parse_capabilities_supported: list[MicroscopicCapabilityName] = Field(default_factory=list)
+
+
+class PlannerContextRoundSummary(BaseModel):
+    round: int
+    selected_next_action: str
+    planned_action_label: Optional[str] = None
+    executed_action_labels: list[str] = Field(default_factory=list)
+    task_instruction: Optional[str] = None
+    status: str = "unknown"
+    key_observations: list[str] = Field(default_factory=list)
+    key_missing_deliverables: list[str] = Field(default_factory=list)
+    evidence_families_covered: list[EvidenceFamily] = Field(default_factory=list)
+    artifact_references: list[PlannerArtifactReference] = Field(default_factory=list)
+    coverage_debt_delta: Optional[str] = None
+    hypothesis_delta: Optional[str] = None
 
 
 class MicroscopicTaskSpec(BaseModel):
@@ -645,6 +677,10 @@ class AieMasState(BaseModel):
     planned_action_label: Optional[str] = None
     executed_action_labels: list[str] = Field(default_factory=list)
     executed_evidence_families: list[EvidenceFamily] = Field(default_factory=list)
+    planner_context_budget_status: PlannerContextBudgetStatus = "ok"
+    planner_context_compaction_level: PlannerContextCompactionLevel = "none"
+    planner_context_estimated_tokens: int = 0
+    planner_context_projection: dict[str, Any] = Field(default_factory=dict)
     hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)
 
     planner_diagnosis_history: list[str] = Field(default_factory=list)

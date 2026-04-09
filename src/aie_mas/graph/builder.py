@@ -173,6 +173,10 @@ class AieMasWorkflow:
         state.planned_action_label = decision.planned_action_label
         state.executed_action_labels = list(decision.executed_action_labels)
         state.executed_evidence_families = []
+        state.planner_context_budget_status = decision.planner_context_budget_status
+        state.planner_context_compaction_level = decision.planner_context_compaction_level
+        state.planner_context_estimated_tokens = decision.planner_context_estimated_tokens
+        state.planner_context_projection = dict(result.get("planner_context_projection") or {})
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents
         state.pending_agent_instructions = dict(decision.agent_task_instructions)
@@ -388,6 +392,9 @@ class AieMasWorkflow:
             "planned_action_label": state.planned_action_label,
             "executed_action_labels": list(state.executed_action_labels),
             "executed_evidence_families": list(state.executed_evidence_families),
+            "planner_context_budget_status": state.planner_context_budget_status,
+            "planner_context_compaction_level": state.planner_context_compaction_level,
+            "planner_context_estimated_tokens": state.planner_context_estimated_tokens,
             "diagnosis": decision.diagnosis if decision else None,
             "action": decision.action if decision else None,
             "finalize": state.finalize,
@@ -402,6 +409,7 @@ class AieMasWorkflow:
                 if state.molecule_identity_context is not None
                 else None
             ),
+            "planner_context_projection": dict(state.planner_context_projection),
             "working_memory_rounds": len(state.working_memory),
         }
         state.state_snapshot = state.model_dump(mode="json")
@@ -490,6 +498,10 @@ class AieMasWorkflow:
         state.planned_action_label = decision.planned_action_label  # type: ignore[union-attr]
         state.executed_action_labels = list(decision.executed_action_labels)  # type: ignore[union-attr]
         state.executed_evidence_families = []
+        state.planner_context_budget_status = decision.planner_context_budget_status  # type: ignore[union-attr]
+        state.planner_context_compaction_level = decision.planner_context_compaction_level  # type: ignore[union-attr]
+        state.planner_context_estimated_tokens = decision.planner_context_estimated_tokens  # type: ignore[union-attr]
+        state.planner_context_projection = dict(result.get("planner_context_projection") or {})
         state.hypothesis_reweight_history.append(dict(decision.hypothesis_reweight_explanation))
         state.pending_agents = decision.planned_agents  # type: ignore[union-attr]
         state.pending_agent_instructions = dict(decision.agent_task_instructions)  # type: ignore[union-attr]
@@ -683,6 +695,9 @@ class AieMasWorkflow:
                 "hypothesis_uncertainty_note": state.last_planner_decision.hypothesis_uncertainty_note,
                 "final_hypothesis_rationale": state.last_planner_decision.final_hypothesis_rationale,
                 "capability_assessment": state.last_planner_decision.capability_assessment,
+                "planner_context_budget_status": state.last_planner_decision.planner_context_budget_status,
+                "planner_context_compaction_level": state.last_planner_decision.planner_context_compaction_level,
+                "planner_context_estimated_tokens": state.last_planner_decision.planner_context_estimated_tokens,
                 "planner_raw_response": state.last_planner_raw_response,
                 "planner_normalized_response": state.last_planner_normalized_response,
             }

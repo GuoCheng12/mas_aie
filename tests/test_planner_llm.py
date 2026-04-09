@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
+from aie_mas.agents import planner as planner_module
 from aie_mas.agents.planner import (
     PlannerAgent,
     PlannerInitialResponse,
@@ -101,6 +103,77 @@ def _base_state(**overrides: object) -> AieMasState:
     }
     payload.update(overrides)
     return AieMasState.model_validate(payload)
+
+
+def _round_response_json(**overrides: object) -> str:
+    payload: dict[str, object] = {
+        "hypothesis_pool": _base_hypothesis_pool(),
+        "reasoning_phase": "portfolio_screening",
+        "agent_framing_mode": "portfolio_neutral",
+        "portfolio_screening_complete": False,
+        "coverage_debt_hypotheses": ["ESIPT"],
+        "credible_alternative_hypotheses": ["TICT", "ESIPT"],
+        "hypothesis_screening_ledger": [
+            {
+                "hypothesis": "ESIPT",
+                "screening_status": "untested",
+                "screening_priority": "high",
+                "evidence_families_covered": [],
+                "screening_note": "Still needs a direct screen.",
+            }
+        ],
+        "portfolio_screening_summary": "ESIPT remains a still-credible untested alternative.",
+        "screening_focus_hypotheses": ["ESIPT"],
+        "screening_focus_summary": "Use one bounded direct screen to reduce ESIPT coverage debt.",
+        "diagnosis": "Top1 remains ICT while ESIPT still has unresolved screening debt.",
+        "action": "microscopic",
+        "current_hypothesis": "ICT",
+        "confidence": 0.74,
+        "needs_verifier": False,
+        "finalize": False,
+        "task_instruction": "Use one bounded direct microscopic screen.",
+        "agent_task_instructions": {"microscopic": "Use one bounded direct microscopic screen."},
+        "evidence_summary": "Internal evidence remains incomplete.",
+        "main_gap": "Need one more direct screen.",
+        "conflict_status": "none",
+        "hypothesis_uncertainty_note": "Top1 is provisional.",
+        "final_hypothesis_rationale": "",
+        "capability_assessment": "Current capability remains bounded.",
+        "stagnation_assessment": "No stagnation is present.",
+        "contraction_reason": "Do not collapse to pairwise before screening debt clears.",
+        "information_gain_assessment": "One more direct screen is still required.",
+        "gap_trend": "open",
+        "stagnation_detected": False,
+        "capability_lesson_candidates": [],
+        "hypothesis_reweight_explanation": {
+            "ICT": "Current lead from existing evidence.",
+            "TICT": "Still plausible runner-up.",
+            "ESIPT": "Still credible and not directly screened.",
+            "neutral aromatic": "Weak fallback.",
+            "unknown": "Residual uncertainty.",
+        },
+        "decision_gate_status": "needs_portfolio_screening",
+        "verifier_supplement_target_pair": "",
+        "verifier_supplement_status": "missing",
+        "verifier_information_gain": "none",
+        "verifier_evidence_relation": "no_new_info",
+        "verifier_supplement_summary": "",
+        "closure_justification_target_pair": "",
+        "closure_justification_status": "missing",
+        "closure_justification_evidence_source": "",
+        "closure_justification_basis": "",
+        "closure_justification_summary": "",
+        "pairwise_task_agent": "",
+        "pairwise_task_completed_for_pair": "",
+        "pairwise_task_outcome": "not_run",
+        "pairwise_task_rationale": "",
+        "pairwise_resolution_mode": "",
+        "pairwise_resolution_evidence_sources": [],
+        "pairwise_resolution_summary": "",
+        "finalization_mode": "none",
+    }
+    payload.update(overrides)
+    return json.dumps(payload)
 
 
 def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review") -> dict[str, object]:
@@ -2070,3 +2143,128 @@ def test_working_memory_records_portfolio_fields_and_evidence_families() -> None
     assert entry.screening_focus_hypotheses == ["ESIPT"]
     assert entry.screening_focus_summary == "Use one bounded screening action to reduce ESIPT coverage debt."
     assert entry.executed_evidence_families == ["torsion_sensitivity"]
+
+
+def test_planner_diagnosis_payload_uses_compact_artifact_projection(tmp_path: Path) -> None:
+    planner, fake_client = _build_planner(tmp_path, [_round_response_json()])
+    huge_path = "/very/long/generated/path/" + ("nested/" * 12) + "artifact_file.aop"
+    state = _base_state(
+        microscopic_reports=[
+            AgentReport(
+                agent_name="microscopic",
+                task_received="Inspect exact-member follow-up artifacts.",
+                task_understanding="Inspect the generated follow-up bundle only.",
+                reasoning_summary="Use reusable artifacts for a bounded direct screen.",
+                execution_plan="Inspect the follow-up bundle and summarize missing deliverables.",
+                result_summary="A targeted follow-up bundle was generated for two torsion members.",
+                remaining_local_uncertainty="One more discriminative screen may still be required.",
+                tool_calls=[],
+                raw_results={},
+                structured_results={
+                    "executed_capability": "run_ris_state_characterization",
+                    "artifact_bundle_id": "round_20_run_ris_state_characterization_bundle",
+                    "artifact_bundle_kind": "targeted_property_follow_up",
+                    "missing_deliverables": ["ct_number", "electron_hole_distance"],
+                    "resolved_target_ids": {
+                        "artifact_bundle_id": "round_02_torsion_snapshots",
+                        "artifact_member_ids": ["torsion_01", "torsion_06"],
+                    },
+                },
+                generated_artifacts={
+                    "artifact_bundle_id": "round_20_run_ris_state_characterization_bundle",
+                    "artifact_bundle_kind": "targeted_property_follow_up",
+                    "source_bundle_id": "round_02_torsion_snapshots",
+                    "source_member_ids": ["torsion_01", "torsion_06"],
+                    "artifact_bundle_registry_entries": [
+                        {
+                            "artifact_bundle": {
+                                "bundle_id": "round_20_run_ris_state_characterization_bundle",
+                                "bundle_kind": "targeted_property_follow_up",
+                                "source_capability": "run_ris_state_characterization",
+                                "parse_capabilities_supported": ["inspect_raw_artifact_bundle"],
+                            },
+                            "bundle_members": [
+                                {
+                                    "member_id": "torsion_01",
+                                    "generated_files": [huge_path for _ in range(40)],
+                                    "parse_capabilities_supported": ["inspect_raw_artifact_bundle"],
+                                }
+                            ],
+                            "generated_artifacts": {
+                                "snapshot_artifacts": [{"aop_path": huge_path} for _ in range(40)]
+                            },
+                        }
+                    ],
+                },
+                planner_readable_report="Reusable follow-up artifacts were generated for exact torsion members.",
+                status="success",
+            )
+        ],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "artifact_bundle_registry_entries" not in message_payload
+    assert huge_path not in message_payload
+    assert "round_20_run_ris_state_characterization_bundle" in message_payload
+    assert '"selected_member_ids": [' in message_payload
+    assert result["decision"].planner_context_budget_status in {
+        "ok",
+        "soft_compacted",
+        "aggressive_compacted",
+    }
+
+
+def test_planner_diagnosis_marks_context_compaction_when_budget_is_tight(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    planner, _ = _build_planner(tmp_path, [_round_response_json()])
+    monkeypatch.setattr(planner_module, "_PLANNER_CONTEXT_SOFT_TOKEN_BUDGET", 150)
+    monkeypatch.setattr(planner_module, "_PLANNER_CONTEXT_HARD_TOKEN_BUDGET", 220)
+    state = _base_state(
+        working_memory=[
+            WorkingMemoryEntry(
+                round_id=index,
+                current_hypothesis="ICT",
+                confidence=0.61,
+                action_taken="macro, microscopic",
+                evidence_summary="A very long but still compact history summary for planner budgeting.",
+                diagnosis_summary="The same screening debt remains open and still needs follow-up.",
+                main_gap="Need one more direct screen.",
+                conflict_status="none",
+                next_action="microscopic",
+                planner_task_instruction="Use one bounded direct microscopic screen to reduce portfolio debt.",
+                planned_action_label="run_targeted_state_characterization",
+                executed_action_labels=["run_baseline_bundle"],
+                executed_evidence_families=["state_ordering_brightness"],
+                agent_reports=[
+                    WorkingMemoryAgentEntry(
+                        agent_name="microscopic",
+                        task_received="Run baseline bundle.",
+                        task_understanding="Collect bounded baseline evidence.",
+                        execution_plan="Run exactly one baseline bundle.",
+                        result_summary="Baseline completed successfully.",
+                        remaining_local_uncertainty="Another screen is still needed.",
+                        planner_compact_summary={
+                            "key_observations": [
+                                "executed_capability=run_baseline_bundle",
+                                "Baseline completed successfully.",
+                            ],
+                            "key_missing_deliverables": ["ct_number"],
+                            "artifact_references": [],
+                        },
+                    )
+                ],
+            )
+            for index in range(1, 10)
+        ],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.planner_context_budget_status in {"soft_compacted", "aggressive_compacted"}
+    assert decision.planner_context_compaction_level in {"soft", "aggressive"}
+    assert decision.planner_context_estimated_tokens > 0

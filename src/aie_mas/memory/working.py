@@ -6,6 +6,8 @@ from typing import Any
 from aie_mas.graph.state import (
     AieMasState,
     EvidenceFamily,
+    PlannerArtifactReference,
+    PlannerContextRoundSummary,
     WorkingMemoryAgentEntry,
     WorkingMemoryEntry,
 )
@@ -60,7 +62,7 @@ class WorkingMemoryManager:
             action_taken = state.last_planner_decision.action
 
         evidence_summary = " | ".join(
-            f"{report.agent_name}: {report.planner_readable_report}" for report in state.active_round_reports
+            f"{report.agent_name}: {self._compact_report_observation(report)}" for report in state.active_round_reports
         )
         if not evidence_summary:
             evidence_summary = state.latest_evidence_summary or "No agent evidence was recorded."
@@ -81,7 +83,8 @@ class WorkingMemoryManager:
                 execution_plan=report.execution_plan,
                 result_summary=report.result_summary,
                 remaining_local_uncertainty=report.remaining_local_uncertainty,
-                generated_artifacts=dict(report.generated_artifacts),
+                generated_artifacts=self._compact_generated_artifacts(report),
+                planner_compact_summary=self._planner_compact_summary(report),
                 status=report.status,
             )
             for report in state.active_round_reports
@@ -162,6 +165,9 @@ class WorkingMemoryManager:
             planned_action_label=planned_action_label,
             executed_action_labels=executed_action_labels,
             executed_evidence_families=executed_evidence_families,
+            planner_context_budget_status=state.last_planner_decision.planner_context_budget_status,
+            planner_context_compaction_level=state.last_planner_decision.planner_context_compaction_level,
+            planner_context_estimated_tokens=state.last_planner_decision.planner_context_estimated_tokens,
             local_uncertainty_summary=local_uncertainty_summary,
             repeated_local_uncertainty_signals=repeated_local_uncertainty_signals,
             capability_lesson_candidates=list(state.last_planner_decision.capability_lesson_candidates),
@@ -171,6 +177,9 @@ class WorkingMemoryManager:
         state.planned_action_label = planned_action_label
         state.executed_action_labels = executed_action_labels
         state.executed_evidence_families = executed_evidence_families
+        state.planner_context_budget_status = state.last_planner_decision.planner_context_budget_status
+        state.planner_context_compaction_level = state.last_planner_decision.planner_context_compaction_level
+        state.planner_context_estimated_tokens = state.last_planner_decision.planner_context_estimated_tokens
         state.round_idx += 1
         state.active_round_reports.clear()
         return state
@@ -235,6 +244,9 @@ class WorkingMemoryManager:
                     "planned_action_label": entry.planned_action_label,
                     "executed_action_labels": list(entry.executed_action_labels),
                     "executed_evidence_families": list(entry.executed_evidence_families),
+                    "planner_context_budget_status": entry.planner_context_budget_status,
+                    "planner_context_compaction_level": entry.planner_context_compaction_level,
+                    "planner_context_estimated_tokens": entry.planner_context_estimated_tokens,
                     "local_uncertainty_summary": self._truncate(entry.local_uncertainty_summary or "", 260),
                     "repeated_local_uncertainty_signals": entry.repeated_local_uncertainty_signals,
                     "capability_assessment": self._truncate(entry.capability_assessment or "", 220),
@@ -246,9 +258,49 @@ class WorkingMemoryManager:
                     ),
                     "gap_trend": entry.gap_trend,
                     "stagnation_detected": entry.stagnation_detected,
+                    "agent_compact_summaries": [
+                        {
+                            "agent_name": agent_report.agent_name,
+                            "status": agent_report.status,
+                            "task_completion_status": agent_report.task_completion_status,
+                            **dict(agent_report.planner_compact_summary),
+                        }
+                        for agent_report in entry.agent_reports
+                    ],
                 }
             )
         return context
+
+    def build_planner_context_projection(
+        self,
+        state: AieMasState,
+        *,
+        recent_window: int = 5,
+        history_window: int | None = None,
+        latest_detail: str = "standard",
+    ) -> dict[str, object]:
+        entries = state.working_memory[-history_window:] if history_window is not None else state.working_memory
+        working_memory_summary = self._compact_working_memory_summary(entries)
+        projection: dict[str, object] = {
+            "working_memory_summary": [item.model_dump(mode="json") for item in working_memory_summary],
+            "recent_rounds_context": self.build_recent_rounds_context(state, window_size=recent_window),
+            "recent_capability_context": self.build_capability_context(state),
+            "latest_macro_report": self._compact_agent_report_for_planner(
+                state.macro_reports[-1] if state.macro_reports else None,
+                detail_level=latest_detail,
+            ),
+            "latest_microscopic_report": self._compact_agent_report_for_planner(
+                state.microscopic_reports[-1] if state.microscopic_reports else None,
+                detail_level=latest_detail,
+            ),
+            "latest_verifier_report": self._compact_agent_report_for_planner(
+                state.verifier_reports[-1] if state.verifier_reports else None,
+                detail_level=latest_detail,
+            ),
+        }
+        if state.verifier_reports:
+            projection["verifier_report"] = projection["latest_verifier_report"]
+        return projection
 
     def build_capability_context(
         self,
@@ -294,6 +346,310 @@ class WorkingMemoryManager:
             "low_information_round_ids": low_information_round_ids,
             "stagnation_round_ids": stagnation_round_ids,
         }
+
+    def _compact_working_memory_summary(
+        self,
+        entries: list[WorkingMemoryEntry],
+    ) -> list[PlannerContextRoundSummary]:
+        summaries: list[PlannerContextRoundSummary] = []
+        previous_entry: WorkingMemoryEntry | None = None
+        for entry in entries:
+            artifact_references = self._round_artifact_references(entry)
+            key_observations = self._round_key_observations(entry)
+            key_missing_deliverables = self._round_missing_deliverables(entry)
+            summaries.append(
+                PlannerContextRoundSummary(
+                    round=entry.round_id,
+                    selected_next_action=entry.next_action,
+                    planned_action_label=entry.planned_action_label,
+                    executed_action_labels=list(entry.executed_action_labels),
+                    task_instruction=self._truncate(entry.planner_task_instruction or "", 180) or None,
+                    status=self._round_status(entry),
+                    key_observations=key_observations,
+                    key_missing_deliverables=key_missing_deliverables,
+                    evidence_families_covered=list(entry.executed_evidence_families),
+                    artifact_references=artifact_references,
+                    coverage_debt_delta=self._coverage_debt_delta(previous_entry, entry),
+                    hypothesis_delta=self._hypothesis_delta(previous_entry, entry),
+                )
+            )
+            previous_entry = entry
+        return summaries
+
+    def _compact_agent_report_for_planner(
+        self,
+        report: Any,
+        *,
+        detail_level: str = "standard",
+    ) -> dict[str, object] | None:
+        if report is None:
+            return None
+        agent_name = getattr(report, "agent_name", "")
+        compact_summary = self._planner_compact_summary(report)
+        payload: dict[str, object] = {
+            "agent_name": agent_name,
+            "status": getattr(report, "status", "unknown"),
+            "task_completion_status": getattr(report, "task_completion_status", "unknown"),
+            "completion_reason_code": getattr(report, "completion_reason_code", None),
+            "task_received": self._truncate(str(getattr(report, "task_received", "") or ""), 220),
+            "task_completion": self._truncate(str(getattr(report, "task_completion", "") or ""), 220),
+            "task_understanding": self._truncate(str(getattr(report, "task_understanding", "") or ""), 220),
+            "reasoning_summary": self._truncate(str(getattr(report, "reasoning_summary", "") or ""), 220),
+            "execution_plan": self._truncate(str(getattr(report, "execution_plan", "") or ""), 220),
+            "result_summary": self._truncate(str(getattr(report, "result_summary", "") or ""), 260),
+            "remaining_local_uncertainty": self._truncate(
+                str(getattr(report, "remaining_local_uncertainty", "") or ""),
+                220,
+            ),
+            "planner_compact_summary": compact_summary,
+        }
+        structured_results = getattr(report, "structured_results", {}) or {}
+        if isinstance(structured_results, dict):
+            payload["structured_results"] = {
+                "status": structured_results.get("status"),
+                "requested_capability": structured_results.get("requested_capability"),
+                "executed_capability": structured_results.get("executed_capability"),
+                "performed_new_calculations": structured_results.get("performed_new_calculations"),
+                "reused_existing_artifacts": structured_results.get("reused_existing_artifacts"),
+                "resolved_target_ids": dict(structured_results.get("resolved_target_ids") or {}),
+                "honored_constraints": list(structured_results.get("honored_constraints") or []),
+                "unmet_constraints": list(structured_results.get("unmet_constraints") or []),
+                "missing_deliverables": list(structured_results.get("missing_deliverables") or []),
+                "artifact_bundle_id": structured_results.get("artifact_bundle_id"),
+                "artifact_bundle_kind": structured_results.get("artifact_bundle_kind"),
+                "registry_infeasible_reason": structured_results.get("registry_infeasible_reason"),
+                "error": dict(structured_results.get("error") or {}),
+                "verifier_target_pair": structured_results.get("verifier_target_pair"),
+                "pairwise_verifier_completed_for_pair": structured_results.get("pairwise_verifier_completed_for_pair"),
+                "pairwise_verifier_evidence_specificity": structured_results.get(
+                    "pairwise_verifier_evidence_specificity"
+                ),
+                "source_count": structured_results.get("source_count"),
+                "topic_summary": structured_results.get("topic_summary"),
+                "verifier_supplement_status": structured_results.get("verifier_supplement_status"),
+                "verifier_information_gain": structured_results.get("verifier_information_gain"),
+                "verifier_evidence_relation": structured_results.get("verifier_evidence_relation"),
+                "verifier_supplement_summary": self._truncate(
+                    str(structured_results.get("verifier_supplement_summary") or ""),
+                    220,
+                ),
+            }
+        if detail_level == "standard":
+            payload["generated_artifacts"] = self._compact_generated_artifacts(report)
+            payload["planner_readable_report"] = self._truncate(
+                str(getattr(report, "planner_readable_report", "") or ""),
+                260,
+            )
+        elif detail_level == "compact":
+            payload["generated_artifacts"] = self._compact_generated_artifacts(report)
+        return payload
+
+    def _planner_compact_summary(self, report: Any) -> dict[str, object]:
+        structured_results = getattr(report, "structured_results", {}) or {}
+        executed_capability = str(structured_results.get("executed_capability") or "").strip()
+        observations: list[str] = []
+        if executed_capability:
+            observations.append(f"executed_capability={executed_capability}")
+        result_summary = self._truncate(str(getattr(report, "result_summary", "") or ""), 180)
+        if result_summary:
+            observations.append(result_summary)
+        route_summary = structured_results.get("route_summary")
+        if isinstance(route_summary, dict):
+            route_label = str(route_summary.get("summary") or route_summary.get("route_observation") or "").strip()
+            if route_label:
+                observations.append(self._truncate(route_label, 160))
+        return {
+            "executed_capability": executed_capability or None,
+            "key_observations": observations[:3],
+            "key_missing_deliverables": list(structured_results.get("missing_deliverables") or []),
+            "artifact_references": [
+                item.model_dump(mode="json")
+                for item in self._artifact_references_from_report(report)
+            ],
+        }
+
+    def _compact_generated_artifacts(self, report: Any) -> dict[str, object]:
+        structured_results = getattr(report, "structured_results", {}) or {}
+        generated_artifacts = getattr(report, "generated_artifacts", {}) or {}
+        artifact_references = self._artifact_references_from_report(report)
+        compact: dict[str, object] = {}
+        if artifact_references:
+            compact["artifact_references"] = [item.model_dump(mode="json") for item in artifact_references]
+        if generated_artifacts.get("source_bundle_id") is not None:
+            compact["source_bundle_id"] = generated_artifacts.get("source_bundle_id")
+        if generated_artifacts.get("source_member_ids") is not None:
+            compact["source_member_ids"] = list(generated_artifacts.get("source_member_ids") or [])
+        if structured_results.get("resolved_target_ids") is not None:
+            compact["resolved_target_ids"] = dict(structured_results.get("resolved_target_ids") or {})
+        return compact
+
+    def _artifact_references_from_report(self, report: Any) -> list[PlannerArtifactReference]:
+        structured_results = getattr(report, "structured_results", {}) or {}
+        generated_artifacts = getattr(report, "generated_artifacts", {}) or {}
+        references_by_id: dict[str, PlannerArtifactReference] = {}
+
+        def _record(
+            *,
+            artifact_bundle_id: str | None,
+            artifact_kind: str | None = None,
+            selected_member_ids: list[str] | None = None,
+            source_capability: str | None = None,
+            parse_capabilities_supported: list[str] | None = None,
+        ) -> None:
+            bundle_id = str(artifact_bundle_id or "").strip()
+            if not bundle_id:
+                return
+            existing = references_by_id.get(bundle_id)
+            merged_member_ids = list(dict.fromkeys(selected_member_ids or []))
+            merged_parse_caps = list(dict.fromkeys(parse_capabilities_supported or []))
+            if existing is None:
+                references_by_id[bundle_id] = PlannerArtifactReference(
+                    artifact_bundle_id=bundle_id,
+                    artifact_kind=artifact_kind if artifact_kind else None,
+                    selected_member_ids=merged_member_ids,
+                    source_capability=source_capability if source_capability else None,
+                    parse_capabilities_supported=merged_parse_caps,
+                )
+                return
+            if merged_member_ids:
+                existing.selected_member_ids = list(
+                    dict.fromkeys([*existing.selected_member_ids, *merged_member_ids])
+                )
+            if merged_parse_caps:
+                existing.parse_capabilities_supported = list(
+                    dict.fromkeys([*existing.parse_capabilities_supported, *merged_parse_caps])
+                )
+            if not existing.artifact_kind and artifact_kind:
+                existing.artifact_kind = artifact_kind
+            if not existing.source_capability and source_capability:
+                existing.source_capability = source_capability
+
+        _record(
+            artifact_bundle_id=structured_results.get("artifact_bundle_id"),
+            artifact_kind=structured_results.get("artifact_bundle_kind"),
+            selected_member_ids=list(generated_artifacts.get("source_member_ids") or []),
+            source_capability=structured_results.get("executed_capability"),
+        )
+        for entry in list(generated_artifacts.get("artifact_bundle_registry_entries") or []):
+            if not isinstance(entry, dict):
+                continue
+            artifact_bundle = entry.get("artifact_bundle") or {}
+            bundle_members = list(entry.get("bundle_members") or [])
+            _record(
+                artifact_bundle_id=artifact_bundle.get("bundle_id"),
+                artifact_kind=artifact_bundle.get("bundle_kind"),
+                selected_member_ids=[
+                    str(member.get("member_id"))
+                    for member in bundle_members
+                    if isinstance(member, dict) and str(member.get("member_id") or "").strip()
+                ],
+                source_capability=artifact_bundle.get("source_capability"),
+                parse_capabilities_supported=[
+                    str(cap)
+                    for cap in artifact_bundle.get("parse_capabilities_supported") or []
+                    if str(cap).strip()
+                ],
+            )
+        return list(references_by_id.values())
+
+    def _round_artifact_references(self, entry: WorkingMemoryEntry) -> list[PlannerArtifactReference]:
+        references_by_id: dict[str, PlannerArtifactReference] = {}
+        for agent_report in entry.agent_reports:
+            compact = dict(agent_report.planner_compact_summary)
+            for item in compact.get("artifact_references") or []:
+                if not isinstance(item, dict):
+                    continue
+                bundle_id = str(item.get("artifact_bundle_id") or "").strip()
+                if not bundle_id:
+                    continue
+                existing = references_by_id.get(bundle_id)
+                if existing is None:
+                    references_by_id[bundle_id] = PlannerArtifactReference.model_validate(item)
+                    continue
+                existing.selected_member_ids = list(
+                    dict.fromkeys([*existing.selected_member_ids, *list(item.get("selected_member_ids") or [])])
+                )
+                existing.parse_capabilities_supported = list(
+                    dict.fromkeys(
+                        [*existing.parse_capabilities_supported, *list(item.get("parse_capabilities_supported") or [])]
+                    )
+                )
+                if not existing.artifact_kind and item.get("artifact_kind"):
+                    existing.artifact_kind = item.get("artifact_kind")
+                if not existing.source_capability and item.get("source_capability"):
+                    existing.source_capability = item.get("source_capability")
+        return list(references_by_id.values())
+
+    def _round_key_observations(self, entry: WorkingMemoryEntry) -> list[str]:
+        observations: list[str] = []
+        for agent_report in entry.agent_reports:
+            compact = dict(agent_report.planner_compact_summary)
+            for item in compact.get("key_observations") or []:
+                text = str(item).strip()
+                if text and text not in observations:
+                    observations.append(text)
+        if not observations and entry.evidence_summary:
+            observations.append(self._truncate(entry.evidence_summary, 180))
+        return observations[:5]
+
+    def _round_missing_deliverables(self, entry: WorkingMemoryEntry) -> list[str]:
+        missing: list[str] = []
+        for agent_report in entry.agent_reports:
+            compact = dict(agent_report.planner_compact_summary)
+            for item in compact.get("key_missing_deliverables") or []:
+                text = str(item).strip()
+                if text and text not in missing:
+                    missing.append(text)
+        return missing
+
+    def _round_status(self, entry: WorkingMemoryEntry) -> str:
+        statuses = [agent_report.status for agent_report in entry.agent_reports]
+        if not statuses:
+            return "unknown"
+        if any(status == "failed" for status in statuses):
+            return "failed"
+        if any(status == "partial" for status in statuses):
+            return "partial"
+        return "success"
+
+    def _coverage_debt_delta(
+        self,
+        previous_entry: WorkingMemoryEntry | None,
+        entry: WorkingMemoryEntry,
+    ) -> str | None:
+        previous = set(previous_entry.coverage_debt_hypotheses) if previous_entry is not None else set()
+        current = set(entry.coverage_debt_hypotheses)
+        cleared = sorted(previous - current)
+        added = sorted(current - previous)
+        parts: list[str] = []
+        if cleared:
+            parts.append(f"cleared: {', '.join(cleared)}")
+        if added:
+            parts.append(f"added: {', '.join(added)}")
+        return "; ".join(parts) or None
+
+    def _hypothesis_delta(
+        self,
+        previous_entry: WorkingMemoryEntry | None,
+        entry: WorkingMemoryEntry,
+    ) -> str | None:
+        if previous_entry is None:
+            return f"top1 initialized as {entry.current_hypothesis}"
+        if previous_entry.current_hypothesis != entry.current_hypothesis:
+            return f"top1 changed from {previous_entry.current_hypothesis} to {entry.current_hypothesis}"
+        confidence_delta = round(entry.confidence - previous_entry.confidence, 3)
+        if confidence_delta > 0:
+            return f"top1 confidence increased by {confidence_delta:.3f}"
+        if confidence_delta < 0:
+            return f"top1 confidence decreased by {abs(confidence_delta):.3f}"
+        return None
+
+    def _compact_report_observation(self, report: Any) -> str:
+        compact = self._planner_compact_summary(report)
+        observations = [str(item).strip() for item in compact.get("key_observations") or [] if str(item).strip()]
+        if observations:
+            return self._truncate(" | ".join(observations), 220)
+        return self._truncate(str(getattr(report, "planner_readable_report", "") or ""), 220)
 
     def _truncate(self, text: str, limit: int) -> str:
         if len(text) <= limit:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import math
 from typing import Any, Protocol
 
 import re
@@ -160,6 +162,8 @@ _MICROSCOPIC_STRUCTURE_BLOCK_CODES = {
     "forcefield_failed",
     "rdkit_unavailable",
 }
+_PLANNER_CONTEXT_SOFT_TOKEN_BUDGET = 120000
+_PLANNER_CONTEXT_HARD_TOKEN_BUDGET = 180000
 
 
 def _normalize_hypothesis_label(raw_label: str | None) -> str | None:
@@ -773,6 +777,26 @@ def _normalize_legacy_pairwise_task_outcome(raw_outcome: str | None) -> str:
     return "not_run"
 
 
+def _legacy_pairwise_outcome_from_state(
+    *,
+    pairwise_task_completed_for_pair: str | None,
+    pairwise_task_outcome: str | None,
+    closure_justification_status: str | None,
+) -> str:
+    if not (pairwise_task_completed_for_pair or "").strip():
+        return "not_run"
+    if pairwise_task_outcome == "best_available_tool_blocked" or closure_justification_status == "blocked":
+        return "failed"
+    if pairwise_task_outcome in {
+        "resolved_with_verifier_support",
+        "resolved_by_accumulated_internal_evidence",
+    } or closure_justification_status == "sufficient":
+        return "decisive"
+    if pairwise_task_outcome == "dedicated_pairwise_task_completed" or closure_justification_status == "collecting":
+        return "inconclusive"
+    return "not_run"
+
+
 def _normalize_pairwise_resolution_mode(raw_mode: str | None) -> str | None:
     if raw_mode in {
         "not_run",
@@ -954,6 +978,9 @@ def _planner_normalized_payload(
     payload["pairwise_verifier_evidence_specificity"] = decision.pairwise_verifier_evidence_specificity
     payload["planned_action_label"] = decision.planned_action_label
     payload["executed_action_labels"] = list(decision.executed_action_labels)
+    payload["planner_context_budget_status"] = decision.planner_context_budget_status
+    payload["planner_context_compaction_level"] = decision.planner_context_compaction_level
+    payload["planner_context_estimated_tokens"] = decision.planner_context_estimated_tokens
     return payload
 
 
@@ -1125,12 +1152,10 @@ def _apply_stage_aware_agent_framing(
         if reframed:
             reframed_instructions[agent_name] = reframed
     decision.agent_task_instructions = _normalize_agent_task_instructions(reframed_instructions)
-    task_agent = decision.action if decision.action in {"macro", "microscopic", "verifier"} else "screening"
-    decision.task_instruction = _apply_stage_aware_instruction(
-        instruction=decision.task_instruction,
-        decision=decision,
-        agent_name=task_agent,
-    )
+    if decision.action in {"macro", "microscopic"}:
+        updated_instruction = decision.agent_task_instructions.get(decision.action)
+        if updated_instruction:
+            decision.task_instruction = updated_instruction
     return decision
 
 
@@ -1494,11 +1519,72 @@ class OpenAIPlannerBackend:
         pairwise_task_completed_for_pair = response.pairwise_task_completed_for_pair.strip() or str(
             payload.get("pairwise_task_completed_for_pair") or ""
         ).strip() or None
+        verifier_supplement_status = _normalize_verifier_supplement_status(
+            response.verifier_supplement_status
+        )
+        if verifier_supplement_status == "missing":
+            verifier_supplement_status = _normalize_verifier_supplement_status(
+                str(payload.get("verifier_supplement_status") or "").strip() or None
+            )
+        verifier_information_gain = _normalize_verifier_information_gain(
+            response.verifier_information_gain
+        )
+        if verifier_information_gain == "none":
+            verifier_information_gain = _normalize_verifier_information_gain(
+                str(payload.get("verifier_information_gain") or "").strip() or None
+            )
+        verifier_evidence_relation = _normalize_verifier_evidence_relation(
+            response.verifier_evidence_relation
+        )
+        if verifier_evidence_relation == "no_new_info":
+            verifier_evidence_relation = _normalize_verifier_evidence_relation(
+                str(payload.get("verifier_evidence_relation") or "").strip() or None
+            )
+        closure_justification_status = _normalize_closure_justification_status(
+            response.closure_justification_status
+        )
+        if closure_justification_status == "missing":
+            closure_justification_status = _normalize_closure_justification_status(
+                str(payload.get("closure_justification_status") or "").strip() or None
+            )
+        closure_justification_evidence_source = _normalize_closure_justification_evidence_source(
+            response.closure_justification_evidence_source.strip() or None
+        ) or _normalize_closure_justification_evidence_source(
+            str(payload.get("closure_justification_evidence_source") or "").strip() or None
+        )
+        closure_justification_basis = _normalize_closure_justification_basis(
+            response.closure_justification_basis.strip() or None
+        ) or _normalize_closure_justification_basis(
+            str(payload.get("closure_justification_basis") or "").strip() or None
+        )
+        pairwise_resolution_mode = _normalize_pairwise_resolution_mode(
+            response.pairwise_resolution_mode.strip() or None
+        ) or _normalize_pairwise_resolution_mode(
+            str(payload.get("pairwise_resolution_mode") or "").strip() or None
+        )
+        pairwise_resolution_evidence_sources = [
+            item.strip() for item in response.pairwise_resolution_evidence_sources if item.strip()
+        ] or [
+            item.strip()
+            for item in list(payload.get("pairwise_resolution_evidence_sources") or [])
+            if isinstance(item, str) and item.strip()
+        ]
+        pairwise_resolution_summary = response.pairwise_resolution_summary.strip() or str(
+            payload.get("pairwise_resolution_summary") or ""
+        ).strip() or None
+        payload_pairwise_task_outcome = str(payload.get("pairwise_task_outcome") or "").strip() or None
+        payload_legacy_pairwise_task_outcome = str(payload.get("legacy_pairwise_task_outcome") or "").strip() or None
         legacy_pairwise_task_outcome = (
             _normalize_legacy_pairwise_task_outcome(response.pairwise_task_outcome)
             if response.pairwise_task_outcome != "not_run"
-            else _normalize_legacy_pairwise_task_outcome(str(payload.get("legacy_pairwise_task_outcome") or "not_run"))
+            else _normalize_legacy_pairwise_task_outcome(payload_legacy_pairwise_task_outcome or "not_run")
         )
+        if legacy_pairwise_task_outcome == "not_run":
+            legacy_pairwise_task_outcome = _legacy_pairwise_outcome_from_state(
+                pairwise_task_completed_for_pair=pairwise_task_completed_for_pair,
+                pairwise_task_outcome=payload_pairwise_task_outcome,
+                closure_justification_status=closure_justification_status,
+            )
         finalization_mode = (
             _normalize_finalization_mode(response.finalization_mode)
             if response.finalization_mode != "none"
@@ -1558,15 +1644,9 @@ class OpenAIPlannerBackend:
                 if portfolio_screening_complete
                 else None
             ),
-            verifier_supplement_status=_normalize_verifier_supplement_status(
-                response.verifier_supplement_status
-            ),
-            verifier_information_gain=_normalize_verifier_information_gain(
-                response.verifier_information_gain
-            ),
-            verifier_evidence_relation=_normalize_verifier_evidence_relation(
-                response.verifier_evidence_relation
-            ),
+            verifier_supplement_status=verifier_supplement_status,
+            verifier_information_gain=verifier_information_gain,
+            verifier_evidence_relation=verifier_evidence_relation,
             verifier_supplement_summary=response.verifier_supplement_summary.strip()
             or str(payload.get("verifier_supplement_summary") or "").strip()
             or None,
@@ -1577,21 +1657,9 @@ class OpenAIPlannerBackend:
                 if portfolio_screening_complete
                 else None
             ),
-            closure_justification_status=_normalize_closure_justification_status(
-                response.closure_justification_status
-            ),
-            closure_justification_evidence_source=_normalize_closure_justification_evidence_source(
-                response.closure_justification_evidence_source.strip() or None
-            )
-            or _normalize_closure_justification_evidence_source(
-                str(payload.get("closure_justification_evidence_source") or "").strip() or None
-            ),
-            closure_justification_basis=_normalize_closure_justification_basis(
-                response.closure_justification_basis.strip() or None
-            )
-            or _normalize_closure_justification_basis(
-                str(payload.get("closure_justification_basis") or "").strip() or None
-            ),
+            closure_justification_status=closure_justification_status,
+            closure_justification_evidence_source=closure_justification_evidence_source,
+            closure_justification_basis=closure_justification_basis,
             closure_justification_summary=response.closure_justification_summary.strip()
             or str(payload.get("closure_justification_summary") or "").strip()
             or None,
@@ -1599,15 +1667,9 @@ class OpenAIPlannerBackend:
             pairwise_task_completed_for_pair=pairwise_task_completed_for_pair,
             pairwise_task_outcome="not_run",
             pairwise_task_rationale=pairwise_task_rationale,
-            pairwise_resolution_mode=_normalize_pairwise_resolution_mode(
-                response.pairwise_resolution_mode.strip() or None
-            ),
-            pairwise_resolution_evidence_sources=[
-                item.strip()
-                for item in response.pairwise_resolution_evidence_sources
-                if item.strip()
-            ],
-            pairwise_resolution_summary=response.pairwise_resolution_summary.strip() or None,
+            pairwise_resolution_mode=pairwise_resolution_mode,
+            pairwise_resolution_evidence_sources=pairwise_resolution_evidence_sources,
+            pairwise_resolution_summary=pairwise_resolution_summary,
             finalization_mode=finalization_mode,
         )
         decision = _contract_microscopic_decision_to_single_action(
@@ -1682,6 +1744,11 @@ class OpenAIPlannerBackend:
         )
         decision = self._apply_portfolio_screening_gate(
             decision=decision,
+            main_gap=main_gap,
+        )
+        decision = self._synchronize_pairwise_resolution_fields(
+            decision=decision,
+            legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             main_gap=main_gap,
         )
         decision = _apply_stage_aware_agent_framing(decision, main_gap=main_gap)
@@ -2686,17 +2753,14 @@ class PlannerAgent:
         rendered_prompt = self._prompts.render("planner_initial", payload)
         return self._backend.plan_initial(rendered_prompt, payload)
 
-    def plan_diagnosis(self, state: AieMasState) -> dict[str, Any]:
-        latest_macro = state.macro_reports[-1].model_dump(mode="json") if state.macro_reports else None
-        latest_microscopic = (
-            state.microscopic_reports[-1].model_dump(mode="json") if state.microscopic_reports else None
-        )
-        latest_verifier = (
-            state.verifier_reports[-1].model_dump(mode="json") if state.verifier_reports else None
-        )
+    def _estimate_payload_tokens(self, payload: dict[str, Any]) -> int:
+        compact_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        return max(1, math.ceil(len(compact_json) / 4))
+
+    def _round_payload_base(self, state: AieMasState) -> dict[str, Any]:
         current_round_index = state.round_idx + 1
         rounds_remaining_including_current = max(0, self._config.max_rounds - state.round_idx)
-        payload = {
+        return {
             "smiles": state.smiles,
             "current_round_index": current_round_index,
             "max_rounds": self._config.max_rounds,
@@ -2735,12 +2799,6 @@ class PlannerAgent:
             "finalization_mode": state.finalization_mode,
             "pairwise_verifier_completed_for_pair": state.pairwise_verifier_completed_for_pair,
             "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
-            "working_memory_summary": [entry.model_dump(mode="json") for entry in state.working_memory],
-            "recent_rounds_context": self._working_memory.build_recent_rounds_context(state),
-            "recent_capability_context": self._working_memory.build_capability_context(state),
-            "latest_macro_report": latest_macro,
-            "latest_microscopic_report": latest_microscopic,
-            "latest_verifier_report": latest_verifier,
             "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
             "shared_structure_status": state.shared_structure_status,
             "shared_structure_error": state.shared_structure_error,
@@ -2756,74 +2814,91 @@ class PlannerAgent:
                 else None
             ),
         }
+
+    def _planner_payload_with_projection(
+        self,
+        state: AieMasState,
+        *,
+        include_verifier_report: bool,
+        include_recent_internal_evidence_summary: bool,
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
+        base_payload = self._round_payload_base(state)
+        ladder = [
+            ("ok", "none", 6, None, "standard", _PLANNER_CONTEXT_SOFT_TOKEN_BUDGET),
+            ("soft_compacted", "soft", 4, 10, "compact", _PLANNER_CONTEXT_HARD_TOKEN_BUDGET),
+            ("aggressive_compacted", "aggressive", 3, 6, "minimal", _PLANNER_CONTEXT_HARD_TOKEN_BUDGET),
+            ("aggressive_compacted", "aggressive", 2, 4, "minimal", None),
+        ]
+        selected_payload: dict[str, Any] | None = None
+        selected_meta: dict[str, Any] | None = None
+        for status, level, recent_window, history_window, latest_detail, budget in ladder:
+            projection = self._working_memory.build_planner_context_projection(
+                state,
+                recent_window=recent_window,
+                history_window=history_window,
+                latest_detail=latest_detail,
+            )
+            payload = {**base_payload, **projection}
+            if include_recent_internal_evidence_summary:
+                payload["recent_internal_evidence_summary"] = state.latest_evidence_summary
+            if include_verifier_report:
+                payload["verifier_report"] = projection.get("latest_verifier_report")
+            estimated_tokens = self._estimate_payload_tokens(payload)
+            selected_payload = payload
+            selected_meta = {
+                "planner_context_budget_status": status,
+                "planner_context_compaction_level": level,
+                "planner_context_estimated_tokens": estimated_tokens,
+                "planner_context_projection": projection,
+            }
+            if budget is None or estimated_tokens <= budget:
+                break
+        assert selected_payload is not None
+        assert selected_meta is not None
+        return selected_payload, selected_meta
+
+    def _attach_planner_context_metadata(
+        self,
+        result: dict[str, Any],
+        metadata: dict[str, Any],
+    ) -> dict[str, Any]:
+        decision = result.get("decision")
+        if decision is not None:
+            decision.planner_context_budget_status = metadata["planner_context_budget_status"]
+            decision.planner_context_compaction_level = metadata["planner_context_compaction_level"]
+            decision.planner_context_estimated_tokens = metadata["planner_context_estimated_tokens"]
+        normalized = result.get("normalized_response")
+        if isinstance(normalized, dict):
+            normalized["planner_context_budget_status"] = metadata["planner_context_budget_status"]
+            normalized["planner_context_compaction_level"] = metadata["planner_context_compaction_level"]
+            normalized["planner_context_estimated_tokens"] = metadata["planner_context_estimated_tokens"]
+        raw = result.get("raw_response")
+        if isinstance(raw, dict):
+            raw["planner_context_budget_status"] = metadata["planner_context_budget_status"]
+            raw["planner_context_compaction_level"] = metadata["planner_context_compaction_level"]
+            raw["planner_context_estimated_tokens"] = metadata["planner_context_estimated_tokens"]
+        result["planner_context_projection"] = metadata["planner_context_projection"]
+        return result
+
+    def plan_diagnosis(self, state: AieMasState) -> dict[str, Any]:
+        payload, metadata = self._planner_payload_with_projection(
+            state,
+            include_verifier_report=False,
+            include_recent_internal_evidence_summary=False,
+        )
         rendered_prompt = self._prompts.render("planner_diagnosis", payload)
-        return self._backend.plan_diagnosis(rendered_prompt, payload)
+        result = self._backend.plan_diagnosis(rendered_prompt, payload)
+        return self._attach_planner_context_metadata(result, metadata)
 
     def plan_reweight_or_finalize(self, state: AieMasState) -> dict[str, Any]:
-        latest_microscopic = (
-            state.microscopic_reports[-1].model_dump(mode="json") if state.microscopic_reports else None
+        payload, metadata = self._planner_payload_with_projection(
+            state,
+            include_verifier_report=True,
+            include_recent_internal_evidence_summary=True,
         )
-        current_round_index = state.round_idx + 1
-        rounds_remaining_including_current = max(0, self._config.max_rounds - state.round_idx)
-        payload = {
-            "smiles": state.smiles,
-            "current_round_index": current_round_index,
-            "max_rounds": self._config.max_rounds,
-            "rounds_remaining_including_current": rounds_remaining_including_current,
-            "current_hypothesis": state.current_hypothesis,
-            "current_confidence": state.confidence,
-            "runner_up_hypothesis": state.runner_up_hypothesis,
-            "runner_up_confidence": state.runner_up_confidence,
-            "reasoning_phase": state.reasoning_phase,
-            "agent_framing_mode": state.agent_framing_mode,
-            "portfolio_screening_complete": state.portfolio_screening_complete,
-            "coverage_debt_hypotheses": list(state.coverage_debt_hypotheses),
-            "credible_alternative_hypotheses": list(state.credible_alternative_hypotheses),
-            "hypothesis_screening_ledger": [
-                record.model_dump(mode="json") for record in state.hypothesis_screening_ledger
-            ],
-            "portfolio_screening_summary": state.portfolio_screening_summary,
-            "screening_focus_hypotheses": list(state.screening_focus_hypotheses),
-            "screening_focus_summary": state.screening_focus_summary,
-            "decision_pair": list(state.decision_pair),
-            "decision_gate_status": state.decision_gate_status,
-            "verifier_supplement_target_pair": state.verifier_supplement_target_pair,
-            "verifier_supplement_status": state.verifier_supplement_status,
-            "verifier_information_gain": state.verifier_information_gain,
-            "verifier_evidence_relation": state.verifier_evidence_relation,
-            "verifier_supplement_summary": state.verifier_supplement_summary,
-            "closure_justification_target_pair": state.closure_justification_target_pair,
-            "closure_justification_status": state.closure_justification_status,
-            "closure_justification_evidence_source": state.closure_justification_evidence_source,
-            "closure_justification_basis": state.closure_justification_basis,
-            "closure_justification_summary": state.closure_justification_summary,
-            "pairwise_task_agent": state.pairwise_task_agent,
-            "pairwise_task_completed_for_pair": state.pairwise_task_completed_for_pair,
-            "pairwise_task_outcome": state.pairwise_task_outcome,
-            "pairwise_task_rationale": state.pairwise_task_rationale,
-            "finalization_mode": state.finalization_mode,
-            "pairwise_verifier_completed_for_pair": state.pairwise_verifier_completed_for_pair,
-            "pairwise_verifier_evidence_specificity": state.pairwise_verifier_evidence_specificity,
-            "working_memory_summary": [entry.model_dump(mode="json") for entry in state.working_memory],
-            "recent_rounds_context": self._working_memory.build_recent_rounds_context(state),
-            "recent_capability_context": self._working_memory.build_capability_context(state),
-            "verifier_report": state.verifier_reports[-1].model_dump(mode="json")
-            if state.verifier_reports
-            else None,
-            "latest_microscopic_report": latest_microscopic,
-            "recent_internal_evidence_summary": state.latest_evidence_summary,
-            "hypothesis_pool": [entry.model_dump(mode="json") for entry in state.hypothesis_pool],
-            "shared_structure_status": state.shared_structure_status,
-            "shared_structure_error": state.shared_structure_error,
-            "molecule_identity_status": state.molecule_identity_status,
-            "molecule_identity_context": (
-                state.molecule_identity_context.model_dump(mode="json")
-                if state.molecule_identity_context is not None
-                else None
-            ),
-        }
         rendered_prompt = self._prompts.render("planner_reweight", payload)
-        return self._backend.plan_reweight_or_finalize(rendered_prompt, payload)
+        result = self._backend.plan_reweight_or_finalize(rendered_prompt, payload)
+        return self._attach_planner_context_metadata(result, metadata)
 
     def _build_backend(
         self,
