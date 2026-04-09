@@ -217,7 +217,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "baseline-first must stay low-cost; do not default to heavy exhaustive DFT geometry optimization for large systems"
             ),
             "supported_scope": [
-                "baseline_bundle: low-cost aTB S0 optimization plus vertical excited-state manifold",
+                "baseline_bundle: low-cost aTB1 S0 optimization plus vertical excited-state manifold",
                 (
                     "conformer_bundle_follow_up: bounded conformer sensitivity route "
                     f"(max {self._config.amesp_follow_up_max_conformers} conformers)"
@@ -257,7 +257,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         lower_instruction = task_received.lower()
         if task_spec.mode == "baseline_s0_s1":
             deliverables = [
-                "low-cost aTB S0 geometry optimization",
+                "low-cost aTB1 S0 geometry optimization",
                 "vertical excited-state manifold characterization",
             ]
             if "dipole" in lower_instruction:
@@ -309,7 +309,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             for token in ("torsion", "dihedral", "twist", "rotor", "rotation sensitivity", "rotational sensitivity")
         )
         if any(token in lower_instruction for token in ("s0", "ground-state", "ground state", "opt")):
-            deliverables.append("low-cost aTB S0 geometry optimization")
+            deliverables.append("low-cost aTB1 S0 geometry optimization")
         if any(token in lower_instruction for token in ("s1", "excited", "oscillator", "vertical")):
             deliverables.append("vertical excited-state manifold characterization")
         if "dipole" in lower_instruction:
@@ -346,7 +346,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         if not deliverables:
             deliverables.extend(
                 [
-                    "low-cost aTB S0 geometry optimization",
+                    "low-cost aTB1 S0 geometry optimization",
                     "vertical excited-state manifold characterization",
                 ]
             )

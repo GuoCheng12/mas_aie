@@ -486,7 +486,7 @@ def _build_fake_subprocess_with_approx_dipole_capture(
         lowered = aip_text.lower()
         if label.endswith("_s0") or label.endswith("_s0sp"):
             aop_text = S0_AOP_TEXT
-        elif "atb tda opt force" in lowered:
+        elif "atb1 tda opt force" in lowered:
             aop_text = S1_OPT_MISMATCH_AOP_TEXT if mismatch else S1_OPT_AOP_TEXT
         else:
             aop_text = S1_AOP_TEXT
@@ -857,7 +857,7 @@ def test_amesp_baseline_tool_writes_parallel_ricosx_and_fast_td_defaults(tmp_pat
 
     assert "% npara 20" in s0_input
     assert "% maxcore 12000" in s0_input
-    assert "! atb opt force" in s0_input
+    assert "! aTB1 opt force".lower() in s0_input.lower()
     assert ">opt" in s0_input
     assert "maxcyc 2000" in s0_input
     assert "gediis off" in s0_input
@@ -1430,13 +1430,13 @@ def test_amesp_targeted_transition_dipole_analysis_writes_tda_atb_excdip_and_ret
         "excited_to_excited_transition_dipoles",
     }
     first_record = result.route_records[0]
-    assert first_record["transition_dipole_method"] == "tda-atb-excdip"
+    assert first_record["transition_dipole_method"] == "tda-aTB1-excdip"
     assert len(first_record["ground_to_excited_transition_dipoles"]) == 2
     assert len(first_record["excited_to_excited_transition_dipoles"]) == 2
     assert first_record["transition_dipole_section_presence"]["ground_to_excited_section_present"] is True
     assert first_record["transition_dipole_section_presence"]["excited_to_excited_section_present"] is True
     s1_input = captured_inputs["run_targeted_transition_dipole_analysis_follow_up_torsion_01_char_s1"].lower()
-    assert "! atb tda" in s1_input
+    assert "! atb1 tda" in s1_input
     assert ">atb" in s1_input
     assert "excdip on" in s1_input
 
@@ -1495,8 +1495,8 @@ def test_amesp_targeted_approx_delta_dipole_analysis_returns_proxy_records(
     assert result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
     s0_input = captured_inputs["run_targeted_approx_delta_dipole_analysis_follow_up_torsion_01_char_s0"]
     s1_input = captured_inputs["run_targeted_approx_delta_dipole_analysis_follow_up_torsion_01_char_s1"].lower()
-    assert "! atb opt force" in s0_input.lower()
-    assert "! atb tda opt force" in s1_input
+    assert "! atb1 opt force" in s0_input.lower()
+    assert "! atb1 tda opt force" in s1_input
     assert "root 1" in s1_input
 
 

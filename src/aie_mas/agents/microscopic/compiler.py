@@ -2088,7 +2088,7 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
         ]
     if capability_name == "run_baseline_bundle":
         return [
-            "low-cost aTB S0 geometry optimization",
+            "low-cost aTB1 S0 geometry optimization",
             "vertical excited-state manifold characterization",
         ]
     if capability_name == "run_conformer_bundle":
@@ -2778,9 +2778,9 @@ def _build_execution_steps(
                 MicroscopicExecutionStep(
                     step_id="s0_optimization",
                     step_type="s0_optimization",
-                    description="Run a real low-cost Amesp aTB S0 geometry optimization on the prepared 3D structure.",
+                    description="Run a real low-cost Amesp aTB1 S0 geometry optimization on the prepared 3D structure.",
                     input_source=structure_source,
-                    keywords=["atb", "opt", "force", "maxcyc 2000", "gediis off", "maxstep 0.3", "vshift 500"],
+                    keywords=["aTB1", "opt", "force", "maxcyc 2000", "gediis off", "maxstep 0.3", "vshift 500"],
                     expected_outputs=[
                         "low-cost final S0 energy",
                         "low-cost final geometry",
@@ -2803,11 +2803,11 @@ def _build_execution_steps(
         else:
             if capability_name == "run_targeted_transition_dipole_analysis":
                 description = (
-                    "Run a bounded Amesp TDA-aTB vertical-excitation follow-up with transition-dipole output enabled "
+                    "Run a bounded Amesp TDA-aTB1 vertical-excitation follow-up with transition-dipole output enabled "
                     "to collect raw ground-to-excited and excited-to-excited transition-dipole observables on the selected geometries."
                 )
                 keywords = [
-                    "atb",
+                    "aTB1",
                     "tda",
                     "excdip on",
                     f"nstates {config.amesp_s1_nstates}",
@@ -2869,7 +2869,7 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "list_available_conformers: discovery-only conformer enumeration with stable IDs",
         "list_artifact_bundles: discovery-only artifact bundle enumeration with stable IDs",
         "list_artifact_bundle_members: discovery-only artifact bundle member enumeration with stable member IDs and parent-child linkage",
-        "run_baseline_bundle: low-cost aTB S0 geometry optimization plus vertical excited-state manifold",
+        "run_baseline_bundle: low-cost aTB1 S0 geometry optimization plus vertical excited-state manifold",
         "run_conformer_bundle: bounded conformer ensemble follow-up",
         "run_torsion_snapshots: bounded torsion snapshot follow-up",
         "run_targeted_charge_analysis: bounded fixed-geometry targeted charge analysis on a small representative subset of existing artifact geometries",

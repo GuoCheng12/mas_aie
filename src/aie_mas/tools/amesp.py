@@ -680,7 +680,7 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "reuse_existing_artifacts_only": False,
         },
         default_deliverables=[
-            "low-cost aTB S0 geometry optimization",
+            "low-cost aTB1 S0 geometry optimization",
             "vertical excited-state manifold characterization",
         ],
     ),
@@ -4005,7 +4005,7 @@ class AmespMicroscopicTool:
         return (Path(__file__).resolve().parents[3] / "third_party" / "Amesp" / "Bin" / "amesp").resolve()
 
     def _build_s0_keywords(self) -> list[str]:
-        return ["atb", "opt", "force"]
+        return ["aTB1", "opt", "force"]
 
     def _build_s0_block_lines(
         self,
@@ -4128,7 +4128,7 @@ class AmespMicroscopicTool:
         if method_mode == "dft_singlepoint":
             keywords = ["b3lyp", "sto-3g"]
         else:
-            keywords = ["atb", "force"]
+            keywords = ["aTB1", "force"]
         s0_outcome, s0_text = self._run_step(
             step_id="s0_singlepoint",
             label=f"{label}_s0sp",
@@ -4202,7 +4202,7 @@ class AmespMicroscopicTool:
         method_profile = dict(excitation_profile or {})
         method_mode = str(method_profile.get("mode") or "default_td").strip()
         if method_mode == "tda_atb_excdip":
-            keywords = ["atb", "tda"]
+            keywords = ["aTB1", "tda"]
             block_lines = [
                 ("ope", ["out 1"]),
                 ("atb", ["excdip on"]),
@@ -4215,7 +4215,7 @@ class AmespMicroscopicTool:
                 ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
             ]
         elif method_mode == "tda_atb_opt_root1":
-            keywords = ["atb", "tda", "opt", "force"]
+            keywords = ["aTB1", "tda", "opt", "force"]
             block_lines = [
                 ("opt", ["maxcyc 2000", "gediis off", "maxstep 0.3"]),
                 ("scf", ["maxcyc 2000", "vshift 500"]),
@@ -5810,7 +5810,7 @@ def _targeted_property_profile_for_capability(
             "availability_key": "transition_dipole_availability",
             "available_key": "available_transition_dipole_observables",
             "missing_key": "missing_transition_dipole_observables",
-            "excitation_profile": {"mode": "tda_atb_excdip", "method_label": "tda-atb-excdip"},
+            "excitation_profile": {"mode": "tda_atb_excdip", "method_label": "tda-aTB1-excdip"},
         }
     if capability_name == "run_targeted_approx_delta_dipole_analysis":
         return {
@@ -5830,7 +5830,7 @@ def _targeted_property_profile_for_capability(
             "availability_key": "approx_delta_dipole_availability",
             "available_key": "available_approx_delta_dipole_observables",
             "missing_key": "missing_approx_delta_dipole_observables",
-            "excitation_profile": {"mode": "tda_atb_opt_root1", "method_label": "tda-atb-opt-root1"},
+            "excitation_profile": {"mode": "tda_atb_opt_root1", "method_label": "tda-aTB1-opt-root1"},
         }
     if capability_name == "run_ris_state_characterization":
         return {
@@ -5864,7 +5864,7 @@ def _targeted_property_profile_for_capability(
         "missing_key": "missing_state_character_descriptors",
         "ground_state_profile": {
             "mode": "dft_singlepoint" if targeted_state_method_lines else "atb_singlepoint",
-            "method_label": "sp-b3lyp" if targeted_state_method_lines else "sp-atb",
+            "method_label": "sp-b3lyp" if targeted_state_method_lines else "sp-aTB1",
         },
         "excitation_profile": {"mode": "default_td", "method_label": "td-b3lyp"},
     }
@@ -6507,7 +6507,7 @@ def _build_targeted_property_record(
             available_transition_observables.append("excited_to_excited_transition_dipoles")
         record = {
             **common_record,
-            "transition_dipole_method": "tda-atb-excdip",
+            "transition_dipole_method": "tda-aTB1-excdip",
             "ground_to_excited_transition_dipoles": ground_to_excited,
             "excited_to_excited_transition_dipoles": excited_to_excited,
             "transition_dipole_section_presence": {

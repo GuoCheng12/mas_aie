@@ -279,7 +279,7 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
             Current Amesp capability is bounded to registry-backed low-cost microscopic execution.
             </capability_limit_note>
             <expected_outputs>
-            low-cost aTB S0 geometry optimization
+            low-cost aTB1 S0 geometry optimization
             vertical excited-state manifold characterization
             </expected_outputs>
             <failure_policy>
@@ -345,7 +345,7 @@ def test_openai_microscopic_supports_reasoned_action_text_baseline(tmp_path: Pat
             Current Amesp capability is bounded to low-cost baseline evidence collection.
             </capability_limit_note>
             <expected_outputs>
-            low-cost aTB S0 geometry optimization
+            low-cost aTB1 S0 geometry optimization
             vertical excited-state manifold characterization
             </expected_outputs>
             <failure_policy>
@@ -401,7 +401,7 @@ def test_microscopic_baseline_requested_deliverables_ignore_conformer_and_torsio
     deliverables = agent._requested_deliverables(  # type: ignore[attr-defined]
         (
             "Run the first-round low-cost S0/S1 microscopic baseline task. "
-            "Microscopic (supported scope: SMILES-to-3D, low-cost aTB S0 optimization, bounded S1 vertical "
+            "Microscopic (supported scope: SMILES-to-3D, low-cost aTB1 S0 optimization, bounded S1 vertical "
             "excitation on a few conformers) can supply fast indicators of LE vs CT and rotor-driven relaxation "
             "propensity, but do not attempt conformer bundle or torsion snapshots in this run. "
             "Report S0 dipole, HOMO-LUMO gap, and any CT descriptors available from the baseline bundle."
@@ -414,7 +414,7 @@ def test_microscopic_baseline_requested_deliverables_ignore_conformer_and_torsio
     )
 
     assert deliverables == [
-        "low-cost aTB S0 geometry optimization",
+        "low-cost aTB1 S0 geometry optimization",
         "vertical excited-state manifold characterization",
         "dipole summary",
         "HOMO-LUMO gap summary",
@@ -489,7 +489,7 @@ def test_openai_microscopic_recovers_unclosed_expected_outputs_section(tmp_path:
             local_goal=Run the first-round low-cost microscopic baseline task.
             execution_action=run_baseline_bundle
             requested_route_summary=Run the default low-cost baseline bundle.
-            requested_deliverables=low-cost aTB S0 geometry optimization | vertical excited-state manifold characterization
+            requested_deliverables=low-cost aTB1 S0 geometry optimization | vertical excited-state manifold characterization
             unsupported_requests=
             param.perform_new_calculation=true
             </microscopic_semantic_contract>
