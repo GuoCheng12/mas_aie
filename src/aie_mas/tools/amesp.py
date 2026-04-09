@@ -379,6 +379,21 @@ AMESP_CAPABILITY_REGISTRY: dict[MicroscopicCapabilityName, AmespCapabilityDefini
         unsupported_requests_note="This bounded route re-characterizes a small number of fixed geometries and does not perform excited-state relaxation or relaxed scans.",
         default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, and run bounded fixed-geometry follow-up calculations only on that subset.",
     ),
+    "run_targeted_approx_delta_dipole_analysis": AmespCapabilityDefinition(
+        name="run_targeted_approx_delta_dipole_analysis",
+        purpose="Select a bounded set of representative geometries from an existing artifact bundle and run approximate per-atom-charge-derived dipole-change analysis.",
+        requires_new_calculation=True,
+        required_inputs=["existing microscopic artifact bundle"],
+        optional_inputs=["artifact_source_round", "artifact_scope", "artifact_bundle_id", "artifact_member_id", "artifact_member_ids", "target_selection_mode", "state_window", "target_count"],
+        supported_deliverables=[
+            "targeted approximate dipole-change analysis records",
+            "approximate dipole-change availability summary",
+            "bounded approximate per-atom-charge-derived dipole proxy observables",
+        ],
+        supported_target_selection_modes=["representative_subset", "exact_members"],
+        unsupported_requests_note="This bounded route runs per-geometry aTB ground-state and excited-state optimizations only to derive approximate dipole proxies; it does not expose generic excited-state relaxation or solvent response.",
+        default_budget_behavior="Reuse one existing artifact bundle, auto-select at most three representative geometries, run bounded aTB ground-state and excited-state optimizations on that subset, and return approximate per-atom-charge-derived dipole proxy observables only.",
+    ),
     "run_ris_state_characterization": AmespCapabilityDefinition(
         name="run_ris_state_characterization",
         purpose="Select a bounded set of representative geometries from an existing artifact bundle and run targeted low-cost RIS state characterization.",
@@ -525,6 +540,7 @@ _TARGETED_PROPERTY_CAPABILITIES: tuple[MicroscopicCapabilityName, ...] = (
     "run_targeted_natural_orbital_analysis",
     "run_targeted_density_population_analysis",
     "run_targeted_transition_dipole_analysis",
+    "run_targeted_approx_delta_dipole_analysis",
     "run_ris_state_characterization",
     "run_targeted_state_characterization",
 )
@@ -1033,6 +1049,54 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
             "bounded raw transition-dipole observables",
         ],
         unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not perform relaxed scans or excited-state relaxation.",
+    ),
+    "run_targeted_approx_delta_dipole_analysis": AmespActionDefinition(
+        action_name="run_targeted_approx_delta_dipole_analysis",
+        action_kind="execution",
+        purpose="Run bounded approximate per-atom-charge-derived dipole-change analysis on a small representative subset of one reusable artifact bundle.",
+        allowed_llm_params=[
+            "perform_new_calculation",
+            "artifact_kind",
+            "artifact_bundle_id",
+            "artifact_member_id",
+            "artifact_member_ids",
+            "target_selection_mode",
+            "source_round_selector",
+            "state_window",
+            "target_count",
+        ],
+        python_owned_params=list(_DEFAULT_PYTHON_OWNED_ACTION_PARAMS),
+        param_types={
+            "perform_new_calculation": _action_param("perform_new_calculation", "bool", "Whether to launch new bounded approximate dipole-change calculations. Must remain true.", default=True),
+            "artifact_kind": _action_param("artifact_kind", "artifact_kind", "Requested artifact bundle kind.", enum_values=["baseline_bundle", "torsion_snapshots", "conformer_bundle", "targeted_property_follow_up"]),
+            "artifact_bundle_id": _action_param("artifact_bundle_id", "artifact_bundle_id", "Explicit artifact bundle ID."),
+            "artifact_member_id": _action_param("artifact_member_id", "artifact_member_id", "Explicit artifact bundle member ID."),
+            "artifact_member_ids": _action_param("artifact_member_ids", "artifact_member_ids", "Explicit artifact bundle member IDs."),
+            "target_selection_mode": _action_param("target_selection_mode", "target_selection_mode", "How the targeted route should select bundle members.", enum_values=["representative_subset", "exact_members"], default="representative_subset"),
+            "source_round_selector": _action_param(
+                "source_round_selector",
+                "source_round_selector",
+                "Requested artifact round selector.",
+                enum_values=["current_run", "latest_available", "round_02"],
+                default="latest_available",
+            ),
+            "state_window": _action_param("state_window", "int_list", "Requested state window for bounded excited-state optimization before approximate dipole reconstruction."),
+            "target_count": _action_param("target_count", "int", "Maximum number of representative geometries to re-characterize from the selected bundle.", default=3),
+        },
+        defaults={
+            "perform_new_calculation": True,
+            "optimize_ground_state": True,
+            "target_selection_mode": "representative_subset",
+            "source_round_selector": "latest_available",
+            "target_count": 3,
+        },
+        allowed_discovery_actions=["list_artifact_bundles"],
+        default_deliverables=[
+            "targeted approximate dipole-change analysis records",
+            "approximate dipole-change availability summary",
+            "bounded approximate per-atom-charge-derived dipole proxy observables",
+        ],
+        unsupported_note="This route is bounded to a small representative subset of existing bundle geometries and does not expose generic excited-state relaxation, solvent response, or charge-density grids.",
     ),
     "run_ris_state_characterization": AmespActionDefinition(
         action_name="run_ris_state_characterization",
@@ -1561,6 +1625,28 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             ensure_ascii=False,
             indent=2,
         ),
+        "targeted_approx_delta_dipole_analysis": json.dumps(
+            {
+                "status": "supported",
+                "execution_action": "run_targeted_approx_delta_dipole_analysis",
+                "discovery_actions": ["list_artifact_bundles"],
+                "params": {
+                    "perform_new_calculation": True,
+                    "artifact_kind": "torsion_snapshots",
+                    "source_round_selector": "latest_available",
+                    "state_window": [1, 2, 3],
+                    "target_count": 3,
+                },
+                "unsupported_parts": ["generic excited-state relaxation", "relaxed scan", "solvent response", "charge density grid"],
+                "local_execution_rationale": (
+                    "Reuse one existing artifact bundle, select a bounded representative subset of geometries, "
+                    "run bounded aTB ground-state and excited-state optimizations on that subset, "
+                    "and return approximate per-atom-charge-derived dipole proxy observables only."
+                ),
+            },
+            ensure_ascii=False,
+            indent=2,
+        ),
         "ris_state_characterization": json.dumps(
             {
                 "status": "supported",
@@ -1654,6 +1740,17 @@ def render_reasoned_microscopic_examples() -> dict[str, str]:
             "</reasoning_summary>\n"
             "<action_decision_json>\n"
             f"{action_examples['targeted_transition_dipole_analysis']}\n"
+            "</action_decision_json>"
+        ),
+        "targeted_approx_delta_dipole_analysis": (
+            "<task_understanding>\n"
+            "Interpret the Planner instruction as a bounded approximate dipole-change follow-up on a small representative subset of existing artifact geometries.\n"
+            "</task_understanding>\n"
+            "<reasoning_summary>\n"
+            "The task is best represented by the approximate dipole-change route with artifact-bundle discovery before execution.\n"
+            "</reasoning_summary>\n"
+            "<action_decision_json>\n"
+            f"{action_examples['targeted_approx_delta_dipole_analysis']}\n"
             "</action_decision_json>"
         ),
         "ris_state_characterization": (
@@ -2336,7 +2433,7 @@ class AmespMicroscopicTool:
                     "artifact_source_round": descriptors[0].source_round,
                 }
             )
-        _, bundle_members = self._artifact_bundle_source_with_members_by_id(
+        _, _, bundle_members = self._artifact_bundle_source_with_members_by_id(
             artifact_bundle_id=str(resolved_request.artifact_bundle_id),
             available_artifacts=available_artifacts,
         ) or (None, [])
@@ -2371,7 +2468,10 @@ class AmespMicroscopicTool:
                 source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
                 source_artifacts["source_round"] = source_round
                 source_capability = str(
-                    source.get("executed_capability") or source_artifacts.get("executed_capability") or ""
+                    source.get("executed_capability")
+                    or source_artifacts.get("executed_capability")
+                    or _infer_source_capability_from_generated_artifacts(source_artifacts)
+                    or ""
                 ).strip()
                 if source_capability:
                     entry = _artifact_bundle_entry_from_generated_artifacts(
@@ -2533,7 +2633,10 @@ class AmespMicroscopicTool:
                 source_round = int(source.get("source_round") or source_artifacts.get("source_round") or 0)
                 source_artifacts["source_round"] = source_round
                 source_capability = str(
-                    source.get("executed_capability") or source_artifacts.get("executed_capability") or ""
+                    source.get("executed_capability")
+                    or source_artifacts.get("executed_capability")
+                    or _infer_source_capability_from_generated_artifacts(source_artifacts)
+                    or ""
                 ).strip()
                 if source_capability:
                     entry = _artifact_bundle_entry_from_generated_artifacts(
@@ -2596,6 +2699,12 @@ class AmespMicroscopicTool:
         target_selection_mode = request.target_selection_mode
         if exact_member_ids and target_selection_mode == "bundle_wide":
             target_selection_mode = "exact_members"
+        elif (
+            target_selection_mode == "bundle_wide"
+            and "representative_subset" in supported_modes
+            and not exact_member_ids
+        ):
+            target_selection_mode = "representative_subset"
         if target_selection_mode not in supported_modes:
             raise AmespExecutionError(
                 "precondition_missing",
@@ -3022,6 +3131,7 @@ class AmespMicroscopicTool:
         )
         descriptor_scope = list(profile["descriptor_scope"])
         source_bundle_completion_status = _bundle_completion_status_from_generated_artifacts(selected_artifacts)
+        request_artifact_bundle_id = request.artifact_bundle_id
         if target_selection_mode == "exact_members":
             selected_records = list(artifact_records)
         else:
@@ -3067,7 +3177,9 @@ class AmespMicroscopicTool:
                 round_index=round_index,
                 case_id=case_id,
                 current_hypothesis=current_hypothesis,
-                optimize_ground_state=request.optimize_ground_state,
+                optimize_ground_state=(
+                    True if capability_name == "run_targeted_approx_delta_dipole_analysis" else request.optimize_ground_state
+                ),
                 route="targeted_property_follow_up",
                 state_window=request.state_window,
                 executed_capability=capability_name,
@@ -3102,7 +3214,7 @@ class AmespMicroscopicTool:
                 {
                     "member_id": member_id,
                     "member_label": member_label,
-                    "source_bundle_id": request.artifact_bundle_id,
+                    "source_bundle_id": request_artifact_bundle_id,
                     "source_member_id": _artifact_record_member_id(artifact, fallback=member_label),
                     "prepared_xyz_path": member_result.generated_artifacts.get("prepared_xyz_path"),
                     "prepared_summary_path": member_result.generated_artifacts.get("prepared_summary_path"),
@@ -3117,6 +3229,7 @@ class AmespMicroscopicTool:
                     "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path")
                     or member_result.generated_artifacts.get("s0_singlepoint_mo_path"),
                     "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                    "s1_optimized_xyz_path": member_result.generated_artifacts.get("s1_optimized_xyz_path"),
                     "available_raw_files": _collect_available_file_keys(
                         {
                             "snapshot_artifacts": [
@@ -3135,6 +3248,7 @@ class AmespMicroscopicTool:
                                     "s0_mo_path": member_result.generated_artifacts.get("s0_mo_path")
                                     or member_result.generated_artifacts.get("s0_singlepoint_mo_path"),
                                     "s1_mo_path": member_result.generated_artifacts.get("s1_mo_path"),
+                                    "s1_optimized_xyz_path": member_result.generated_artifacts.get("s1_optimized_xyz_path"),
                                 }
                             ]
                         },
@@ -3172,9 +3286,30 @@ class AmespMicroscopicTool:
             available_key: sorted(capability_available_descriptors),
             missing_key: missing_descriptors,
             "artifact_reuse_note": "Reused one existing artifact bundle, selected a bounded representative subset of geometries, and ran fixed-geometry follow-up characterization on that subset.",
-            "optimize_ground_state": bool(request.optimize_ground_state),
+            "optimize_ground_state": (
+                True if capability_name == "run_targeted_approx_delta_dipole_analysis" else bool(request.optimize_ground_state)
+            ),
             "state_window": list(request.state_window),
         }
+        if target_selection_mode != "exact_members":
+            sorted_member_ids = sorted(route_summary["selected_target_members"])
+            route_summary["selected_target_members"] = sorted_member_ids
+        if capability_name == "run_targeted_approx_delta_dipole_analysis":
+            alignment_failed_member_ids = [
+                _artifact_record_member_id(record, fallback=f"member_{index:02d}")
+                for index, record in enumerate(route_records, start=1)
+                if record.get("atom_order_alignment_status") != "aligned"
+            ]
+            successful_alignment_count = len(route_records) - len(alignment_failed_member_ids)
+            route_summary["artifact_reuse_note"] = (
+                "Reused one existing artifact bundle, selected a bounded representative subset of geometries, "
+                "ran bounded aTB ground-state and excited-state optimizations on that subset, and derived "
+                "approximate per-atom-charge-derived dipole proxy observables."
+            )
+            route_summary["alignment_failed_member_ids"] = alignment_failed_member_ids
+            route_summary["alignment_failure_count"] = len(alignment_failed_member_ids)
+            route_summary["successful_alignment_count"] = successful_alignment_count
+            route_summary[availability_key] = "proxy_only" if successful_alignment_count > 0 else "not_available"
         if capability_name == "run_targeted_state_characterization":
             route_summary["shared_first_state_virtual_orbitals"] = _intersect_int_sets(first_state_virtual_sets)
             route_summary["shared_first_bright_state_virtual_orbitals"] = _intersect_int_sets(first_bright_virtual_sets)
@@ -3199,15 +3334,47 @@ class AmespMicroscopicTool:
         primary_result.generated_artifacts["artifact_bundle_kind"] = "targeted_property_follow_up"
         primary_result.generated_artifacts["source_bundle_id"] = request.artifact_bundle_id
         primary_result.generated_artifacts["source_capability"] = capability_name
-        primary_result.generated_artifacts["source_member_ids"] = [
+        generated_source_member_ids = [
             _artifact_record_member_id(record, fallback=f"member_{index:02d}")
             for index, record in enumerate(selected_records, start=1)
         ]
+        if target_selection_mode != "exact_members":
+            generated_source_member_ids = sorted(generated_source_member_ids)
+        primary_result.generated_artifacts["source_member_ids"] = generated_source_member_ids
         primary_result.generated_artifacts["selected_target_count"] = len(selected_records)
         primary_result.generated_artifacts["selected_target_members"] = route_summary["selected_target_members"]
         primary_result.generated_artifacts["target_selection_mode"] = target_selection_mode
         primary_result.generated_artifacts["characterization_artifacts"] = characterization_artifacts
         primary_result.generated_artifacts["reused_snapshot_artifacts"] = selected_records
+        if capability_name == "run_targeted_approx_delta_dipole_analysis":
+            alignment_failed_member_ids = list(route_summary.get("alignment_failed_member_ids") or [])
+            if alignment_failed_member_ids:
+                alignment_message = (
+                    "Atomic order mismatch prevented approximate dipole reconstruction for all selected geometries."
+                    if len(alignment_failed_member_ids) == len(route_records)
+                    else "Atomic order mismatch prevented approximate dipole reconstruction for some selected geometries."
+                )
+                raise AmespExecutionError(
+                    "parse_failed",
+                    alignment_message,
+                    generated_artifacts=primary_result.generated_artifacts,
+                    raw_results=primary_result.raw_step_results,
+                    structured_results={
+                        "executed_capability": capability_name,
+                        "performed_new_calculations": True,
+                        "reused_existing_artifacts": True,
+                        "resolved_target_ids": {"artifact_bundle_id": request_artifact_bundle_id},
+                        "missing_deliverables": (
+                            [_humanize_descriptor_name(item) for item in descriptor_scope]
+                            if len(alignment_failed_member_ids) == len(route_records)
+                            else []
+                        ),
+                        "parsed_snapshot_records": route_records,
+                        "route_records": route_records,
+                        "route_summary": route_summary,
+                    },
+                    status="failed" if len(alignment_failed_member_ids) == len(route_records) else "partial",
+                )
         return primary_result
 
     def _execute_parse_snapshot_outputs_route(
@@ -4047,6 +4214,13 @@ class AmespMicroscopicTool:
                 ("ope", ["out 1"]),
                 ("posthf", [f"nstates {requested_nstates}", f"tout {self._td_tout}"]),
             ]
+        elif method_mode == "tda_atb_opt_root1":
+            keywords = ["atb", "tda", "opt", "force"]
+            block_lines = [
+                ("opt", ["maxcyc 2000", "gediis off", "maxstep 0.3"]),
+                ("scf", ["maxcyc 2000", "vshift 500"]),
+                ("posthf", [f"nstates {requested_nstates}", "root 1"]),
+            ]
         else:
             keywords = self._build_s1_keywords()
             block_lines = [
@@ -4079,6 +4253,24 @@ class AmespMicroscopicTool:
                 "s1_method": str(method_profile.get("method_label") or "td-b3lyp"),
             }
         )
+        if method_mode == "tda_atb_opt_root1":
+            s1_symbols, s1_coordinates = _parse_final_geometry(s1_text)
+            if not s1_symbols or not s1_coordinates:
+                raise AmespExecutionError(
+                    "parse_failed",
+                    "Amesp excited-state optimization did not expose a parseable final geometry.",
+                    generated_artifacts=generated_artifacts,
+                    raw_results=raw_results,
+                    status="partial",
+                )
+            s1_xyz_path = workdir / "s1_optimized.xyz"
+            _write_xyz(
+                s1_xyz_path,
+                label=f"{label}_s1_optimized",
+                symbols=s1_symbols,
+                coordinates=s1_coordinates,
+            )
+            generated_artifacts["s1_optimized_xyz_path"] = str(s1_xyz_path)
         excited_states = _parse_excited_states(s1_text, reference_energy_hartree=reference_energy)
         if state_window:
             requested_state_indices = {int(index) for index in state_window}
@@ -4743,6 +4935,35 @@ def _parse_last_mulliken_charges(text: str) -> list[float]:
     return charges
 
 
+def _parse_last_mulliken_charge_rows(text: str) -> list[dict[str, Any]]:
+    matches = re.findall(
+        r"Mulliken charges:\s*(.*?)Sum of Mulliken charges\s*=\s*[-+]?\d+\.\d+",
+        text,
+        flags=re.DOTALL,
+    )
+    if not matches:
+        return []
+    block = matches[-1]
+    rows: list[dict[str, Any]] = []
+    for line in block.splitlines():
+        parts = line.split()
+        if len(parts) < 3:
+            continue
+        try:
+            atom_index = int(parts[0])
+            charge_value = float(parts[-1])
+        except ValueError:
+            continue
+        rows.append(
+            {
+                "atom_index": atom_index,
+                "atom_symbol": parts[1],
+                "charge": charge_value,
+            }
+        )
+    return rows
+
+
 def _parse_homo_lumo_gap_ev(text: str) -> float | None:
     match = re.search(
         r"HOMO-LUMO gap:.*?=\s*([-+]?\d+\.\d+)\s*eV",
@@ -4780,6 +5001,95 @@ def _parse_final_geometry(text: str) -> tuple[list[str], list[list[float]]]:
     if len(symbols) != atom_count:
         return ([], [])
     return symbols, coordinates
+
+
+def _read_xyz_symbols_and_coordinates(path_raw: Any) -> tuple[list[str], list[list[float]]]:
+    if not path_raw:
+        return ([], [])
+    path = Path(str(path_raw))
+    if not path.exists():
+        return ([], [])
+    lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    if not lines:
+        return ([], [])
+    try:
+        atom_count = int(lines[0].strip())
+    except ValueError:
+        return ([], [])
+    symbols: list[str] = []
+    coordinates: list[list[float]] = []
+    for line in lines[2 : 2 + atom_count]:
+        parts = line.split()
+        if len(parts) < 4:
+            continue
+        try:
+            xyz = [float(parts[1]), float(parts[2]), float(parts[3])]
+        except ValueError:
+            continue
+        symbols.append(parts[0])
+        coordinates.append(xyz)
+    if len(symbols) != atom_count or len(coordinates) != atom_count:
+        return ([], [])
+    return symbols, coordinates
+
+
+def _charge_row_elements(rows: Sequence[dict[str, Any]]) -> list[str]:
+    return [str(row.get("atom_symbol") or "").strip() for row in rows]
+
+
+def _charge_row_values(rows: Sequence[dict[str, Any]]) -> list[float]:
+    values: list[float] = []
+    for row in rows:
+        try:
+            values.append(float(row.get("charge")))
+        except (TypeError, ValueError):
+            return []
+    return values
+
+
+def _approximate_dipole_from_charges_and_coordinates(
+    charges: Sequence[float],
+    coordinates: Sequence[Sequence[float]],
+) -> tuple[float, float, float, float] | None:
+    if len(charges) != len(coordinates) or not charges:
+        return None
+    x = y = z = 0.0
+    for charge, row in zip(charges, coordinates):
+        if len(row) != 3:
+            return None
+        x += float(charge) * float(row[0])
+        y += float(charge) * float(row[1])
+        z += float(charge) * float(row[2])
+    # 1 e * Angstrom = 4.80320471257 Debye
+    conversion = 4.80320471257
+    x *= conversion
+    y *= conversion
+    z *= conversion
+    total = math.sqrt(x * x + y * y + z * z)
+    return (
+        round(x, 6),
+        round(y, 6),
+        round(z, 6),
+        round(total, 6),
+    )
+
+
+def _approximate_delta_dipole(
+    excited_dipole: tuple[float, float, float, float] | None,
+    ground_dipole: tuple[float, float, float, float] | None,
+) -> tuple[float, float, float, float] | None:
+    if excited_dipole is None or ground_dipole is None:
+        return None
+    dx = float(excited_dipole[0]) - float(ground_dipole[0])
+    dy = float(excited_dipole[1]) - float(ground_dipole[1])
+    dz = float(excited_dipole[2]) - float(ground_dipole[2])
+    total = math.sqrt(dx * dx + dy * dy + dz * dz)
+    return (
+        round(dx, 6),
+        round(dy, 6),
+        round(dz, 6),
+        round(total, 6),
+    )
 
 
 def _parse_excited_states(
@@ -5412,6 +5722,15 @@ def _humanize_descriptor_name(name: str) -> str:
         "dominant_transitions": "dominant transitions",
         "ct_localization_proxy": "CT/localization proxy",
         "delta_dipole": "delta dipole",
+        "approx_ground_state_dipole": "approximate ground-state dipole",
+        "approx_excited_state_dipole": "approximate excited-state dipole",
+        "approx_delta_dipole_same_geometry_ground_ref": "approximate delta dipole (same geometry ground reference)",
+        "approx_delta_dipole_same_geometry_excited_ref": "approximate delta dipole (same geometry excited reference)",
+        "approx_delta_dipole_relaxed_total": "approximate delta dipole (relaxed total)",
+        "ground_state_atomic_charges": "ground-state atomic charges",
+        "excited_state_atomic_charges": "excited-state atomic charges",
+        "atom_order_alignment_status": "atom-order alignment status",
+        "geometry_rmsd_angstrom": "geometry RMSD",
         "state_family_overlap": "state-family overlap",
         "ground_state_dipole": "ground-state dipole",
         "mulliken_charges": "Mulliken charges",
@@ -5492,6 +5811,26 @@ def _targeted_property_profile_for_capability(
             "available_key": "available_transition_dipole_observables",
             "missing_key": "missing_transition_dipole_observables",
             "excitation_profile": {"mode": "tda_atb_excdip", "method_label": "tda-atb-excdip"},
+        }
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        return {
+            "descriptor_scope": [
+                "approx_ground_state_dipole",
+                "approx_excited_state_dipole",
+                "approx_delta_dipole_same_geometry_ground_ref",
+                "approx_delta_dipole_same_geometry_excited_ref",
+                "approx_delta_dipole_relaxed_total",
+                "ground_state_atomic_charges",
+                "excited_state_atomic_charges",
+                "atom_order_alignment_status",
+                "geometry_rmsd_angstrom",
+            ],
+            "analysis_method_lines": [],
+            "analysis_ope_lines": [],
+            "availability_key": "approx_delta_dipole_availability",
+            "available_key": "available_approx_delta_dipole_observables",
+            "missing_key": "missing_approx_delta_dipole_observables",
+            "excitation_profile": {"mode": "tda_atb_opt_root1", "method_label": "tda-atb-opt-root1"},
         }
     if capability_name == "run_ris_state_characterization":
         return {
@@ -6004,6 +6343,13 @@ def _build_targeted_property_record(
         run_result.generated_artifacts.get("s0_mo_path") or run_result.generated_artifacts.get("s1_mo_path")
     )
     common_record = {
+        "member_id": _artifact_record_member_id(
+            artifact_record,
+            fallback=_artifact_record_label(artifact_record, fallback="member"),
+        ),
+        "member_label": _artifact_record_label(artifact_record, fallback="member"),
+        "source_bundle_id": artifact_record.get("source_bundle_id"),
+        "source_member_id": artifact_record.get("source_member_id"),
         "snapshot_label": artifact_record.get("snapshot_label") or artifact_record.get("member_label"),
         "target_angle_deg": artifact_record.get("target_angle_deg"),
         "dihedral_atoms": artifact_record.get("dihedral_atoms"),
@@ -6018,6 +6364,130 @@ def _build_targeted_property_record(
         "state_count": run_result.s1.state_count,
         "molecular_orbital_files_available": mo_artifacts_available,
     }
+
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        ground_charge_rows = _parse_last_mulliken_charge_rows(s0_text)
+        excited_charge_rows = _parse_last_mulliken_charge_rows(s1_text)
+        ground_symbols, ground_coordinates = _read_xyz_symbols_and_coordinates(
+            run_result.generated_artifacts.get("s0_optimized_xyz_path")
+            or run_result.generated_artifacts.get("s0_singlepoint_xyz_path")
+        )
+        excited_symbols, excited_coordinates = _read_xyz_symbols_and_coordinates(
+            run_result.generated_artifacts.get("s1_optimized_xyz_path")
+        )
+        ground_charge_elements = _charge_row_elements(ground_charge_rows)
+        excited_charge_elements = _charge_row_elements(excited_charge_rows)
+        ground_charge_values = _charge_row_values(ground_charge_rows)
+        excited_charge_values = _charge_row_values(excited_charge_rows)
+        geometry_rmsd = (
+            _compute_rmsd(ground_coordinates, excited_coordinates)
+            if ground_coordinates and excited_coordinates
+            else None
+        )
+        alignment_status: Literal["aligned", "failed"] = "aligned"
+        alignment_detail = ""
+        if (
+            not ground_charge_rows
+            or not excited_charge_rows
+            or not ground_symbols
+            or not excited_symbols
+        ):
+            alignment_status = "failed"
+            alignment_detail = (
+                "Missing ground/excited Mulliken charge rows or optimized xyz files required for "
+                "approximate dipole reconstruction."
+            )
+        elif not (
+            ground_charge_elements == excited_charge_elements == ground_symbols == excited_symbols
+        ):
+            alignment_status = "failed"
+            alignment_detail = (
+                "Atomic order mismatch between ground/excited charge tables and optimized xyz symbols."
+            )
+        approx_ground_state_dipole = _approximate_dipole_from_charges_and_coordinates(
+            ground_charge_values,
+            ground_coordinates,
+        )
+        approx_excited_state_dipole = _approximate_dipole_from_charges_and_coordinates(
+            excited_charge_values,
+            excited_coordinates,
+        )
+        approx_excited_on_ground = _approximate_dipole_from_charges_and_coordinates(
+            excited_charge_values,
+            ground_coordinates,
+        )
+        approx_ground_on_excited = _approximate_dipole_from_charges_and_coordinates(
+            ground_charge_values,
+            excited_coordinates,
+        )
+        available_observables = [
+            "ground_state_atomic_charges",
+            "excited_state_atomic_charges",
+            "atom_order_alignment_status",
+            "geometry_rmsd_angstrom",
+        ]
+        record = {
+            **common_record,
+            "approximate_dipole_proxy_note": (
+                "approximate per-atom-charge-derived dipole proxy from Mulliken atomic charges and optimized xyz coordinates"
+            ),
+            "ground_state_atomic_charges": {
+                "charge_scheme": "mulliken",
+                "element": ground_charge_elements,
+                "charge": ground_charge_values,
+            },
+            "excited_state_atomic_charges": {
+                "charge_scheme": "mulliken",
+                "element": excited_charge_elements,
+                "charge": excited_charge_values,
+            },
+            "ground_state_optimized_xyz_path": run_result.generated_artifacts.get("s0_optimized_xyz_path")
+            or run_result.generated_artifacts.get("s0_singlepoint_xyz_path"),
+            "excited_state_optimized_xyz_path": run_result.generated_artifacts.get("s1_optimized_xyz_path"),
+            "ground_state_geometry_symbols": ground_symbols,
+            "excited_state_geometry_symbols": excited_symbols,
+            "atom_order_alignment_status": alignment_status,
+            "atom_order_alignment_detail": alignment_detail or None,
+            "geometry_rmsd_angstrom": geometry_rmsd,
+            capability_available_key: list(available_observables),
+        }
+        if alignment_status == "aligned":
+            record.update(
+                {
+                    "approx_ground_state_dipole": approx_ground_state_dipole,
+                    "approx_excited_state_dipole": approx_excited_state_dipole,
+                    "approx_delta_dipole_same_geometry_ground_ref": _approximate_delta_dipole(
+                        approx_excited_on_ground,
+                        approx_ground_state_dipole,
+                    ),
+                    "approx_delta_dipole_same_geometry_excited_ref": _approximate_delta_dipole(
+                        approx_excited_state_dipole,
+                        approx_ground_on_excited,
+                    ),
+                    "approx_delta_dipole_relaxed_total": _approximate_delta_dipole(
+                        approx_excited_state_dipole,
+                        approx_ground_state_dipole,
+                    ),
+                }
+            )
+            record[capability_available_key] = available_observables + [
+                "approx_ground_state_dipole",
+                "approx_excited_state_dipole",
+                "approx_delta_dipole_same_geometry_ground_ref",
+                "approx_delta_dipole_same_geometry_excited_ref",
+                "approx_delta_dipole_relaxed_total",
+            ]
+        else:
+            record.update(
+                {
+                    "approx_ground_state_dipole": None,
+                    "approx_excited_state_dipole": None,
+                    "approx_delta_dipole_same_geometry_ground_ref": None,
+                    "approx_delta_dipole_same_geometry_excited_ref": None,
+                    "approx_delta_dipole_relaxed_total": None,
+                }
+            )
+        return record
 
     if capability_name == "run_targeted_transition_dipole_analysis":
         ground_to_excited = _parse_transition_dipole_section(
@@ -6310,12 +6780,17 @@ def _artifact_bundle_members_from_generated_artifacts(
             ArtifactBundleMemberMetadata(
                 member_id=member_id,
                 member_label=_artifact_record_label(record, fallback=member_id),
-                source_bundle_id=str(record.get("source_bundle_id") or generated_artifacts.get("source_bundle_id") or "").strip() or None,
+                source_bundle_id=(
+                    str(record.get("source_bundle_id") or generated_artifacts.get("source_bundle_id") or bundle_id).strip()
+                    or None
+                ),
                 source_member_id=str(record.get("source_member_id") or "").strip() or None,
                 generated_files=generated_files,
                 parse_capabilities_supported=parse_capabilities_supported,
             )
         )
+    if bundle_kind == "targeted_property_follow_up" and str(generated_artifacts.get("target_selection_mode") or "") != "exact_members":
+        members.sort(key=lambda item: item.member_id)
     return members
 
 
@@ -6412,6 +6887,27 @@ def _artifact_bundle_entry_from_generated_artifacts(
         bundle_members=bundle_members,
         generated_artifacts=dict(generated_artifacts),
     )
+
+
+def _infer_source_capability_from_generated_artifacts(
+    generated_artifacts: dict[str, Any],
+) -> MicroscopicCapabilityName | None:
+    explicit = str(generated_artifacts.get("source_capability") or "").strip()
+    if explicit in AMESP_CAPABILITY_REGISTRY:
+        return explicit  # type: ignore[return-value]
+    if generated_artifacts.get("snapshot_artifacts"):
+        return "run_torsion_snapshots"
+    if generated_artifacts.get("conformer_artifacts"):
+        return "run_conformer_bundle"
+    if generated_artifacts.get("characterization_artifacts"):
+        bundle_id = str(generated_artifacts.get("artifact_bundle_id") or "").strip()
+        match = re.match(r"round_\d+_(run_[a-z0-9_]+)_bundle$", bundle_id)
+        candidate = match.group(1) if match is not None else ""
+        if candidate in AMESP_CAPABILITY_REGISTRY:
+            return candidate  # type: ignore[return-value]
+    if generated_artifacts.get("s0_aop_path") or generated_artifacts.get("s1_aop_path"):
+        return "run_baseline_bundle"
+    return None
 
 
 def _list_rotatable_dihedral_descriptors(prepared: PreparedStructure) -> list[DihedralDescriptor]:
@@ -6888,7 +7384,10 @@ def _write_rdkit_xyz(mol: Any, xyz_path: Path, label: str) -> None:
     xyz_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _read_xyz_symbols_and_coordinates(xyz_path: Path) -> tuple[list[str], list[list[float]]]:
+def _read_xyz_symbols_and_coordinates(path_raw: Any) -> tuple[list[str], list[list[float]]]:
+    if not path_raw:
+        return ([], [])
+    xyz_path = Path(str(path_raw))
     if not xyz_path.exists():
         return ([], [])
     lines = xyz_path.read_text(encoding="utf-8", errors="replace").splitlines()

@@ -126,6 +126,9 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "targeted_transition_dipole_analysis_action_card_example": registry_examples[
                 "targeted_transition_dipole_analysis"
             ],
+            "targeted_approx_delta_dipole_analysis_action_card_example": registry_examples[
+                "targeted_approx_delta_dipole_analysis"
+            ],
             "ris_state_characterization_action_card_example": registry_examples[
                 "ris_state_characterization"
             ],
@@ -138,6 +141,9 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             ],
             "targeted_transition_dipole_analysis_reasoned_action_example": reasoned_examples[
                 "targeted_transition_dipole_analysis"
+            ],
+            "targeted_approx_delta_dipole_analysis_reasoned_action_example": reasoned_examples[
+                "targeted_approx_delta_dipole_analysis"
             ],
             "ris_state_characterization_reasoned_action_example": reasoned_examples[
                 "ris_state_characterization"
@@ -418,6 +424,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "run_baseline_bundle, run_conformer_bundle, run_torsion_snapshots, run_targeted_charge_analysis, "
             "run_targeted_localized_orbital_analysis, run_targeted_natural_orbital_analysis, "
             "run_targeted_density_population_analysis, run_targeted_transition_dipole_analysis, "
+            "run_targeted_approx_delta_dipole_analysis, "
             "run_ris_state_characterization, run_targeted_state_characterization, parse_snapshot_outputs, "
             "extract_ct_descriptors_from_bundle, extract_geometry_descriptors_from_bundle, and "
             "inspect_raw_artifact_bundle. "
@@ -537,6 +544,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "run_targeted_natural_orbital_analysis",
             "run_targeted_density_population_analysis",
             "run_targeted_transition_dipole_analysis",
+            "run_targeted_approx_delta_dipole_analysis",
             "run_ris_state_characterization",
             "run_targeted_state_characterization",
         }:
@@ -547,6 +555,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "run_targeted_natural_orbital_analysis": "natural-orbital analysis records",
                 "run_targeted_density_population_analysis": "density/population analysis records",
                 "run_targeted_transition_dipole_analysis": "transition-dipole analysis records",
+                "run_targeted_approx_delta_dipole_analysis": "approximate dipole-change analysis records",
                 "run_ris_state_characterization": "RIS state-characterization records",
                 "run_targeted_state_characterization": "state-characterization records",
             }[executed_capability]

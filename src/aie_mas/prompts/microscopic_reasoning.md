@@ -25,6 +25,7 @@ The human message contains a JSON object named `context_json`. Use these fields 
 - `targeted_charge_analysis_reasoned_action_example`
 - `targeted_density_population_analysis_reasoned_action_example`
 - `targeted_transition_dipole_analysis_reasoned_action_example`
+- `targeted_approx_delta_dipole_analysis_reasoned_action_example`
 - `ris_state_characterization_reasoned_action_example`
 - `targeted_state_characterization_reasoned_action_example`
 - `available_structure_context`
@@ -80,6 +81,7 @@ Decision examples:
 - Read `targeted_charge_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry charge-analysis follow-up pattern.
 - Read `targeted_density_population_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry density/population follow-up pattern.
 - Read `targeted_transition_dipole_analysis_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry transition-dipole follow-up pattern.
+- Read `targeted_approx_delta_dipole_analysis_reasoned_action_example` in `context_json` for a supported bounded approximate dipole-change follow-up pattern.
 - Read `ris_state_characterization_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry RIS state-character follow-up pattern.
 - Read `targeted_state_characterization_reasoned_action_example` in `context_json` for a supported bounded fixed-geometry state-character follow-up pattern.
 

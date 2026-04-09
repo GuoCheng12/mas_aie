@@ -148,6 +148,7 @@ _MICROSCOPIC_SINGLE_ACTION_CAPABILITIES = (
     "run_targeted_natural_orbital_analysis",
     "run_targeted_density_population_analysis",
     "run_targeted_transition_dipole_analysis",
+    "run_targeted_approx_delta_dipole_analysis",
     "run_ris_state_characterization",
     "run_targeted_state_characterization",
     "parse_snapshot_outputs",
@@ -470,6 +471,15 @@ def _single_action_microscopic_task_instruction(
         return (
             f"Execute ONLY `run_targeted_transition_dipole_analysis`{bundle_note} as one bounded microscopic action. "
             f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, rerun fixed-geometry transition-dipole analysis on that subset, and return raw transition-dipole observables only."
+        )
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        bundle_note = (
+            f" for bundle_id=`{artifact_bundle_id}`" if artifact_bundle_id is not None else " for one explicitly referenced reusable artifact bundle"
+        )
+        return (
+            f"Execute ONLY `run_targeted_approx_delta_dipole_analysis`{bundle_note} as one bounded microscopic action. "
+            f"{gap_note}{member_note} Select only a small representative subset of geometries from the reusable bundle unless exact member ids were explicitly provided, "
+            "run bounded aTB ground-state and excited-state optimizations on that subset, and return approximate per-atom-charge-derived dipole proxy observables only."
         )
     if capability_name == "run_ris_state_characterization":
         bundle_note = (

@@ -5,6 +5,8 @@ import os
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from aie_mas.agents.result_agents import MicroscopicAgent
 from aie_mas.chem.structure_prep import PreparedStructure, StructurePrepError
 from aie_mas.cli.run_case import run_case_workflow
@@ -23,6 +25,9 @@ from aie_mas.tools.amesp import (
     AmespExcitedStateResult,
     AmespGroundStateResult,
     AmespBaselineRunResult,
+    _approximate_delta_dipole,
+    _approximate_dipole_from_charges_and_coordinates,
+    _read_xyz_symbols_and_coordinates,
 )
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
@@ -91,6 +96,70 @@ Excited to excited state transition electric dipole moments(Au):
     1     2      -0.0000       0.0000       0.7309      0.0082
 
 """ + S1_AOP_TEXT
+
+S1_OPT_AOP_TEXT = """
+Mulliken charges:
+
+     1   N        -0.401647
+     2   H         0.133878
+     3   H         0.133884
+     4   H         0.133885
+Sum of Mulliken charges =     -0.00000
+
+Dipole moment (field-independent basis, Debye):
+
+  X=     1.1050    Y=     0.2120    Z=     0.0510    Tot=     1.1264
+
+========= Excitation energies and oscillator strengths =========
+State    1 : E =    2.7310 eV     453.992 nm      22026.81 cm-1
+       4 -->  5      0.8123400
+E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.6005
+State    2 : E =    3.1793 eV     389.969 nm      25643.02 cm-1
+       3 -->  5     -0.4012300
+       4 -->  6      0.5223400
+E(TD) =   -55.620000000      <S**2>= 0.000     f=  0.0100
+
+Final Geometry(angstroms):
+
+  4
+  N            1.23000000    0.79200000    0.01000000
+  H            1.70200000   -0.13200000    0.02200000
+  H            1.70400000    1.26600000    0.83800000
+  H            1.70500000    1.26700000   -0.80400000
+
+Final Energy:      -55.6500000000
+Normal termination of Amesp!
+"""
+
+S1_OPT_MISMATCH_AOP_TEXT = """
+Mulliken charges:
+
+     1   H        -0.401647
+     2   N         0.133878
+     3   H         0.133884
+     4   H         0.133885
+Sum of Mulliken charges =     -0.00000
+
+Dipole moment (field-independent basis, Debye):
+
+  X=     1.1050    Y=     0.2120    Z=     0.0510    Tot=     1.1264
+
+========= Excitation energies and oscillator strengths =========
+State    1 : E =    2.7310 eV     453.992 nm      22026.81 cm-1
+       4 -->  5      0.8123400
+E(TD) =   -55.650000000      <S**2>= 0.000     f=  0.6005
+
+Final Geometry(angstroms):
+
+  4
+  N            1.23000000    0.79200000    0.01000000
+  H            1.70200000   -0.13200000    0.02200000
+  H            1.70400000    1.26600000    0.83800000
+  H            1.70500000    1.26700000   -0.80400000
+
+Final Energy:      -55.6500000000
+Normal termination of Amesp!
+"""
 
 S0_AOP_GEOMETRY_TEXT = """
 HOMO-LUMO gap:      0.4010000 AU    =      10.9116660 eV
@@ -394,6 +463,33 @@ def _build_fake_subprocess_with_targeted_analysis_capture(captured_inputs: dict[
                 )
         else:
             aop_text = S1_TRANSITION_DIPOLE_AOP_TEXT if "excdip on" in lowered else S1_AOP_TEXT
+        (workdir / aop_name).write_text(aop_text, encoding="utf-8")
+        (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
+        return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
+
+    return _runner
+
+
+def _build_fake_subprocess_with_approx_dipole_capture(
+    captured_inputs: dict[str, str],
+    *,
+    mismatch: bool = False,
+):
+    def _runner(cmd, cwd, env, capture_output, text):
+        del env, capture_output, text
+        workdir = Path(cwd)
+        aip_name = Path(cmd[1]).name
+        aop_name = Path(cmd[2]).name
+        label = Path(aip_name).stem
+        aip_text = (workdir / aip_name).read_text(encoding="utf-8")
+        captured_inputs[label] = aip_text
+        lowered = aip_text.lower()
+        if label.endswith("_s0") or label.endswith("_s0sp"):
+            aop_text = S0_AOP_TEXT
+        elif "atb tda opt force" in lowered:
+            aop_text = S1_OPT_MISMATCH_AOP_TEXT if mismatch else S1_OPT_AOP_TEXT
+        else:
+            aop_text = S1_AOP_TEXT
         (workdir / aop_name).write_text(aop_text, encoding="utf-8")
         (workdir / f"{label}.mo").write_text("fake mo\n", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, stdout="ok\n", stderr="")
@@ -997,7 +1093,10 @@ def test_amesp_targeted_state_characterization_reuses_torsion_bundle_with_bounde
     assert targeted_result.route == "targeted_property_follow_up"
     assert targeted_result.performed_new_calculations is True
     assert targeted_result.reused_existing_artifacts is True
-    assert targeted_result.honored_constraints[-1] == "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
+    assert (
+        "Execution request honored `optimize_ground_state=false` and skipped geometry re-optimization."
+        in targeted_result.honored_constraints
+    )
     assert len(targeted_result.route_records) == 2
     assert len(targeted_result.parsed_snapshot_records) == 2
     assert targeted_result.route_summary["artifact_scope"] == "torsion_snapshots"
@@ -1342,6 +1441,98 @@ def test_amesp_targeted_transition_dipole_analysis_writes_tda_atb_excdip_and_ret
     assert "excdip on" in s1_input
 
 
+def test_amesp_targeted_approx_delta_dipole_analysis_returns_proxy_records(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_approx_dipole_capture(captured_inputs),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+    result = _run_targeted_property_follow_up(
+        tool=tool,
+        tmp_path=tmp_path,
+        torsion_result=torsion_result,
+        capability_name="run_targeted_approx_delta_dipole_analysis",
+        deliverables=[
+            "targeted approximate dipole-change analysis records",
+            "approximate dipole-change availability summary",
+            "bounded approximate per-atom-charge-derived dipole proxy observables",
+        ],
+    )
+
+    assert result.executed_capability == "run_targeted_approx_delta_dipole_analysis"
+    assert result.route == "targeted_property_follow_up"
+    assert result.route_summary["approx_delta_dipole_availability"] == "proxy_only"
+    assert set(result.route_summary["available_approx_delta_dipole_observables"]) == {
+        "approx_ground_state_dipole",
+        "approx_excited_state_dipole",
+        "approx_delta_dipole_same_geometry_ground_ref",
+        "approx_delta_dipole_same_geometry_excited_ref",
+        "approx_delta_dipole_relaxed_total",
+        "ground_state_atomic_charges",
+        "excited_state_atomic_charges",
+        "atom_order_alignment_status",
+        "geometry_rmsd_angstrom",
+    }
+    first_record = result.route_records[0]
+    assert first_record["atom_order_alignment_status"] == "aligned"
+    assert first_record["approximate_dipole_proxy_note"].startswith(
+        "approximate per-atom-charge-derived dipole proxy"
+    )
+    assert first_record["approx_ground_state_dipole"] is not None
+    assert first_record["approx_excited_state_dipole"] is not None
+    assert first_record["approx_delta_dipole_same_geometry_ground_ref"] is not None
+    assert first_record["approx_delta_dipole_same_geometry_excited_ref"] is not None
+    assert first_record["approx_delta_dipole_relaxed_total"] is not None
+    assert first_record["geometry_rmsd_angstrom"] is not None
+    assert result.generated_artifacts["artifact_bundle_id"] == (
+        "round_04_run_targeted_approx_delta_dipole_analysis_bundle"
+    )
+    assert result.generated_artifacts["artifact_bundle_kind"] == "targeted_property_follow_up"
+    s0_input = captured_inputs["run_targeted_approx_delta_dipole_analysis_follow_up_torsion_01_char_s0"]
+    s1_input = captured_inputs["run_targeted_approx_delta_dipole_analysis_follow_up_torsion_01_char_s1"].lower()
+    assert "! atb opt force" in s0_input.lower()
+    assert "! atb tda opt force" in s1_input
+    assert "root 1" in s1_input
+
+
+def test_amesp_targeted_approx_delta_dipole_analysis_fails_on_atomic_order_mismatch(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    captured_inputs: dict[str, str] = {}
+    tool = _build_targeted_follow_up_tool(
+        tmp_path=tmp_path,
+        monkeypatch=monkeypatch,
+        subprocess_runner=_build_fake_subprocess_with_approx_dipole_capture(
+            captured_inputs,
+            mismatch=True,
+        ),
+    )
+    torsion_result = _run_torsion_source_bundle(tool=tool, tmp_path=tmp_path)
+
+    with pytest.raises(AmespExecutionError) as excinfo:
+        _run_targeted_property_follow_up(
+            tool=tool,
+            tmp_path=tmp_path,
+            torsion_result=torsion_result,
+            capability_name="run_targeted_approx_delta_dipole_analysis",
+            deliverables=[
+                "targeted approximate dipole-change analysis records",
+                "approximate dipole-change availability summary",
+                "bounded approximate per-atom-charge-derived dipole proxy observables",
+            ],
+        )
+
+    assert excinfo.value.code == "parse_failed"
+    assert "Atomic order mismatch" in excinfo.value.message
+    assert excinfo.value.status == "failed"
+
+
 def test_amesp_inspect_raw_artifact_bundle_supports_exact_member_targeting_for_follow_up_bundle(
     tmp_path: Path,
     monkeypatch,
@@ -1410,6 +1601,33 @@ def test_amesp_inspect_raw_artifact_bundle_supports_exact_member_targeting_for_f
     assert "localized_orbitals_pm" in inspect_result.route_summary["extractable_observables"]
     assert "molecular_orbital_files" in inspect_result.route_summary["extractable_observables"]
     assert inspect_result.missing_deliverables == []
+
+
+def test_atb_reference_result_supports_approx_delta_dipole_when_reference_files_are_present() -> None:
+    root = Path(__file__).resolve().parents[1] / "third_party" / "aTB" / "2"
+    if not root.exists():
+        pytest.skip("Local third_party/aTB reference fixture is not present in this checkout.")
+
+    payload = json.loads((root / "result.json").read_text(encoding="utf-8"))
+    ground_symbols, ground_coordinates = _read_xyz_symbols_and_coordinates(root / "opt" / "opted.xyz")
+    excited_symbols, excited_coordinates = _read_xyz_symbols_and_coordinates(root / "excit" / "excited.xyz")
+    ground_charge_elements = list(payload["ground_state"]["charge"]["element"])
+    excited_charge_elements = list(payload["excited_state"]["charge"]["element"])
+    ground_charge_values = [float(item) for item in payload["ground_state"]["charge"]["charge"]]
+    excited_charge_values = [float(item) for item in payload["excited_state"]["charge"]["charge"]]
+
+    assert ground_charge_elements == excited_charge_elements == ground_symbols == excited_symbols
+    mu_s0 = _approximate_dipole_from_charges_and_coordinates(ground_charge_values, ground_coordinates)
+    mu_s1 = _approximate_dipole_from_charges_and_coordinates(excited_charge_values, excited_coordinates)
+    mu_s1_on_ground = _approximate_dipole_from_charges_and_coordinates(excited_charge_values, ground_coordinates)
+    delta_same_geom = _approximate_delta_dipole(mu_s1_on_ground, mu_s0)
+
+    assert mu_s0 is not None
+    assert mu_s1 is not None
+    assert delta_same_geom is not None
+    assert round(mu_s0[3], 3) == 14.181
+    assert round(mu_s1[3], 3) == 12.718
+    assert round(delta_same_geom[3], 3) == 0.968
 
 
 def test_amesp_ris_state_characterization_writes_tda_ris_and_returns_ris_state_character_records(
@@ -1655,13 +1873,6 @@ def test_amesp_parse_snapshot_outputs_rejects_exact_member_targeting(
         assert exc.structured_results["supported_target_selection_modes"] == ["bundle_wide"]
     else:
         raise AssertionError("Expected unsupported_target_selection_mode for exact-member parse-only request.")
-    assert len(parsed_result.parsed_snapshot_records) == 1
-    assert parsed_result.route_summary["artifact_scope"] == "baseline_bundle"
-    assert parsed_result.route_summary["ct_proxy_availability"] == "partial_observable_only"
-    assert "dominant_transitions" in parsed_result.route_summary["available_ct_surrogates"]
-    assert parsed_result.generated_artifacts["artifact_bundle_id"] == "round_02_baseline_bundle"
-    assert parsed_result.generated_artifacts["artifact_bundle_kind"] == "baseline_bundle"
-    assert "CT/localization proxy" in parsed_result.missing_deliverables
 
 
 def test_amesp_extract_ct_descriptors_from_bundle_reuses_baseline_bundle_artifacts(

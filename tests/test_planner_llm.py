@@ -229,6 +229,17 @@ def test_mentioned_microscopic_capabilities_includes_orbital_interfaces() -> Non
     ]
 
 
+def test_mentioned_microscopic_capabilities_includes_approx_delta_dipole_interface() -> None:
+    instruction = (
+        "Use run_targeted_approx_delta_dipole_analysis on the torsion bundle and return approximate dipole-change "
+        "proxy observables."
+    )
+
+    assert _mentioned_microscopic_capabilities(instruction) == [
+        "run_targeted_approx_delta_dipole_analysis",
+    ]
+
+
 def test_mentioned_microscopic_capabilities_includes_member_listing_and_geometry_extraction() -> None:
     instruction = (
         "First use list_artifact_bundle_members on round_08_run_targeted_localized_orbital_analysis_bundle, "
@@ -258,6 +269,23 @@ def test_single_action_microscopic_task_instruction_for_supported_targeted_inter
     assert "density/population observables only" in instruction
     assert "ESIPT" not in instruction
     assert "TICT" not in instruction
+
+
+def test_single_action_microscopic_task_instruction_for_approx_delta_dipole_interface_is_neutral() -> None:
+    instruction = _single_action_microscopic_task_instruction(
+        capability_name="run_targeted_approx_delta_dipole_analysis",
+        current_hypothesis="ICT",
+        main_gap="Need one more approximate dipole-change proxy.",
+        original_task_instruction=(
+            "Use run_targeted_approx_delta_dipole_analysis for bundle_id=`round_05_torsion_snapshots` "
+            "and return approximate per-atom-charge-derived dipole proxy observables."
+        ),
+    )
+
+    assert instruction.startswith(
+        "Execute ONLY `run_targeted_approx_delta_dipole_analysis` for bundle_id=`round_05_torsion_snapshots`"
+    )
+    assert "approximate per-atom-charge-derived dipole proxy observables only" in instruction
 
 
 def test_single_action_microscopic_task_instruction_for_phase2_targeted_interfaces_is_neutral() -> None:

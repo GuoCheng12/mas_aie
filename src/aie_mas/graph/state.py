@@ -77,6 +77,7 @@ MicroscopicCapabilityName = Literal[
     "run_targeted_natural_orbital_analysis",
     "run_targeted_density_population_analysis",
     "run_targeted_transition_dipole_analysis",
+    "run_targeted_approx_delta_dipole_analysis",
     "run_ris_state_characterization",
     "parse_snapshot_outputs",
     "extract_ct_descriptors_from_bundle",

@@ -2125,6 +2125,12 @@ def _default_requested_deliverables_for_capability(capability_name: AmespCapabil
             "transition-dipole availability summary",
             "bounded raw transition-dipole observables",
         ]
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        return [
+            "targeted approximate dipole-change analysis records",
+            "approximate dipole-change availability summary",
+            "bounded approximate per-atom-charge-derived dipole proxy observables",
+        ]
     if capability_name == "run_ris_state_characterization":
         return [
             "RIS state-characterization records",
@@ -2231,6 +2237,13 @@ def _default_expected_outputs_for_capability(capability_name: AmespCapabilityNam
             "transition-dipole availability summary",
             "artifact reuse note",
         ]
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        return [
+            "selected target geometry labels",
+            "approximate dipole-change analysis records",
+            "approximate dipole-change availability summary",
+            "artifact reuse note",
+        ]
     if capability_name == "run_ris_state_characterization":
         return [
             "selected target geometry labels",
@@ -2296,6 +2309,11 @@ def _default_requested_route_summary_for_capability(capability_name: AmespCapabi
         return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted density/population analysis on those geometries."
     if capability_name == "run_targeted_transition_dipole_analysis":
         return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run targeted transition-dipole analysis on those geometries."
+    if capability_name == "run_targeted_approx_delta_dipole_analysis":
+        return (
+            "Reuse an existing artifact bundle, select a bounded set of representative geometries, "
+            "and run approximate per-atom-charge-derived dipole-change analysis on those geometries."
+        )
     if capability_name == "run_ris_state_characterization":
         return "Reuse an existing artifact bundle, select a bounded set of representative geometries, and run RIS state characterization on those geometries."
     if capability_name == "run_targeted_state_characterization":
