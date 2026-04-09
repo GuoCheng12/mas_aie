@@ -418,7 +418,7 @@ class WorkingMemoryManager:
                 "artifact_bundle_id": structured_results.get("artifact_bundle_id"),
                 "artifact_bundle_kind": structured_results.get("artifact_bundle_kind"),
                 "registry_infeasible_reason": structured_results.get("registry_infeasible_reason"),
-                "error": dict(structured_results.get("error") or {}),
+                "error": self._compact_error_payload(structured_results.get("error")),
                 "verifier_target_pair": structured_results.get("verifier_target_pair"),
                 "pairwise_verifier_completed_for_pair": structured_results.get("pairwise_verifier_completed_for_pair"),
                 "pairwise_verifier_evidence_specificity": structured_results.get(
@@ -443,6 +443,25 @@ class WorkingMemoryManager:
         elif detail_level == "compact":
             payload["generated_artifacts"] = self._compact_generated_artifacts(report)
         return payload
+
+    def _compact_error_payload(self, error_payload: Any) -> dict[str, object]:
+        if error_payload is None:
+            return {}
+        if isinstance(error_payload, dict):
+            compact_error: dict[str, object] = {}
+            code = error_payload.get("code")
+            if code is not None:
+                compact_error["code"] = str(code)
+            message = error_payload.get("message")
+            if message is not None:
+                compact_error["message"] = self._truncate(str(message), 220)
+            for key in ("type", "status", "stage"):
+                value = error_payload.get(key)
+                if value is not None:
+                    compact_error[key] = str(value)
+            if compact_error:
+                return compact_error
+        return {"message": self._truncate(str(error_payload), 220)}
 
     def _planner_compact_summary(self, report: Any) -> dict[str, object]:
         structured_results = getattr(report, "structured_results", {}) or {}

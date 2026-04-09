@@ -2422,3 +2422,31 @@ def test_planner_diagnosis_marks_context_compaction_when_budget_is_tight(
     assert decision.planner_context_budget_status in {"soft_compacted", "aggressive_compacted"}
     assert decision.planner_context_compaction_level in {"soft", "aggressive"}
     assert decision.planner_context_estimated_tokens > 0
+
+
+def test_working_memory_projection_tolerates_string_error_payloads() -> None:
+    manager = WorkingMemoryManager()
+    report = AgentReport(
+        agent_name="verifier",
+        task_received="Verifier task",
+        task_completion_status="failed",
+        task_completion="Verifier retrieval failed before any evidence cards could be returned.",
+        task_understanding="Retrieve external evidence for the current pairwise gap.",
+        execution_plan="Run verifier_evidence_lookup only.",
+        result_summary="Verifier request failed because the upstream network path is unavailable.",
+        remaining_local_uncertainty="No external evidence was retrieved.",
+        structured_results={
+            "status": "failed",
+            "error": "upstream connect error",
+            "verifier_target_pair": "ICT__vs__TICT",
+            "verifier_supplement_status": "missing",
+        },
+        status="failed",
+        planner_readable_report="Verifier failed before returning usable evidence cards.",
+    )
+
+    compact = manager._compact_agent_report_for_planner(report)
+
+    assert compact is not None
+    assert compact["structured_results"]["error"] == {"message": "upstream connect error"}
+    assert compact["structured_results"]["verifier_target_pair"] == "ICT__vs__TICT"
