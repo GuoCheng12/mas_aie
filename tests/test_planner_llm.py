@@ -1507,6 +1507,69 @@ def test_planner_diagnosis_forces_finalize_on_last_allowed_round(tmp_path: Path)
     assert "Round-budget closure at round 4/4" in (result["decision"].final_hypothesis_rationale or "")
 
 
+def test_planner_diagnosis_preserves_budget_stop_alias_on_last_allowed_round(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.61},
+                {"name": "TICT", "confidence": 0.25},
+                {"name": "neutral aromatic", "confidence": 0.08},
+                {"name": "unknown", "confidence": 0.04},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "reasoning_phase": "portfolio_screening",
+              "portfolio_screening_complete": false,
+              "credible_alternative_hypotheses": ["ESIPT"],
+              "coverage_debt_hypotheses": ["ESIPT"],
+              "hypothesis_screening_ledger": [
+                {
+                  "hypothesis": "ESIPT",
+                  "screening_status": "untested",
+                  "screening_priority": "high",
+                  "evidence_families_covered": [],
+                  "screening_note": "Still needs one direct screen."
+                }
+              ],
+              "portfolio_screening_summary": "ESIPT remains untested, but the round budget is exhausted.",
+              "diagnosis": "Chosen next action is to stop (no action) because the round budget is exhausted.",
+              "action": "no_action_budget_exhausted",
+              "current_hypothesis": "ICT",
+              "confidence": 0.61,
+              "needs_verifier": false,
+              "finalize": false,
+              "task_instruction": "",
+              "agent_task_instructions": {},
+              "evidence_summary": "Internal evidence is still incomplete.",
+              "main_gap": "ESIPT still lacks a direct screen.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "Residual uncertainty remains.",
+              "capability_assessment": "Budget is exhausted.",
+              "stagnation_assessment": "No further action can run within the remaining budget.",
+              "decision_gate_status": "needs_portfolio_screening"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            round_idx=3,
+            latest_main_gap="ESIPT still lacks a direct screen.",
+        )
+    )
+
+    decision = result["decision"]
+    assert decision.action == "stop"
+    assert decision.finalize is False
+    assert decision.planned_agents == []
+    assert decision.task_instruction is None
+    assert decision.agent_task_instructions == {}
+    assert decision.decision_gate_status == "needs_portfolio_screening"
+
+
 def test_planner_diagnosis_redirects_repeated_microscopic_local_uncertainty_to_verifier(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,
@@ -1937,6 +2000,97 @@ def test_portfolio_screening_gate_blocks_finalize_when_coverage_debt_remains(tmp
     assert decision.coverage_debt_hypotheses == ["ESIPT"]
     assert decision.decision_gate_status == "needs_portfolio_screening"
     assert decision.decision_pair == []
+
+
+def test_portfolio_screening_completes_when_alternatives_are_blocked_or_dropped(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "neutral aromatic", "confidence": 0.63},
+                {"name": "unknown", "confidence": 0.17},
+                {"name": "TICT", "confidence": 0.11},
+                {"name": "ICT", "confidence": 0.07},
+                {"name": "ESIPT", "confidence": 0.02}
+              ],
+              "reasoning_phase": "portfolio_screening",
+              "portfolio_screening_complete": false,
+              "credible_alternative_hypotheses": ["TICT", "ICT", "ESIPT"],
+              "coverage_debt_hypotheses": [],
+              "hypothesis_screening_ledger": [
+                {
+                  "hypothesis": "TICT",
+                  "screening_status": "blocked_by_capability",
+                  "screening_priority": "high",
+                  "evidence_families_covered": ["torsion_sensitivity"],
+                  "screening_note": "Further bounded torsion evidence is unavailable."
+                },
+                {
+                  "hypothesis": "ICT",
+                  "screening_status": "blocked_by_capability",
+                  "screening_priority": "normal",
+                  "evidence_families_covered": ["charge_localization"],
+                  "screening_note": "No additional bounded internal discriminator remains."
+                },
+                {
+                  "hypothesis": "ESIPT",
+                  "screening_status": "dropped_with_reason",
+                  "screening_priority": "low",
+                  "evidence_families_covered": ["geometry_precondition"],
+                  "screening_note": "Current evidence does not justify further ESIPT screening."
+                }
+              ],
+              "portfolio_screening_summary": "All remaining alternatives are now either blocked or explicitly dropped.",
+              "diagnosis": "Chosen next action is to stop (no action) because portfolio screening is complete and the round budget is exhausted.",
+              "action": "no_action_budget_exhausted",
+              "current_hypothesis": "neutral aromatic",
+              "confidence": 0.63,
+              "needs_verifier": false,
+              "finalize": false,
+              "task_instruction": "",
+              "agent_task_instructions": {},
+              "evidence_summary": "Coverage debt is cleared, but no further bounded screening action remains.",
+              "main_gap": "No further screening debt remains.",
+              "conflict_status": "none",
+              "hypothesis_uncertainty_note": "The current lead remains provisional but screening debt is cleared.",
+              "capability_assessment": "No additional bounded screening task remains.",
+              "stagnation_assessment": "Round budget is exhausted.",
+              "decision_gate_status": "needs_portfolio_screening"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_diagnosis(
+        _base_state(
+            round_idx=3,
+            current_hypothesis="neutral aromatic",
+            confidence=0.63,
+            runner_up_hypothesis="unknown",
+            runner_up_confidence=0.17,
+            hypothesis_pool=[
+                {"name": "neutral aromatic", "confidence": 0.63},
+                {"name": "unknown", "confidence": 0.17},
+                {"name": "TICT", "confidence": 0.11},
+                {"name": "ICT", "confidence": 0.07},
+                {"name": "ESIPT", "confidence": 0.02},
+            ],
+            latest_main_gap="No further screening debt remains.",
+            decision_gate_status="needs_portfolio_screening",
+        )
+    )
+
+    decision = result["decision"]
+    assert decision.action == "stop"
+    assert decision.reasoning_phase == "pairwise_contraction"
+    assert decision.portfolio_screening_complete is True
+    assert decision.coverage_debt_hypotheses == []
+    assert decision.decision_gate_status == "not_ready"
+    assert decision.planned_agents == []
+    assert decision.task_instruction is None
+    assert decision.agent_task_instructions == {}
 
 
 def test_initial_portfolio_screening_uses_portfolio_neutral_agent_framing(tmp_path: Path) -> None:

@@ -439,6 +439,8 @@ class AieMasWorkflow:
             return "run_microscopic"
         if action == "finalize":
             return "update_long_term_memory"
+        if action == "stop":
+            return "final_output"
         return "final_output"
 
     def _apply_planner_result(

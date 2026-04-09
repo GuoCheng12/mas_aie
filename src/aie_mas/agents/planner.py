@@ -721,7 +721,13 @@ def _apply_portfolio_screening_consistency(
     if debt:
         return "portfolio_screening", False, debt, normalized_ledger
 
-    if portfolio_screening_complete or reasoning_phase == "pairwise_contraction":
+    if (
+        portfolio_screening_complete
+        or reasoning_phase == "pairwise_contraction"
+        or credible_alternative_hypotheses
+        or hypothesis_screening_ledger
+        or coverage_debt_hypotheses
+    ):
         return "pairwise_contraction", True, debt, normalized_ledger
     return "portfolio_screening", False, debt, normalized_ledger
 
@@ -1215,6 +1221,14 @@ def _default_follow_up_task_instruction(
             f"Do not use verifier evidence as a substitute for an unexecuted internal discriminative task."
         )
     return None
+
+
+def _clear_pending_agent_execution(decision: PlannerDecision) -> PlannerDecision:
+    decision.needs_verifier = False
+    decision.planned_agents = []
+    decision.task_instruction = None
+    decision.agent_task_instructions = {}  # type: ignore[assignment]
+    return decision
 
 
 def _contract_microscopic_decision_to_single_action(
@@ -1806,6 +1820,11 @@ class OpenAIPlannerBackend:
             main_gap=main_gap,
         )
         decision.planned_agents = self._planned_agents_for_action(decision.action)
+        if decision.action == "stop":
+            decision.finalize = False
+            decision.finalization_mode = "none"
+            decision = _clear_pending_agent_execution(decision)
+            return decision, conflict_status, main_gap
         if decision.action != "finalize":
             decision.finalize = False
             decision.final_hypothesis_rationale = None
@@ -2123,6 +2142,11 @@ class OpenAIPlannerBackend:
         decision.contraction_reason = _append_unique_detail(decision.contraction_reason, budget_note)
         decision.stagnation_assessment = _append_unique_detail(decision.stagnation_assessment, budget_note)
 
+        if decision.action == "stop":
+            decision.finalize = False
+            decision.finalization_mode = "none"
+            return _clear_pending_agent_execution(decision)
+
         normal_mode = self._finalization_mode_for_decision(decision)
         decision.action = "finalize"
         decision.needs_verifier = False
@@ -2170,6 +2194,8 @@ class OpenAIPlannerBackend:
         if decision.portfolio_screening_complete:
             if decision.reasoning_phase != "pairwise_contraction":
                 decision.reasoning_phase = "pairwise_contraction"  # type: ignore[assignment]
+            if decision.decision_gate_status == "needs_portfolio_screening":
+                decision.decision_gate_status = "not_ready"
             if not decision.decision_pair:
                 decision.decision_pair = _decision_pair_from_pool(
                     [
@@ -2181,7 +2207,20 @@ class OpenAIPlannerBackend:
                         ),
                     ]
                 )
+            if decision.action == "stop":
+                decision.finalize = False
+                decision.finalization_mode = "none"
+                return _clear_pending_agent_execution(decision)
             return decision
+
+        if decision.action == "stop":
+            decision.reasoning_phase = "portfolio_screening"  # type: ignore[assignment]
+            decision.portfolio_screening_complete = False
+            decision.finalize = False
+            decision.finalization_mode = "none"
+            if decision.decision_gate_status == "not_ready":
+                decision.decision_gate_status = "needs_portfolio_screening"
+            return _clear_pending_agent_execution(decision)
 
         decision.reasoning_phase = "portfolio_screening"  # type: ignore[assignment]
         decision.portfolio_screening_complete = False
@@ -2652,7 +2691,7 @@ class OpenAIPlannerBackend:
     ) -> str:
         del post_verifier
         normalized_action = (action or "").strip()
-        if normalized_action in {"macro", "microscopic", "verifier", "finalize", "macro_and_microscopic"}:
+        if normalized_action in {"macro", "microscopic", "verifier", "finalize", "macro_and_microscopic", "stop"}:
             return normalized_action
 
         lowered_action = normalized_action.lower()
@@ -2670,6 +2709,15 @@ class OpenAIPlannerBackend:
             "planner_synthesis": "finalize",
             "closure_writeup": "finalize",
             "closure_write_up": "finalize",
+            "stop": "stop",
+            "no_action": "stop",
+            "no_action_budget_exhausted": "stop",
+            "no_further_action": "stop",
+            "no_more_action": "stop",
+            "halt": "stop",
+            "terminate": "stop",
+            "end_case": "stop",
+            "end_workflow": "stop",
         }
         aliased_action = action_aliases.get(lowered_action)
         if aliased_action is not None:
@@ -2688,6 +2736,8 @@ class OpenAIPlannerBackend:
             or "planner-level closure" in normalized_instruction_lower
         ):
             return "finalize"
+        if lowered_action.startswith("no_action") and not normalized_task_instruction and not normalized_agent_keys:
+            return "stop"
         return "microscopic"
 
     def _planned_agents_for_action(self, action: str) -> list[str]:

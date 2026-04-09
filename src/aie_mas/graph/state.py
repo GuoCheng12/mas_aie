@@ -4,7 +4,7 @@ from typing import Any, Literal, Optional, TypedDict
 
 from pydantic import BaseModel, Field
 
-PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize"]
+PlannerAction = Literal["macro_and_microscopic", "macro", "microscopic", "verifier", "finalize", "stop"]
 PendingAgent = Literal["macro", "microscopic", "verifier"]
 DecisionGateStatus = Literal[
     "not_ready",
