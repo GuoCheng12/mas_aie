@@ -421,6 +421,9 @@ class WorkingMemoryManager:
         }
         structured_results = getattr(report, "structured_results", {}) or {}
         if isinstance(structured_results, dict):
+            route_summary = structured_results.get("route_summary")
+            parsed_snapshot_records = list(structured_results.get("parsed_snapshot_records") or [])
+            first_geometry_record = parsed_snapshot_records[0] if parsed_snapshot_records else {}
             payload["structured_results"] = {
                 "status": structured_results.get("status"),
                 "requested_capability": structured_results.get("requested_capability"),
@@ -449,6 +452,30 @@ class WorkingMemoryManager:
                 "artifact_bundle_kind": structured_results.get("artifact_bundle_kind"),
                 "registry_infeasible_reason": structured_results.get("registry_infeasible_reason"),
                 "error": self._compact_error_payload(structured_results.get("error")),
+                "route_summary": {
+                    "artifact_scope": route_summary.get("artifact_scope"),
+                    "artifact_source_round": route_summary.get("artifact_source_round"),
+                    "geometry_proxy_availability": route_summary.get("geometry_proxy_availability"),
+                    "available_geometry_descriptors": list(route_summary.get("available_geometry_descriptors") or []),
+                    "missing_geometry_descriptors": list(route_summary.get("missing_geometry_descriptors") or []),
+                    "records_with_phenolic_oh_to_imine_n_candidate": route_summary.get(
+                        "records_with_phenolic_oh_to_imine_n_candidate"
+                    ),
+                    "phenolic_oh_to_imine_n_candidate_count": route_summary.get(
+                        "phenolic_oh_to_imine_n_candidate_count"
+                    ),
+                }
+                if isinstance(route_summary, dict)
+                else {},
+                "best_phenolic_oh_to_imine_n_contact": first_geometry_record.get(
+                    "best_phenolic_oh_to_imine_n_contact"
+                ),
+                "phenolic_oh_to_imine_n_proximity": first_geometry_record.get(
+                    "phenolic_oh_to_imine_n_proximity"
+                ),
+                "phenolic_oh_to_imine_n_orientation": first_geometry_record.get(
+                    "phenolic_oh_to_imine_n_orientation"
+                ),
                 "verifier_target_pair": structured_results.get("verifier_target_pair"),
                 "pairwise_verifier_completed_for_pair": structured_results.get("pairwise_verifier_completed_for_pair"),
                 "pairwise_verifier_evidence_specificity": structured_results.get(
@@ -518,6 +545,20 @@ class WorkingMemoryManager:
             route_label = str(route_summary.get("summary") or route_summary.get("route_observation") or "").strip()
             if route_label:
                 observations.append(self._truncate(route_label, 160))
+            best_contact = route_summary.get("best_phenolic_oh_to_imine_n_contact")
+            proximity = route_summary.get("phenolic_oh_to_imine_n_proximity")
+            orientation = route_summary.get("phenolic_oh_to_imine_n_orientation")
+            if isinstance(best_contact, dict) and best_contact:
+                observations.append("best_phenolic_oh_to_imine_n_contact available")
+            if isinstance(proximity, dict) and proximity.get("matching_contact_found") is True:
+                observations.append("phenolic_oh_to_imine_n_proximity available")
+            if isinstance(orientation, dict) and orientation.get("matching_contact_found") is True:
+                observations.append("phenolic_oh_to_imine_n_orientation available")
+        parsed_snapshot_records = list(structured_results.get("parsed_snapshot_records") or [])
+        if parsed_snapshot_records:
+            first_geometry_record = parsed_snapshot_records[0]
+            if isinstance(first_geometry_record.get("best_phenolic_oh_to_imine_n_contact"), dict):
+                observations.append("best_phenolic_oh_to_imine_n_contact parsed")
         return {
             "executed_capability": executed_capability or None,
             "selected_capability": structured_results.get("selected_capability") or executed_capability or None,
@@ -529,7 +570,22 @@ class WorkingMemoryManager:
             "residual_unmet_observable_tags": list(
                 structured_results.get("residual_unmet_observable_tags") or []
             ),
-            "key_observations": observations[:3],
+            "best_phenolic_oh_to_imine_n_contact": (
+                parsed_snapshot_records[0].get("best_phenolic_oh_to_imine_n_contact")
+                if parsed_snapshot_records
+                else None
+            ),
+            "phenolic_oh_to_imine_n_proximity": (
+                parsed_snapshot_records[0].get("phenolic_oh_to_imine_n_proximity")
+                if parsed_snapshot_records
+                else None
+            ),
+            "phenolic_oh_to_imine_n_orientation": (
+                parsed_snapshot_records[0].get("phenolic_oh_to_imine_n_orientation")
+                if parsed_snapshot_records
+                else None
+            ),
+            "key_observations": observations[:4],
             "key_missing_deliverables": list(structured_results.get("missing_deliverables") or []),
             "artifact_references": [
                 item.model_dump(mode="json")

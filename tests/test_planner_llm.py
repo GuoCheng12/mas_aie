@@ -2531,3 +2531,73 @@ def test_working_memory_projection_tolerates_string_error_payloads() -> None:
     assert compact is not None
     assert compact["structured_results"]["error"] == {"message": "upstream connect error"}
     assert compact["structured_results"]["verifier_target_pair"] == "ICT__vs__TICT"
+
+
+def test_working_memory_projection_exposes_esipt_typed_geometry_descriptors() -> None:
+    manager = WorkingMemoryManager()
+    report = AgentReport(
+        agent_name="microscopic",
+        task_received="Geometry parse task",
+        task_completion_status="contracted",
+        task_completion="Local geometry parse completed in contracted form.",
+        task_understanding="Extract ESIPT-relevant geometry descriptors from a reusable bundle.",
+        execution_plan="Run extract_geometry_descriptors_from_bundle on the selected baseline bundle.",
+        result_summary="Amesp geometry parse returned typed O-H···N descriptors.",
+        remaining_local_uncertainty="Local parse cannot adjudicate the global mechanism.",
+        structured_results={
+            "executed_capability": "extract_geometry_descriptors_from_bundle",
+            "selected_capability": "extract_geometry_descriptors_from_bundle",
+            "fulfillment_mode": "exact",
+            "artifact_bundle_id": "round_18_baseline_bundle",
+            "artifact_bundle_kind": "baseline_bundle",
+            "route_summary": {
+                "artifact_scope": "baseline_bundle",
+                "artifact_source_round": 18,
+                "geometry_proxy_availability": "available",
+                "available_geometry_descriptors": [
+                    "best_phenolic_oh_to_imine_n_contact",
+                    "phenolic_oh_to_imine_n_proximity",
+                    "phenolic_oh_to_imine_n_orientation",
+                ],
+                "missing_geometry_descriptors": ["ESIPT_preorganization_compatibility"],
+                "records_with_phenolic_oh_to_imine_n_candidate": 1,
+                "phenolic_oh_to_imine_n_candidate_count": 2,
+            },
+            "parsed_snapshot_records": [
+                {
+                    "best_phenolic_oh_to_imine_n_contact": {
+                        "donor_atom_index": 1,
+                        "acceptor_atom_index": 7,
+                    },
+                    "phenolic_oh_to_imine_n_proximity": {
+                        "matching_contact_found": True,
+                        "donor_acceptor_distance_angstrom": 2.71,
+                        "hydrogen_acceptor_distance_angstrom": 1.85,
+                    },
+                    "phenolic_oh_to_imine_n_orientation": {
+                        "matching_contact_found": True,
+                        "donor_hydrogen_acceptor_angle_deg": 145.2,
+                        "hbond_like_geometry": True,
+                    },
+                }
+            ],
+        },
+        status="success",
+        planner_readable_report="Typed ESIPT geometry descriptors are available.",
+    )
+
+    compact = manager._compact_agent_report_for_planner(report)
+
+    assert compact is not None
+    assert compact["planner_compact_summary"]["best_phenolic_oh_to_imine_n_contact"] == {
+        "donor_atom_index": 1,
+        "acceptor_atom_index": 7,
+    }
+    assert compact["planner_compact_summary"]["phenolic_oh_to_imine_n_proximity"]["matching_contact_found"] is True
+    assert compact["planner_compact_summary"]["phenolic_oh_to_imine_n_orientation"]["matching_contact_found"] is True
+    assert compact["structured_results"]["best_phenolic_oh_to_imine_n_contact"] == {
+        "donor_atom_index": 1,
+        "acceptor_atom_index": 7,
+    }
+    assert compact["structured_results"]["phenolic_oh_to_imine_n_proximity"]["matching_contact_found"] is True
+    assert compact["structured_results"]["phenolic_oh_to_imine_n_orientation"]["matching_contact_found"] is True
