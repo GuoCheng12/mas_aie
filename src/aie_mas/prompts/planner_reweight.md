@@ -48,6 +48,7 @@ You will be given:
 - `hypothesis_pool`
 - `molecule_identity_status`
 - `molecule_identity_context`
+- `runtime_context`
 
 Your task is to:
 1. Reweight the full 5-label hypothesis pool after reading the verifier evidence.
@@ -75,6 +76,8 @@ Important rules:
 - Explicitly account for the round budget using `current_round_index`, `max_rounds`, and `rounds_remaining_including_current`.
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
+- If the next action is `Macro`, keep it deterministic and bounded.
+- If the next action is `Macro`, the task should be expressible as exactly one registry-backed macro capability using `runtime_context.macro_capability_registry`.
 - If top2 changes after verifier reweighting, re-evaluate the pairwise target only if portfolio screening is already complete.
 - If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
 - When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia.

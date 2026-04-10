@@ -2782,19 +2782,7 @@ class PlannerAgent:
                 if state.molecule_identity_context is not None
                 else None
             ),
-            "runtime_context": {
-                **self._config.runtime_context(),
-                "microscopic_baseline_policy": (
-                    "first-round microscopic work must stay low-cost and bounded; request exactly one baseline-only "
-                    "S0/S1 action on the shared prepared structure and do not bundle conformer sensitivity, torsion "
-                    "sensitivity, or multi-step follow-ups into the initial microscopic task"
-                ),
-                "microscopic_supported_scope": (
-                    "first-round scope is a single run_baseline_bundle-style route: shared-structure reuse, low-cost "
-                    "Amesp aTB S0 optimization, and a bounded S1 vertical excitation; conformer/torsion follow-ups "
-                    "must be separate later actions"
-                ),
-            },
+            "runtime_context": self._planner_runtime_context(),
         }
         rendered_prompt = self._prompts.render("planner_initial", payload)
         return self._backend.plan_initial(rendered_prompt, payload)
@@ -2858,6 +2846,26 @@ class PlannerAgent:
                 state.molecule_identity_context.model_dump(mode="json")
                 if state.molecule_identity_context is not None
                 else None
+            ),
+            "runtime_context": self._planner_runtime_context(),
+        }
+
+    def _planner_runtime_context(self) -> dict[str, Any]:
+        return {
+            **self._config.runtime_context(),
+            "microscopic_baseline_policy": (
+                "first-round microscopic work must stay low-cost and bounded; request exactly one baseline-only "
+                "S0/S1 action on the shared prepared structure and do not bundle conformer sensitivity, torsion "
+                "sensitivity, or multi-step follow-ups into the initial microscopic task"
+            ),
+            "microscopic_supported_scope": (
+                "first-round scope is a single run_baseline_bundle-style route: shared-structure reuse, low-cost "
+                "Amesp aTB S0 optimization, and a bounded S1 vertical excitation; conformer/torsion follow-ups "
+                "must be separate later actions"
+            ),
+            "macro_single_action_policy": (
+                "macro work is registry-backed and bounded; each macro round should target one deterministic "
+                "macro capability from macro_capability_registry rather than a free-form multi-step structural analysis"
             ),
         }
 

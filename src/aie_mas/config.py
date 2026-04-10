@@ -301,6 +301,8 @@ class AieMasConfig(BaseModel):
         return None
 
     def runtime_context(self) -> dict[str, Any]:
+        from aie_mas.tools.macro import MACRO_CAPABILITY_REGISTRY
+
         return {
             "execution_profile": self.execution_profile,
             "tool_backend": self.tool_backend,
@@ -322,6 +324,18 @@ class AieMasConfig(BaseModel):
             "macro_api_key_configured": bool(self.macro_api_key),
             "macro_temperature": self.macro_temperature,
             "macro_timeout_seconds": self.macro_timeout_seconds,
+            "macro_supported_scope": list(MACRO_CAPABILITY_REGISTRY.keys()),
+            "macro_capability_registry": {
+                name: {
+                    "purpose": definition.purpose,
+                    "structure_target": definition.structure_target,
+                    "supported_deliverables": list(definition.supported_deliverables),
+                    "evidence_goal_tags": list(definition.evidence_goal_tags),
+                    "exact_observable_tags": list(definition.exact_observable_tags),
+                    "unsupported_requests_note": definition.unsupported_requests_note,
+                }
+                for name, definition in MACRO_CAPABILITY_REGISTRY.items()
+            },
             "verifier_backend": self.verifier_backend,
             "verifier_base_url": self.verifier_base_url,
             "verifier_model": self.verifier_model,

@@ -530,6 +530,8 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert fake_client.chat.completions.calls[0]["response_format"] == {"type": "json_object"}
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "runtime_context" in prompt_payload
+    assert "macro_capability_registry" in prompt_payload
+    assert "screen_intramolecular_hbond_preorganization" in prompt_payload
     assert "current_round_index" in prompt_payload
     assert "max_rounds" in prompt_payload
     assert "shared_structure_status" in prompt_payload

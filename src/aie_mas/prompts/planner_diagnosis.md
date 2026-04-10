@@ -51,6 +51,7 @@ You will receive:
 - `molecule_identity_status`
 - `molecule_identity_context`
 - `smiles`
+- `runtime_context`
 
 Each non-Planner agent report may include:
 - `task_completion`
@@ -87,6 +88,8 @@ Important rules:
 - `Verifier` is an external evidence supplement, not the final judge.
 - If external evidence is the most informative next step, choose `action=verifier` and keep that choice.
 - If action is `Verifier`, the task must explicitly distinguish the current leading hypothesis from the most relevant unresolved alternative or explain what portfolio-screening debt it is intended to reduce.
+- If action is `Macro`, keep it deterministic and bounded.
+- If action is `Macro`, the task should be expressible as exactly one registry-backed macro capability using `runtime_context.macro_capability_registry`.
 - If action is `Microscopic`, keep it low-cost and bounded.
 - If action is `Microscopic`, the task must map to exactly one registry-backed Amesp action in that round.
 - Do not ask `Microscopic` to perform multiple sequential actions, multi-bundle analysis, or conditional workflows in one decision.

@@ -53,6 +53,10 @@ def test_config_paths_are_resolved_from_env(monkeypatch: pytest.MonkeyPatch, tmp
     assert config.macro_backend == "openai_sdk"
     assert config.macro_model == "gpt-4.1-mini"
     assert config.macro_base_url == "http://34.13.73.248:3888/v1"
+    runtime_context = config.runtime_context()
+    assert "macro_supported_scope" in runtime_context
+    assert "macro_capability_registry" in runtime_context
+    assert "screen_intramolecular_hbond_preorganization" in runtime_context["macro_capability_registry"]
     assert config.verifier_backend == "openai_sdk"
     assert config.verifier_base_url == "https://openrouter.ai/api/v1"
     assert config.verifier_model == "anthropic/claude-3.5-sonnet"
