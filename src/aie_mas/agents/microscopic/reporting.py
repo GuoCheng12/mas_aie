@@ -28,7 +28,7 @@ class MicroscopicReportingMixin:
         fulfillment_mode = (
             getattr(plan, "fulfillment_mode", None)
             or getattr(action_decision, "fulfillment_mode", None)
-            or "unsupported"
+            or ("exact" if plan is not None or action_decision is not None else "unsupported")
         )
         binding_mode = (
             getattr(plan, "binding_mode", None)
@@ -87,7 +87,7 @@ class MicroscopicReportingMixin:
         fulfillment_mode = (
             getattr(plan, "fulfillment_mode", None)
             or getattr(action_decision, "fulfillment_mode", None)
-            or "unsupported"
+            or ("exact" if plan is not None or action_decision is not None else "unsupported")
         )
         binding_mode = (
             getattr(plan, "binding_mode", None)
@@ -433,7 +433,18 @@ class MicroscopicReportingMixin:
         reasoning_parse_mode = outcome.reasoning_parse_mode
         reasoning_contract_mode = outcome.reasoning_contract_mode
         reasoning_contract_errors = list(outcome.reasoning_contract_errors)
-        blocked_note = "; ".join(registry_blocked_requests)
+        blocked_note = "; ".join(registry_blocked_requests).strip()
+        if not blocked_note:
+            planner_requested_capability = str(action_decision.planner_requested_capability or "").strip()
+            if planner_requested_capability:
+                blocked_note = f"Planner-requested capability `{planner_requested_capability}`"
+            else:
+                requested_tags = ", ".join(action_decision.requested_observable_tags or [])
+                blocked_note = (
+                    f"requested evidence goal tags: {requested_tags}"
+                    if requested_tags
+                    else "no registry-backed microscopic action matched the requested local evidence goal"
+                )
         unsupported_requests = list(
             dict.fromkeys(
                 list((plan.unsupported_requests if plan is not None else []) or [])
@@ -478,8 +489,8 @@ class MicroscopicReportingMixin:
             ),
             "requested_focus": ", ".join(requested_deliverables),
             "capability_route": plan.capability_route if plan is not None else "unsupported",
-            "requested_capability": "registry-blocked request",
-            "executed_capability": "not_executed",
+                "requested_capability": "registry-blocked request",
+                "executed_capability": "not_executed",
             "performed_new_calculations": "false",
             "reused_existing_artifacts": "false",
             "resolved_target_ids_text": "No target IDs were resolved because execution did not start.",
@@ -537,6 +548,9 @@ class MicroscopicReportingMixin:
                 "action_decision": action_decision.model_dump(mode="json"),
                 "execution_plan_not_executed": plan.model_dump(mode="json") if plan is not None else None,
                 "registry_blocked_requests": list(registry_blocked_requests),
+                "task_instruction_excerpt": (
+                    task_received[:257] + "..." if len(task_received) > 260 else task_received
+                ),
             },
             structured_results={
                 "backend": "amesp",
@@ -572,6 +586,9 @@ class MicroscopicReportingMixin:
                     "code": "action_not_supported_by_registry",
                     "message": result_summary_text,
                 },
+                "task_instruction_excerpt": (
+                    task_received[:257] + "..." if len(task_received) > 260 else task_received
+                ),
                 "supported_scope": list(plan.supported_scope if plan is not None else []),
                 "unsupported_requests": unsupported_requests,
                 "artifact_bundle_id": None,

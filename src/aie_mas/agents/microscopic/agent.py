@@ -643,6 +643,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         fulfillment_mode: Optional[str],
         translation_substituted_action: bool,
         translation_substitution_reason: Optional[str],
+        residual_unmet_observable_tags: list[str],
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
         resolved_target_ids: dict[str, Any],
@@ -680,6 +681,11 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             if unmet_constraints
             else ""
         )
+        residual_clause = (
+            " Residual unmet observable tags: " + "; ".join(residual_unmet_observable_tags) + "."
+            if residual_unmet_observable_tags
+            else ""
+        )
         if run_status == "failed":
             reason_code = self._map_error_to_completion_reason(error_payload)
             return (
@@ -702,7 +708,13 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                     f"{error_message or 'no partial-execution details were provided.'}"
                 ),
             )
-        if requested_capability != executed_capability or missing_deliverables or unmet_constraints:
+        if (
+            fulfillment_mode in {"proxy", "inventory_only", "unsupported"}
+            or residual_unmet_observable_tags
+            or requested_capability != executed_capability
+            or missing_deliverables
+            or unmet_constraints
+        ):
             missing_note = (
                 " Missing deliverables: " + "; ".join(missing_deliverables) + "."
                 if missing_deliverables
@@ -717,7 +729,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "contracted",
                 "partial_observable_only",
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause}{residual_clause} "
                     f"The task completed in a contracted form via Amesp route '{capability_route}'.{missing_note}"
                     f"{unsupported_note}"
                 ),

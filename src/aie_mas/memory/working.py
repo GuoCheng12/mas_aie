@@ -411,6 +411,7 @@ class WorkingMemoryManager:
                 "status": structured_results.get("status"),
                 "requested_capability": structured_results.get("requested_capability"),
                 "executed_capability": structured_results.get("executed_capability"),
+                "selected_capability": structured_results.get("selected_capability"),
                 "performed_new_calculations": structured_results.get("performed_new_calculations"),
                 "reused_existing_artifacts": structured_results.get("reused_existing_artifacts"),
                 "fulfillment_mode": structured_results.get("fulfillment_mode"),
@@ -505,9 +506,11 @@ class WorkingMemoryManager:
                 observations.append(self._truncate(route_label, 160))
         return {
             "executed_capability": executed_capability or None,
+            "selected_capability": structured_results.get("selected_capability") or executed_capability or None,
             "fulfillment_mode": fulfillment_mode or None,
             "planner_requested_capability": structured_results.get("planner_requested_capability"),
             "translation_substituted_action": bool(structured_results.get("translation_substituted_action")),
+            "requested_observable_tags": list(structured_results.get("requested_observable_tags") or []),
             "covered_observable_tags": list(structured_results.get("covered_observable_tags") or []),
             "residual_unmet_observable_tags": list(
                 structured_results.get("residual_unmet_observable_tags") or []

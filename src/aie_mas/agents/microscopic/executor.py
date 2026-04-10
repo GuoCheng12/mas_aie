@@ -17,6 +17,45 @@ from .interpreter import MicroscopicReasoningOutcome
 
 
 class MicroscopicExecutorMixin:
+    def _repeated_no_new_observable_gain(
+        self,
+        *,
+        recent_rounds_context: list[dict[str, object]],
+        structured_results: dict[str, Any],
+    ) -> bool:
+        current_capability = str(structured_results.get("executed_capability") or "").strip()
+        current_bundle = str(structured_results.get("artifact_bundle_id") or "").strip()
+        current_requested = list(structured_results.get("requested_observable_tags") or [])
+        current_covered = list(structured_results.get("covered_observable_tags") or [])
+        current_residual = list(structured_results.get("residual_unmet_observable_tags") or [])
+        if not current_capability or not current_bundle or not current_requested:
+            return False
+        matches = 0
+        for entry in recent_rounds_context[-3:]:
+            summaries = entry.get("agent_compact_summaries")
+            if not isinstance(summaries, list):
+                continue
+            for summary in summaries:
+                if not isinstance(summary, dict):
+                    continue
+                if str(summary.get("executed_capability") or "").strip() != current_capability:
+                    continue
+                refs = list(summary.get("artifact_references") or [])
+                same_bundle = any(
+                    isinstance(ref, dict) and str(ref.get("artifact_bundle_id") or "").strip() == current_bundle
+                    for ref in refs
+                )
+                if not same_bundle:
+                    continue
+                if list(summary.get("requested_observable_tags") or []) != current_requested:
+                    continue
+                if list(summary.get("covered_observable_tags") or []) != current_covered:
+                    continue
+                if list(summary.get("residual_unmet_observable_tags") or []) != current_residual:
+                    continue
+                matches += 1
+        return matches >= 2
+
     def run(
         self,
         smiles: str,
@@ -347,6 +386,7 @@ class MicroscopicExecutorMixin:
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
                 "executed_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
+                "selected_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
                 "performed_new_calculations": getattr(run_result, "performed_new_calculations", True),
                 "reused_existing_artifacts": getattr(run_result, "reused_existing_artifacts", False),
                 "resolved_target_ids": dict(getattr(run_result, "resolved_target_ids", {})),
@@ -414,6 +454,12 @@ class MicroscopicExecutorMixin:
                     else None
                 )
                 or plan.microscopic_tool_request.capability_name,
+                "selected_capability": (
+                    exc.structured_results.get("executed_capability")
+                    if isinstance(exc.structured_results, dict)
+                    else None
+                )
+                or plan.microscopic_tool_request.capability_name,
                 "performed_new_calculations": (
                     exc.structured_results.get("performed_new_calculations")
                     if isinstance(exc.structured_results, dict)
@@ -458,8 +504,17 @@ class MicroscopicExecutorMixin:
             result_summary_text = self._failed_result_summary(exc)
             status = exc.status
 
-        structured_results["artifact_bundle_id"] = generated_artifacts.get("artifact_bundle_id")
-        structured_results["artifact_bundle_kind"] = generated_artifacts.get("artifact_bundle_kind")
+        structured_results["artifact_bundle_id"] = (
+            generated_artifacts.get("artifact_bundle_id")
+            or structured_results.get("artifact_bundle_id")
+            or dict(structured_results.get("resolved_target_ids") or {}).get("artifact_bundle_id")
+            or plan.microscopic_tool_request.artifact_bundle_id
+        )
+        structured_results["artifact_bundle_kind"] = (
+            generated_artifacts.get("artifact_bundle_kind")
+            or structured_results.get("artifact_bundle_kind")
+            or plan.microscopic_tool_request.artifact_kind
+        )
 
         structured_results["unmet_constraints"] = list(structured_results.get("unmet_constraints") or []) + list(
             plan.planning_unmet_constraints
@@ -476,6 +531,7 @@ class MicroscopicExecutorMixin:
             fulfillment_mode=structured_results.get("fulfillment_mode"),
             translation_substituted_action=bool(structured_results.get("translation_substituted_action")),
             translation_substitution_reason=structured_results.get("translation_substitution_reason"),
+            residual_unmet_observable_tags=list(structured_results.get("residual_unmet_observable_tags") or []),
             performed_new_calculations=bool(structured_results.get("performed_new_calculations")),
             reused_existing_artifacts=bool(structured_results.get("reused_existing_artifacts")),
             resolved_target_ids=dict(structured_results.get("resolved_target_ids") or {}),
@@ -500,6 +556,44 @@ class MicroscopicExecutorMixin:
         )
         structured_results["registry_infeasible_for_verifier_handshake"] = registry_handshake_reason is not None
         structured_results["registry_infeasible_reason"] = registry_handshake_reason
+        if (
+            bool(structured_results.get("reused_existing_artifacts"))
+            and not bool(structured_results.get("performed_new_calculations"))
+            and self._repeated_no_new_observable_gain(
+                recent_rounds_context=recent_rounds_context,
+                structured_results=structured_results,
+            )
+        ):
+            structured_results["registry_infeasible_for_verifier_handshake"] = True
+            structured_results["registry_infeasible_reason"] = "repeated_no_new_observable_gain"
+            structured_results["retry_without_new_capability"] = False
+            structured_results["unmet_constraints"] = list(structured_results.get("unmet_constraints") or []) + [
+                "Repeated same-bundle parse-only route returned no new observable gain across recent rounds."
+            ]
+            task_completion_status, completion_reason_code, task_completion_text = self._task_completion_for_result(
+                run_status=status,
+                unsupported_requests=plan.unsupported_requests,
+                task_mode=task_spec.mode,
+                capability_route=plan.capability_route,
+                requested_capability=plan.microscopic_tool_request.capability_name,
+                planner_requested_capability=structured_results.get("planner_requested_capability"),
+                executed_capability=structured_results.get("executed_capability"),
+                fulfillment_mode=structured_results.get("fulfillment_mode"),
+                translation_substituted_action=bool(structured_results.get("translation_substituted_action")),
+                translation_substitution_reason=structured_results.get("translation_substitution_reason"),
+                residual_unmet_observable_tags=list(structured_results.get("residual_unmet_observable_tags") or []),
+                performed_new_calculations=bool(structured_results.get("performed_new_calculations")),
+                reused_existing_artifacts=bool(structured_results.get("reused_existing_artifacts")),
+                resolved_target_ids=dict(structured_results.get("resolved_target_ids") or {}),
+                honored_constraints=list(structured_results.get("honored_constraints") or []),
+                unmet_constraints=list(structured_results.get("unmet_constraints") or []),
+                missing_deliverables=list(structured_results.get("missing_deliverables") or []),
+                error_message=result_summary_text if status in {"partial", "failed"} else None,
+                error_payload=structured_results.get("error"),
+            )
+            structured_results["task_completion_status"] = task_completion_status
+            structured_results["completion_reason_code"] = completion_reason_code
+            structured_results["task_completion"] = task_completion_text
 
         rendered = self._prompts.render_sections(
             "microscopic_amesp_specialized",

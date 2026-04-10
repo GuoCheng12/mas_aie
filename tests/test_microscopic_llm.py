@@ -431,13 +431,13 @@ def test_microscopic_best_fit_translation_selects_approx_delta_dipole_proxy(tmp_
             </action_decision_json>
             """
         ],
-    )
+        )
 
     report = agent.run(
         smiles="C1=CCCCC1",
         task_received=(
-            "Use run_targeted_charge_analysis for bundle_id=`round_05_torsion_snapshots` if helpful, "
-            "but return a delta dipole / excited-state dipole discriminator from that torsion bundle."
+            "Reuse bundle_id=`round_05_torsion_snapshots` and return a delta dipole / excited-state dipole "
+            "discriminator from that torsion bundle."
         ),
         current_hypothesis="ICT",
         shared_structure_context=_shared_structure_context(tmp_path),
@@ -453,7 +453,7 @@ def test_microscopic_best_fit_translation_selects_approx_delta_dipole_proxy(tmp_
     assert report.status == "success"
     assert report.structured_results["executed_capability"] == "run_targeted_approx_delta_dipole_analysis"
     assert report.structured_results["fulfillment_mode"] == "proxy"
-    assert report.structured_results["planner_requested_capability"] == "run_targeted_charge_analysis"
+    assert report.structured_results["planner_requested_capability"] is None
     assert report.structured_results["translation_substituted_action"] is True
     assert "delta_dipole" in report.structured_results["covered_observable_tags"]
     assert "excited_state_dipole" in report.structured_results["covered_observable_tags"]
@@ -494,13 +494,12 @@ def test_microscopic_best_fit_translation_selects_transition_dipole_exact_route(
             </action_decision_json>
             """
         ],
-    )
+        )
 
     report = agent.run(
         smiles="C1=CCCCC1",
         task_received=(
-            "Use extract_ct_descriptors_from_bundle for bundle_id=`round_07_torsion_snapshots` if helpful, "
-            "but return transition dipole moments for the key torsion snapshots."
+            "Reuse bundle_id=`round_07_torsion_snapshots` and return transition dipole moments for the key torsion snapshots."
         ),
         current_hypothesis="ICT",
         shared_structure_context=_shared_structure_context(tmp_path),
@@ -555,13 +554,12 @@ def test_microscopic_best_fit_translation_selects_inventory_only_raw_inspection(
             </action_decision_json>
             """
         ],
-    )
+        )
 
     report = agent.run(
         smiles="C1=CCCCC1",
         task_received=(
-            "Use parse_snapshot_outputs for bundle_id=`round_08_torsion_snapshots` if helpful, "
-            "but return a raw file inventory and file locations for any observables present."
+            "Reuse bundle_id=`round_08_torsion_snapshots` and return a raw file inventory and file locations for any observables present."
         ),
         current_hypothesis="ICT",
         shared_structure_context=_shared_structure_context(tmp_path),
@@ -579,6 +577,67 @@ def test_microscopic_best_fit_translation_selects_inventory_only_raw_inspection(
     assert report.structured_results["fulfillment_mode"] == "inventory_only"
     assert report.structured_results["translation_substituted_action"] is True
     assert report.structured_results["covered_observable_tags"] == ["raw_observable_inventory"]
+
+
+def test_microscopic_preferred_explicit_action_is_not_substituted(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner referenced one reusable baseline bundle.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse the existing baseline bundle and inspect raw outputs.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            raw artifact file inventory
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "parse_snapshot_outputs",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": false,
+                "artifact_bundle_id": "round_01_baseline_bundle"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Start from the mentioned bundle and collect one bounded local follow-up."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Run inspect_raw_artifact_bundle for bundle_id=`round_01_baseline_bundle` and return raw file inventory "
+            "plus file locations for available observables."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="preferred-explicit-inspection",
+            objective="Respect preferred explicit action mentions.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
+    assert report.structured_results["binding_mode"] == "preferred"
+    assert report.structured_results["translation_substituted_action"] is False
+    assert report.structured_results["planner_requested_capability"] == "inspect_raw_artifact_bundle"
 
 
 def test_microscopic_hard_bound_only_request_does_not_substitute(tmp_path: Path) -> None:
@@ -634,6 +693,144 @@ def test_microscopic_hard_bound_only_request_does_not_substitute(tmp_path: Path)
     assert report.structured_results["binding_mode"] == "hard"
     assert report.structured_results["translation_substituted_action"] is False
     assert report.structured_results["planner_requested_capability"] == "extract_ct_descriptors_from_bundle"
+
+
+def test_microscopic_parse_only_loop_guard_marks_repeated_no_new_observable_gain(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Parse the same reusable torsion bundle again for a numeric excited-state table.
+            </task_understanding>
+            <reasoning_summary>
+            This is exactly representable by the parse-only snapshot action.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed artifact parsing.
+            </capability_limit_note>
+            <expected_outputs>
+            per-snapshot excitation energies
+            per-snapshot oscillator strengths
+            state-ordering records
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "parse_snapshot_outputs",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": false,
+                "artifact_bundle_id": "round_09_torsion_snapshots"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Reuse the existing torsion bundle and parse the numeric excited-state rows."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    repeated_summary = {
+        "agent_name": "microscopic",
+        "status": "success",
+        "task_completion_status": "completed",
+        "executed_capability": "parse_snapshot_outputs",
+        "artifact_references": [
+            {
+                "artifact_bundle_id": "round_09_torsion_snapshots",
+                "artifact_kind": "torsion_snapshots",
+                "selected_member_ids": [],
+                "source_capability": "parse_snapshot_outputs",
+                "parse_capabilities_supported": [],
+            }
+        ],
+        "requested_observable_tags": ["oscillator_strength", "state_ordering", "numeric_excited_state_table"],
+        "covered_observable_tags": ["oscillator_strength", "state_ordering", "numeric_excited_state_table"],
+        "residual_unmet_observable_tags": [],
+    }
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Run parse_snapshot_outputs on bundle_id=`round_09_torsion_snapshots` and return a numeric table for "
+            "torsion_01 and torsion_02 with state indices, S1-S5 energies, oscillator strengths, and lowest/brightest comparison."
+        ),
+        current_hypothesis="ICT",
+        recent_rounds_context=[
+            {"round_id": 10, "agent_compact_summaries": [repeated_summary]},
+            {"round_id": 11, "agent_compact_summaries": [repeated_summary]},
+        ],
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="repeated-parse-loop",
+            objective="Detect repeated no-gain parse-only loops.",
+        ),
+        case_id="case123",
+        round_index=12,
+    )
+
+    assert report.structured_results["registry_infeasible_reason"] == "repeated_no_new_observable_gain"
+    assert report.structured_results["retry_without_new_capability"] is False
+    assert report.task_completion_status == "contracted"
+
+
+def test_registry_blocked_report_includes_requested_capability_name(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner hard-bound a new-calculation route but also required parse-only reuse.
+            </task_understanding>
+            <reasoning_summary>
+            No supported single action can satisfy that hard-bound combination.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            approximate dipole-change proxy summary
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "unsupported",
+              "unsupported_parts": ["hard-bound action cannot satisfy parse-only reuse constraint"],
+              "local_execution_rationale": "No supported single action satisfies the hard-bound route under current constraints."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Execute ONLY `run_targeted_approx_delta_dipole_analysis` for bundle_id=`round_09_torsion_snapshots` "
+            "without new calculations."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="registry-blocked-hard-bind",
+            objective="Report blocked registry translation cleanly.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "failed"
+    assert report.structured_results["completion_reason_code"] == "action_not_supported_by_registry"
+    assert report.structured_results["planner_requested_capability"] == "run_targeted_approx_delta_dipole_analysis"
+    assert "run_targeted_approx_delta_dipole_analysis" in (report.structured_results["unsupported_intent"] or "")
 
 
 def test_microscopic_baseline_requested_deliverables_ignore_conformer_and_torsion_hints(tmp_path: Path) -> None:
@@ -1310,7 +1507,8 @@ def test_reasoned_action_text_supports_raw_artifact_inspection(tmp_path: Path) -
     )
 
     assert report.status == "success"
-    assert report.completion_reason_code is None
+    assert report.task_completion_status == "contracted"
+    assert report.completion_reason_code == "partial_observable_only"
     assert report.structured_results["registry_action_name"] == "inspect_raw_artifact_bundle"
     assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
     assert report.structured_results["registry_validation_errors"] == []

@@ -1499,8 +1499,8 @@ _ACTION_SELECTION_METADATA: dict[MicroscopicCapabilityName, dict[str, Any]] = {
         "requires_new_calculation": False,
         "target_object_kind": "artifact_bundle",
         "supports_artifact_reuse_only": True,
-        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "dominant_transitions"],
-        "exact_observable_tags": ["state_ordering", "oscillator_strength", "dominant_transitions"],
+        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "dominant_transitions", "numeric_excited_state_table"],
+        "exact_observable_tags": ["state_ordering", "oscillator_strength", "dominant_transitions", "numeric_excited_state_table"],
         "proxy_observable_tags": [],
         "fulfillment_tier": "exact",
     },
@@ -3627,6 +3627,14 @@ class AmespMicroscopicTool:
             )
             manifold = _build_vertical_state_manifold_summary(s1_result)
             dominant_transitions = _summarize_dominant_transitions(s1_result)
+            numeric_state_table = [
+                {
+                    "state_index": state.state_index,
+                    "excitation_energy_ev": state.excitation_energy_ev,
+                    "oscillator_strength": state.oscillator_strength,
+                }
+                for state in s1_result.excited_states
+            ]
             parsed_records.append(
                 {
                     "snapshot_label": artifact.get("snapshot_label") or artifact.get("member_label"),
@@ -3639,6 +3647,7 @@ class AmespMicroscopicTool:
                     "first_oscillator_strength": s1_result.first_oscillator_strength,
                     "state_count": s1_result.state_count,
                     "state_ordering": manifold,
+                    "numeric_excited_state_table": numeric_state_table,
                     "dominant_transitions": dominant_transitions or "not_available",
                     "ct_localization_proxy": "not_available",
                 }
@@ -3671,6 +3680,14 @@ class AmespMicroscopicTool:
         )
         if any("dominant transition" in item for item in requested_lower) and not dominant_transitions_available:
             missing_deliverables.append("dominant transitions")
+        numeric_state_table_available = any(
+            bool(record.get("numeric_excited_state_table")) for record in parsed_records
+        )
+        if any(
+            any(token in item for token in ("numeric excited-state table", "numeric table", "state indices", "s1-s5", "lowest/brightest"))
+            for item in requested_lower
+        ) and not numeric_state_table_available:
+            missing_deliverables.append("numeric excited-state table")
         if any(
             any(token in item for token in ("ct proxy", "charge-transfer", "charge transfer", "ct/localization"))
             for item in requested_lower
@@ -3685,6 +3702,7 @@ class AmespMicroscopicTool:
             "artifact_reuse_note": "Parsed existing microscopic snapshot artifacts without generating new Amesp inputs.",
             "ct_proxy_availability": "partial_observable_only" if dominant_transitions_available else "not_available",
             "available_ct_surrogates": available_ct_surrogates,
+            "numeric_state_table_available": numeric_state_table_available,
             "state_window": list(request.state_window),
         }
         return AmespBaselineRunResult(
@@ -4052,8 +4070,30 @@ class AmespMicroscopicTool:
                 },
             )
 
+        def _planner_observable_is_covered(observable: str) -> bool:
+            normalized = observable.strip().lower()
+            if normalized in {item.lower() for item in extractable_observables}:
+                return True
+            if "vertical excited-state manifold characterization" in normalized:
+                return bool(
+                    {"vertical_excitation_energies", "oscillator_strengths", "state_ordering"}
+                    & extractable_observables
+                )
+            if "dipole summary" in normalized:
+                return "ground_state_dipole" in extractable_observables
+            if "mulliken charge summary" in normalized:
+                return "mulliken_charges" in extractable_observables
+            if "approximate dipole-change proxy summary" in normalized:
+                return any(
+                    item.startswith("approx_delta_dipole") for item in extractable_observables
+                )
+            return False
+
+        planner_covered_observables = [
+            observable for observable in requested_scope if _planner_observable_is_covered(observable)
+        ]
         missing_observables = [
-            observable for observable in requested_scope if observable not in extractable_observables
+            observable for observable in requested_scope if observable not in planner_covered_observables
         ]
         missing_deliverables = (
             [f"observable: {item}" for item in missing_observables]
@@ -4067,6 +4107,7 @@ class AmespMicroscopicTool:
             "inspection_status": "completed",
             "available_raw_files": sorted(file_inventory),
             "extractable_observables": sorted(extractable_observables),
+            "planner_covered_observables": planner_covered_observables,
             "missing_observables": missing_observables,
             "target_selection_mode": target_selection_mode,
             "requested_exact_member_ids": list(exact_member_ids),

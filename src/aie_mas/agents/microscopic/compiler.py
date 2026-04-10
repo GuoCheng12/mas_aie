@@ -1594,6 +1594,16 @@ def _source_round_selector_from_preference(source_round_preference: Optional[int
     return f"round_{int(source_round_preference):02d}"
 
 
+def _operative_task_instruction(task_instruction: str) -> str:
+    stripped = task_instruction.strip()
+    if not stripped:
+        return stripped
+    parts = re.split(r"\bTask:\s*", stripped)
+    if len(parts) > 1:
+        return parts[-1].strip()
+    return stripped
+
+
 def _available_execution_actions() -> list[AmespCapabilityName]:
     actions: list[AmespCapabilityName] = []
     for action_name, action in AMESP_ACTION_REGISTRY.items():
@@ -1750,8 +1760,25 @@ def _requested_observable_tags(
         tags.append("ct_localization_proxy")
     if any(token in lowered for token in ("dominant transition", "dominant transitions")):
         tags.append("dominant_transitions")
-    if any(token in lowered for token in ("state ordering", "state-ordering", "state switching", "dark state")):
+    if any(
+        token in lowered
+        for token in ("state ordering", "state-ordering", "state switching", "dark state", "lowest/brightest", "lowest state", "brightest state")
+    ):
         tags.append("state_ordering")
+    if any(
+        token in lowered
+        for token in (
+            "numeric table",
+            "numeric excited-state table",
+            "s1-s5",
+            "s1–s5",
+            "state indices",
+            "lowest/brightest",
+            "lowest state",
+            "brightest state comparison",
+        )
+    ):
+        tags.append("numeric_excited_state_table")
     if any(
         token in lowered
         for token in ("dihedral", "torsion angle", "torsion-aligned", "planarity", "twist", "geometry descriptor")
@@ -1780,30 +1807,34 @@ def _requested_observable_tags(
 
 def _translation_context_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
     task_instruction = str(payload.get("task_instruction") or "")
-    mentioned_actions = _mentioned_execution_actions(task_instruction)
-    hard_bound_action = _hard_bound_execution_action(task_instruction, mentioned_actions)
-    planner_requested_capability = hard_bound_action or (mentioned_actions[0] if mentioned_actions else None)
+    operative_instruction = _operative_task_instruction(task_instruction)
+    mentioned_actions = _mentioned_execution_actions(operative_instruction)
+    disallowed_actions = _disallowed_execution_actions(operative_instruction)
+    hard_bound_action = _hard_bound_execution_action(operative_instruction, mentioned_actions)
+    preferred_actions = [action for action in mentioned_actions if action not in disallowed_actions]
+    planner_requested_capability = hard_bound_action or (preferred_actions[0] if preferred_actions else None)
     binding_mode: MicroscopicTranslationBindingMode = (
         "hard" if hard_bound_action is not None else "preferred" if planner_requested_capability is not None else "none"
     )
-    artifact_bundle_id = _extract_first_artifact_bundle_id_from_text(task_instruction)
-    artifact_member_ids = _extract_artifact_member_ids_from_text(task_instruction)
+    artifact_bundle_id = _extract_first_artifact_bundle_id_from_text(operative_instruction)
+    artifact_member_ids = _extract_artifact_member_ids_from_text(operative_instruction)
     return {
         "task_instruction": task_instruction,
+        "operative_instruction": operative_instruction,
         "requested_observable_tags": _requested_observable_tags(
-            task_instruction=task_instruction,
+            task_instruction=operative_instruction,
             requested_deliverables=list(payload.get("requested_deliverables") or []),
         ),
         "mentioned_actions": mentioned_actions,
         "planner_requested_capability": planner_requested_capability,
         "binding_mode": binding_mode,
         "hard_bound_action": hard_bound_action,
-        "disallowed_actions": _disallowed_execution_actions(task_instruction),
-        "requires_reuse_only": _task_requires_reuse_only(task_instruction),
-        "artifact_bundle_context": _references_reusable_artifact_bundle(task_instruction),
+        "disallowed_actions": disallowed_actions,
+        "requires_reuse_only": _task_requires_reuse_only(operative_instruction),
+        "artifact_bundle_context": _references_reusable_artifact_bundle(operative_instruction),
         "artifact_bundle_id": artifact_bundle_id,
         "artifact_member_ids": artifact_member_ids,
-        "dihedral_id": _extract_first_dihedral_id_from_text(task_instruction),
+        "dihedral_id": _extract_first_dihedral_id_from_text(operative_instruction),
         "artifact_kind": _infer_artifact_kind_from_bundle_id(artifact_bundle_id),
         "task_mode": str(payload.get("task_mode") or "targeted_follow_up"),
     }
@@ -1910,17 +1941,31 @@ def _candidate_action_decision(
             params["target_selection_mode"] = "exact_members"
     if context["dihedral_id"] and "dihedral_id" in allowed_params:
         params["dihedral_id"] = context["dihedral_id"]
+    original_selected_action = original_decision.execution_action if original_decision.status == "supported" else None
     substitution = (
-        bool(context["planner_requested_capability"])
-        and context["binding_mode"] != "hard"
-        and context["planner_requested_capability"] != action_name
+        (
+            bool(context["planner_requested_capability"])
+            and context["binding_mode"] != "hard"
+            and context["planner_requested_capability"] != action_name
+        )
+        if context["planner_requested_capability"]
+        else (
+            original_selected_action is not None
+            and original_selected_action != action_name
+        )
     )
     substitution_reason = None
     if substitution:
-        substitution_reason = (
-            f"Selected `{action_name}` instead of Planner-mentioned `{context['planner_requested_capability']}` "
-            "because it better fits the requested local evidence goal under current bounded microscopic capability."
-        )
+        if context["planner_requested_capability"] and context["planner_requested_capability"] != action_name:
+            substitution_reason = (
+                f"Selected `{action_name}` instead of Planner-mentioned `{context['planner_requested_capability']}` "
+                "because it better fits the requested local evidence goal under current bounded microscopic capability."
+            )
+        elif original_selected_action and original_selected_action != action_name:
+            substitution_reason = (
+                f"Selected `{action_name}` instead of the initial local choice `{original_selected_action}` "
+                "because it better fits the requested local evidence goal under current bounded microscopic capability."
+            )
     return MicroscopicActionDecision(
         status="supported",
         execution_action=action_name,
@@ -2007,6 +2052,84 @@ def normalize_reasoning_outcome_for_best_fit_translation(
             context=context,
             original_decision=outcome.action_decision,
         )
+    elif context["binding_mode"] == "preferred" and context["planner_requested_capability"] is not None:
+        selected_action = context["planner_requested_capability"]
+        if _compatibility_from_translation_context(action_name=selected_action, context=context):
+            selected_decision = _candidate_action_decision(
+                action_name=selected_action,
+                context=context,
+                original_decision=outcome.action_decision,
+            )
+        else:
+            candidates: list[tuple[tuple[int, int, int, int, int], MicroscopicActionDecision]] = []
+            for action_name in _available_execution_actions():
+                if not _compatibility_from_translation_context(action_name=action_name, context=context):
+                    continue
+                candidate = _candidate_action_decision(
+                    action_name=action_name,
+                    context=context,
+                    original_decision=outcome.action_decision,
+                )
+                if candidate.fulfillment_mode == "unsupported":
+                    continue
+                score = _selection_score(
+                    action_name=action_name,
+                    fulfillment_mode=candidate.fulfillment_mode or "unsupported",
+                    covered_tags=list(candidate.covered_observable_tags),
+                    context=context,
+                    llm_selected_action=llm_selected_action,
+                )
+                candidates.append((score, candidate))
+            if not candidates:
+                unsupported_note = (
+                    f"No registry-backed action matched Planner-requested capability `{selected_action}` under current hard constraints."
+                )
+                normalized_decision = outcome.action_decision.model_copy(
+                    update={
+                        "status": "unsupported",
+                        "execution_action": None,
+                        "discovery_actions": [],
+                        "params": {},
+                        "unsupported_parts": list(
+                            dict.fromkeys(
+                                list(outcome.action_decision.unsupported_parts) + [unsupported_note]
+                            )
+                        ),
+                        "fulfillment_mode": "unsupported",
+                        "binding_mode": context["binding_mode"],
+                        "planner_requested_capability": context["planner_requested_capability"],
+                        "translation_substituted_action": False,
+                        "translation_substitution_reason": None,
+                        "requested_observable_tags": list(context["requested_observable_tags"]),
+                        "covered_observable_tags": [],
+                        "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
+                    }
+                )
+                updated_response = outcome.reasoning_response.model_copy(
+                    update={
+                        "reasoning_summary": (
+                            f"{outcome.reasoning_response.reasoning_summary} {unsupported_note}"
+                        ).strip()
+                    }
+                )
+                return MicroscopicReasoningOutcome(
+                    action_decision=normalized_decision,
+                    reasoning_response=updated_response,
+                    compiled_execution_plan=None,
+                    reasoning_parse_mode=outcome.reasoning_parse_mode,
+                    reasoning_contract_mode=outcome.reasoning_contract_mode,
+                    reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+                )
+            candidates.sort(key=lambda item: item[0], reverse=True)
+            selected_decision = candidates[0][1].model_copy(
+                update={
+                    "translation_substituted_action": True,
+                    "translation_substitution_reason": (
+                        candidates[0][1].translation_substitution_reason
+                        or f"Planner-requested capability `{selected_action}` was not executable under current hard constraints; selected the closest supported single action instead."
+                    ),
+                }
+            )
     else:
         candidates: list[tuple[tuple[int, int, int, int, int], MicroscopicActionDecision]] = []
         for action_name in _available_execution_actions():
@@ -2028,12 +2151,22 @@ def normalize_reasoning_outcome_for_best_fit_translation(
             )
             candidates.append((score, candidate))
         if not candidates:
+            unsupported_reason = (
+                f"No registry-backed action matched requested evidence goal tags: {', '.join(context['requested_observable_tags'])}."
+                if context["requested_observable_tags"]
+                else "No registry-backed action matched the requested local evidence goal."
+            )
             normalized_decision = outcome.action_decision.model_copy(
                 update={
                     "status": "unsupported",
                     "execution_action": None,
                     "discovery_actions": [],
                     "params": {},
+                    "unsupported_parts": list(
+                        dict.fromkeys(
+                            list(outcome.action_decision.unsupported_parts) + [unsupported_reason]
+                        )
+                    ),
                     "fulfillment_mode": "unsupported",
                     "binding_mode": context["binding_mode"],
                     "planner_requested_capability": context["planner_requested_capability"],
