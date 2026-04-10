@@ -11,7 +11,7 @@ This agent should only summarize low-cost structural evidence and should not mak
 Capability limit note: {capability_limit_note}
 
 ## execution_plan
-Use {tool_name} to execute the bounded macro workflow with focus areas: {focus_areas_text}. Planned local steps: {plan_steps}
+Use {tool_name} to execute the bounded registry-backed macro capability `{selected_capability}` with focus areas: {focus_areas_text}. Planned local steps: {plan_steps}
 
 ## result_summary
 {result_summary_text}

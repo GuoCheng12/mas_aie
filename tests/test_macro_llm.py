@@ -81,6 +81,11 @@ def test_openai_macro_reasoning_backend_uses_configured_model_and_shared_context
                   "rotor topology summary",
                   "planarity and torsion summary"
                 ],
+                "selected_capability": "screen_rotor_torsion_topology",
+                "requested_observable_tags": [
+                  "rotor_topology",
+                  "torsion_topology"
+                ],
                 "focus_areas": [
                   "rotor topology",
                   "planarity and torsion"
@@ -126,8 +131,10 @@ def test_openai_macro_reasoning_backend_uses_configured_model_and_shared_context
 
     assert report.reasoning_summary
     assert report.structured_results["execution_plan"]["structure_source"] == "shared_prepared_structure"
+    assert report.structured_results["execution_plan"]["selected_capability"] == "screen_rotor_torsion_topology"
     assert report.structured_results["unsupported_requests"] == ["aggregate-state simulation"]
     assert report.structured_results["rotor_topology"]["rotatable_bond_count"] == 2
+    assert report.structured_results["executed_capability"] == "screen_rotor_torsion_topology"
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
     message_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "recent_rounds_context" in message_payload
@@ -147,6 +154,12 @@ def test_macro_agent_reuses_shared_structure_context_with_openai_backend(tmp_pat
                 "requested_deliverables": [
                   "rotor topology summary",
                   "compactness and contact proxies"
+                ],
+                "selected_capability": "screen_planarity_compactness",
+                "requested_observable_tags": [
+                  "planarity_proxy",
+                  "compactness_proxy",
+                  "conformer_geometry_proxy"
                 ],
                 "focus_areas": [
                   "rotor topology",
@@ -193,4 +206,59 @@ def test_macro_agent_reuses_shared_structure_context_with_openai_backend(tmp_pat
     assert report.structured_results["structure_source"] == "shared_prepared_structure"
     assert report.structured_results["prepared_xyz_path"].endswith("prepared.xyz")
     assert report.structured_results["execution_plan"]["structure_source"] == "shared_prepared_structure"
+    assert report.structured_results["execution_plan"]["selected_capability"] == "screen_planarity_compactness"
+    assert report.structured_results["executed_capability"] == "screen_planarity_compactness"
     assert "shared_xyz=" in report.tool_calls[0]
+
+
+def test_macro_agent_recovers_requested_capability_from_task_instruction(tmp_path: Path) -> None:
+    fake_client = _FakeClient(
+        [
+            """
+            {
+              "task_understanding": "Collect bounded macro structural evidence only.",
+              "reasoning_summary": "Reuse the shared structure and return only bounded structural evidence.",
+              "execution_plan": {
+                "local_goal": "Collect bounded macro structural evidence only.",
+                "requested_deliverables": [
+                  "intramolecular H-bond candidate summary"
+                ],
+                "focus_areas": [
+                  "hydrogen-bond geometry"
+                ],
+                "unsupported_requests": []
+              },
+              "capability_limit_note": "Current macro capability is bounded to deterministic low-cost structure analysis only.",
+              "expected_outputs": [
+                "intramolecular H-bond candidate summary"
+              ],
+              "failure_policy": "Return a fallback macro report if shared structure is unavailable."
+            }
+            """
+        ]
+    )
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="local-dev",
+        macro_backend="openai_sdk",
+        prompts_dir=PROMPTS_DIR,
+    )
+    agent = MacroAgent(
+        prompts=PromptRepository(PROMPTS_DIR),
+        config=config,
+        llm_client=OpenAICompatibleMacroClient(config, client=fake_client),
+    )
+
+    report = agent.run(
+        smiles="OCC=N",
+        task_received=(
+            "Execute exactly one registry-backed macro action: screen_intramolecular_hbond_preorganization. "
+            "Use the shared structure only and return local structural evidence."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+    )
+
+    assert report.structured_results["execution_plan"]["selected_capability"] == "screen_intramolecular_hbond_preorganization"
+    assert report.structured_results["binding_mode"] == "hard"
+    assert report.structured_results["executed_capability"] == "screen_intramolecular_hbond_preorganization"

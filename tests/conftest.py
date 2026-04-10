@@ -42,6 +42,7 @@ class TestMacroReasoningBackend:
         task_instruction = str(payload["task_instruction"])
         shared_context = payload.get("shared_structure_context")
         focus_areas = _macro_focus_areas(task_instruction)
+        selected_capability = _macro_selected_capability(task_instruction, focus_areas)
         if shared_context:
             structure_note = "A prepared shared 3D structure context is available and should be reused."
         else:
@@ -65,6 +66,8 @@ class TestMacroReasoningBackend:
                     "compactness and contact proxies",
                     "conformer dispersion summary",
                 ],
+                selected_capability=selected_capability,
+                requested_observable_tags=_macro_requested_observable_tags(selected_capability),
                 focus_areas=focus_areas,
                 unsupported_requests=_macro_unsupported_requests(task_instruction),
             ),
@@ -706,6 +709,38 @@ def _macro_unsupported_requests(task_instruction: str) -> list[str]:
         if any(token in lower for token in tokens):
             unsupported.append(label)
     return unsupported
+
+
+def _macro_selected_capability(task_instruction: str, focus_areas: list[str]) -> str:
+    lower = task_instruction.lower()
+    if "screen_intramolecular_hbond_preorganization" in lower or any(
+        token in lower for token in ("esipt", "h-bond", "hydrogen bond", "proton", "imine")
+    ):
+        return "screen_intramolecular_hbond_preorganization"
+    if "screen_rotor_torsion_topology" in lower or "rotor topology" in focus_areas:
+        return "screen_rotor_torsion_topology"
+    if "screen_donor_acceptor_layout" in lower or "donor-acceptor layout" in focus_areas:
+        return "screen_donor_acceptor_layout"
+    if "screen_conformer_geometry_proxy" in lower or "conformer dispersion" in focus_areas:
+        return "screen_conformer_geometry_proxy"
+    if "screen_neutral_aromatic_structure" in lower or "neutral aromatic" in lower:
+        return "screen_neutral_aromatic_structure"
+    return "screen_planarity_compactness"
+
+
+def _macro_requested_observable_tags(selected_capability: str) -> list[str]:
+    mapping = {
+        "screen_donor_acceptor_layout": ["donor_acceptor_layout", "conjugation_summary"],
+        "screen_rotor_torsion_topology": ["rotor_topology", "torsion_topology"],
+        "screen_planarity_compactness": ["planarity_proxy", "compactness_proxy", "conformer_geometry_proxy"],
+        "screen_intramolecular_hbond_preorganization": [
+            "intramolecular_hbond_preorganization",
+            "geometry_precondition",
+        ],
+        "screen_conformer_geometry_proxy": ["conformer_geometry_proxy"],
+        "screen_neutral_aromatic_structure": ["aromatic_core_dominance", "ring_system_rigidity"],
+    }
+    return list(mapping.get(selected_capability, []))
 
 
 @pytest.fixture

@@ -116,6 +116,17 @@ MicroscopicTranslationFulfillmentMode = Literal["exact", "proxy", "inventory_onl
 MicroscopicTranslationBindingMode = Literal["hard", "preferred", "none"]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
 MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
+MacroStructureTarget = Literal["shared_prepared_structure", "smiles_only_fallback"]
+MacroToolCallKind = Literal["execution"]
+MacroTranslationBindingMode = Literal["hard", "preferred", "none"]
+MacroCapabilityName = Literal[
+    "screen_donor_acceptor_layout",
+    "screen_rotor_torsion_topology",
+    "screen_planarity_compactness",
+    "screen_intramolecular_hbond_preorganization",
+    "screen_conformer_geometry_proxy",
+    "screen_neutral_aromatic_structure",
+]
 VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
 SharedStructureStatus = Literal["missing", "ready", "failed"]
 MoleculeIdentityStatus = Literal["missing", "ready", "partial", "failed"]
@@ -598,17 +609,59 @@ class MacroExecutionStep(BaseModel):
     expected_outputs: list[str] = Field(default_factory=list)
 
 
+class MacroToolRequest(BaseModel):
+    capability_name: MacroCapabilityName
+    structure_target: MacroStructureTarget = "shared_prepared_structure"
+    reuse_shared_structure_only: bool = False
+    requested_observable_scope: list[str] = Field(default_factory=list)
+    requested_route_summary: str = ""
+    honor_exact_target: bool = False
+    allow_fallback: bool = True
+
+
+class MacroToolPlan(BaseModel):
+    calls: list[dict[str, Any]] = Field(default_factory=list)
+    requested_route_summary: str = ""
+    requested_deliverables: list[str] = Field(default_factory=list)
+
+
+class MacroCapabilityDefinition(BaseModel):
+    name: MacroCapabilityName
+    purpose: str
+    structure_target: MacroStructureTarget = "shared_prepared_structure"
+    supported_deliverables: list[str] = Field(default_factory=list)
+    evidence_goal_tags: list[str] = Field(default_factory=list)
+    exact_observable_tags: list[str] = Field(default_factory=list)
+    unsupported_requests_note: Optional[str] = None
+
+
+class MacroActionDefinition(BaseModel):
+    action_name: MacroCapabilityName
+    action_kind: MacroToolCallKind = "execution"
+    purpose: str
+    structure_target: MacroStructureTarget = "shared_prepared_structure"
+    default_deliverables: list[str] = Field(default_factory=list)
+    evidence_goal_tags: list[str] = Field(default_factory=list)
+    exact_observable_tags: list[str] = Field(default_factory=list)
+
+
 class MacroExecutionPlan(BaseModel):
     plan_version: str = "macro_context_v1"
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
     structure_source: MacroStructureSource
+    selected_capability: Optional[MacroCapabilityName] = None
+    binding_mode: Optional[MacroTranslationBindingMode] = None
+    requested_observable_tags: list[str] = Field(default_factory=list)
+    resolved_target_ids: dict[str, Any] = Field(default_factory=dict)
     focus_areas: list[str] = Field(default_factory=list)
     supported_scope: list[str] = Field(default_factory=list)
     unsupported_requests: list[str] = Field(default_factory=list)
     steps: list[MacroExecutionStep] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
     failure_reporting: str
+    macro_tool_request: Optional[MacroToolRequest] = None
+    macro_tool_plan: Optional[MacroToolPlan] = None
 
 
 class CaseMemoryEntry(BaseModel):

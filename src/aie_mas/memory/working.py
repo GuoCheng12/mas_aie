@@ -35,6 +35,14 @@ _MICROSCOPIC_ACTION_LABELS: tuple[str, ...] = (
     "run_targeted_state_characterization",
     "unsupported_excited_state_relaxation",
 )
+_MACRO_ACTION_LABELS: tuple[str, ...] = (
+    "screen_donor_acceptor_layout",
+    "screen_rotor_torsion_topology",
+    "screen_planarity_compactness",
+    "screen_intramolecular_hbond_preorganization",
+    "screen_conformer_geometry_proxy",
+    "screen_neutral_aromatic_structure",
+)
 _EVIDENCE_FAMILY_BY_ACTION: dict[str, tuple[EvidenceFamily, ...]] = {
     "run_torsion_snapshots": ("torsion_sensitivity",),
     "parse_snapshot_outputs": ("torsion_sensitivity",),
@@ -50,6 +58,12 @@ _EVIDENCE_FAMILY_BY_ACTION: dict[str, tuple[EvidenceFamily, ...]] = {
     "extract_ct_descriptors_from_bundle": ("charge_localization",),
     "extract_geometry_descriptors_from_bundle": ("geometry_precondition",),
     "inspect_raw_artifact_bundle": ("raw_artifact_inspection",),
+    "screen_donor_acceptor_layout": ("geometry_precondition",),
+    "screen_rotor_torsion_topology": ("geometry_precondition",),
+    "screen_planarity_compactness": ("geometry_precondition",),
+    "screen_intramolecular_hbond_preorganization": ("geometry_precondition",),
+    "screen_conformer_geometry_proxy": ("geometry_precondition",),
+    "screen_neutral_aromatic_structure": ("geometry_precondition",),
     "verifier": ("external_precedent",),
 }
 
@@ -754,7 +768,9 @@ class WorkingMemoryManager:
         for report in reports:
             agent_name = getattr(report, "agent_name", None)
             if agent_name == "macro":
-                labels.append("macro")
+                structured_results = getattr(report, "structured_results", {}) or {}
+                executed_capability = str(structured_results.get("executed_capability") or "").strip()
+                labels.append(executed_capability or "macro")
                 continue
             if agent_name == "verifier":
                 labels.append("verifier")

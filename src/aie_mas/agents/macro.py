@@ -10,13 +10,21 @@ from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AgentFramingMode,
     AgentReport,
+    MacroCapabilityName,
     MacroExecutionPlan,
     MacroExecutionStep,
+    MacroToolPlan,
+    MacroToolRequest,
+    MacroTranslationBindingMode,
     ReasoningPhase,
     SharedStructureContext,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMacroClient
-from aie_mas.tools.macro import DeterministicMacroStructureTool
+from aie_mas.tools.macro import (
+    MACRO_ACTION_REGISTRY,
+    MACRO_CAPABILITY_REGISTRY,
+    DeterministicMacroStructureTool,
+)
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -27,6 +35,8 @@ def _default_prompt_repository() -> PromptRepository:
 class MacroReasoningPlanDraft(BaseModel):
     local_goal: str
     requested_deliverables: list[str] = Field(default_factory=list)
+    selected_capability: Optional[MacroCapabilityName] = None
+    requested_observable_tags: list[str] = Field(default_factory=list)
     focus_areas: list[str] = Field(default_factory=list)
     unsupported_requests: list[str] = Field(default_factory=list)
 
@@ -111,13 +121,18 @@ class MacroAgent:
         }
         rendered_prompt = self._prompts.render("macro_reasoning", reasoning_payload)
         reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
-        plan = self._normalize_execution_plan(reasoning, shared_structure_context=shared_structure_context)
-        raw_result = self._tool.invoke(
+        plan = self._normalize_execution_plan(
+            reasoning,
+            task_received=task_received,
+            shared_structure_context=shared_structure_context,
+        )
+        raw_result = self._tool.execute(
+            plan=plan,
             smiles=smiles,
             shared_structure_context=shared_structure_context,
-            focus_areas=plan.focus_areas,
         )
-        task_completion_status, task_completion_text = self._task_completion(plan)
+        task_completion_status, task_completion_text = self._task_completion(plan, raw_result)
+        executed_capability = str(raw_result.get("executed_capability") or plan.selected_capability or "").strip()
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
@@ -133,6 +148,7 @@ class MacroAgent:
             "shared_context_note": self._shared_context_note(shared_structure_context),
             "reasoning_summary_text": reasoning.reasoning_summary,
             "capability_limit_note": reasoning.capability_limit_note,
+            "selected_capability": executed_capability or "none",
             "focus_areas_text": ", ".join(plan.focus_areas) if plan.focus_areas else "general macro structural evidence",
             "plan_steps": self._plan_steps_text(plan),
             "result_summary_text": self._successful_result_summary(raw_result),
@@ -151,10 +167,37 @@ class MacroAgent:
             "conformer_dispersion_proxy": raw_result["conformer_dispersion_summary"]["conformer_dispersion_proxy"],
         }
         rendered = self._prompts.render_sections("macro_specialized", render_payload)
-        tool_call_parts = [f"focus_areas={plan.focus_areas!r}"]
+        tool_call_parts = [f"capability='{executed_capability}'"]
         if shared_structure_context is not None:
             tool_call_parts.append(f"shared_xyz='{shared_structure_context.prepared_xyz_path}'")
         tool_calls = [f"{self._tool.name}(smiles='{smiles}', {', '.join(tool_call_parts)})"]
+
+        structured_results = {
+            **raw_result,
+            "task_completion_status": task_completion_status,
+            "task_completion": rendered["task_completion"],
+            "reasoning": reasoning.model_dump(mode="json"),
+            "execution_plan": plan.model_dump(mode="json"),
+            "supported_scope": list(plan.supported_scope),
+            "unsupported_requests": list(plan.unsupported_requests),
+            "requested_capability": raw_result.get("requested_capability") or plan.selected_capability,
+            "selected_capability": raw_result.get("selected_capability") or plan.selected_capability,
+            "executed_capability": executed_capability or None,
+            "performed_new_calculations": False,
+            "reused_existing_artifacts": bool(raw_result.get("reused_existing_artifacts")),
+            "binding_mode": raw_result.get("binding_mode") or plan.binding_mode,
+            "requested_observable_tags": list(
+                raw_result.get("requested_observable_tags") or plan.requested_observable_tags
+            ),
+            "covered_observable_tags": list(raw_result.get("covered_observable_tags") or []),
+            "missing_deliverables": list(raw_result.get("missing_deliverables") or []),
+            "resolved_target_ids": dict(raw_result.get("resolved_target_ids") or plan.resolved_target_ids),
+            "planner_requested_capability": raw_result.get("planner_requested_capability") or plan.selected_capability,
+            "translation_substituted_action": bool(raw_result.get("translation_substituted_action")),
+            "translation_substitution_reason": str(raw_result.get("translation_substitution_reason") or ""),
+            "fulfillment_mode": str(raw_result.get("fulfillment_mode") or ""),
+            "route_summary": raw_result.get("route_summary") or {},
+        }
 
         return AgentReport(
             agent_name="macro",
@@ -168,15 +211,7 @@ class MacroAgent:
             remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
             tool_calls=tool_calls,
             raw_results={"macro_structure_scan": raw_result, "reasoning_output": reasoning.model_dump(mode="json")},
-            structured_results={
-                **raw_result,
-                "task_completion_status": task_completion_status,
-                "task_completion": rendered["task_completion"],
-                "reasoning": reasoning.model_dump(mode="json"),
-                "execution_plan": plan.model_dump(mode="json"),
-                "supported_scope": list(plan.supported_scope),
-                "unsupported_requests": list(plan.unsupported_requests),
-            },
+            structured_results=structured_results,
             generated_artifacts={},
             status="success",
             planner_readable_report=rendered["planner_readable_report"],
@@ -220,6 +255,7 @@ class MacroAgent:
         self,
         reasoning: MacroReasoningResponse,
         *,
+        task_received: str,
         shared_structure_context: Optional[SharedStructureContext],
     ) -> MacroExecutionPlan:
         structure_source = (
@@ -227,6 +263,18 @@ class MacroAgent:
             if shared_structure_context is not None
             else "smiles_only_fallback"
         )
+        requested_capability = self._requested_capability_from_task(task_received)
+        binding_mode = self._binding_mode_from_task(task_received, requested_capability)
+        selected_capability = self._resolve_selected_capability(
+            reasoning=reasoning,
+            task_received=task_received,
+            shared_structure_context=shared_structure_context,
+            requested_capability=requested_capability,
+        )
+        action_definition = MACRO_ACTION_REGISTRY[selected_capability]
+        requested_observable_tags = list(reasoning.execution_plan.requested_observable_tags)
+        if not requested_observable_tags:
+            requested_observable_tags = list(action_definition.exact_observable_tags)
         steps = [
             MacroExecutionStep(
                 step_id="shared_context_load",
@@ -242,46 +290,63 @@ class MacroAgent:
             MacroExecutionStep(
                 step_id="focus_selection",
                 step_type="focus_selection",
-                description="Select the macro structural focus areas requested by the Planner instruction.",
+                description="Translate the Planner instruction into one bounded registry-backed macro capability.",
                 input_source="task_instruction",
-                expected_outputs=["focus areas"],
+                expected_outputs=["selected macro capability", "requested observable tags"],
             ),
             MacroExecutionStep(
                 step_id="topology_analysis",
                 step_type="topology_analysis",
-                description="Summarize rotor topology, ring systems, conjugation, and donor-acceptor layout.",
+                description=f"Collect deterministic structural evidence for `{selected_capability}` from the available structure source.",
                 input_source=structure_source,
-                expected_outputs=["rotor topology", "ring and conjugation summary", "donor-acceptor layout"],
+                expected_outputs=list(action_definition.default_deliverables),
             ),
             MacroExecutionStep(
                 step_id="geometry_proxy_analysis",
                 step_type="geometry_proxy_analysis",
-                description="Summarize planarity, torsion, compactness, and conformer-dispersion proxies.",
+                description="Summarize only bounded local structural or geometry-proxy outputs and record any missing deliverables.",
                 input_source=structure_source,
-                expected_outputs=[
-                    "planarity and torsion summary",
-                    "compactness and contact proxies",
-                    "conformer dispersion summary",
-                ],
+                expected_outputs=list(action_definition.exact_observable_tags),
             ),
         ]
+        macro_tool_request = MacroToolRequest(
+            capability_name=selected_capability,
+            structure_target=action_definition.structure_target,
+            reuse_shared_structure_only=shared_structure_context is not None,
+            requested_observable_scope=requested_observable_tags,
+            requested_route_summary=action_definition.purpose,
+            honor_exact_target=binding_mode == "hard",
+            allow_fallback=binding_mode != "hard",
+        )
+        macro_tool_plan = MacroToolPlan(
+            calls=[
+                {
+                    "call_id": f"execute_{selected_capability}",
+                    "call_kind": "execution",
+                    "request": macro_tool_request.model_dump(mode="json"),
+                }
+            ],
+            requested_route_summary=action_definition.purpose,
+            requested_deliverables=list(reasoning.execution_plan.requested_deliverables)
+            or list(action_definition.default_deliverables),
+        )
         return MacroExecutionPlan(
             local_goal=reasoning.execution_plan.local_goal,
-            requested_deliverables=list(reasoning.execution_plan.requested_deliverables),
+            requested_deliverables=list(reasoning.execution_plan.requested_deliverables)
+            or list(action_definition.default_deliverables),
             structure_source=structure_source,  # type: ignore[arg-type]
+            selected_capability=selected_capability,
+            binding_mode=binding_mode,
+            requested_observable_tags=requested_observable_tags,
+            resolved_target_ids=self._resolved_target_ids(shared_structure_context),
             focus_areas=list(reasoning.execution_plan.focus_areas),
-            supported_scope=[
-                "rotor topology summary",
-                "ring and conjugation summary",
-                "donor-acceptor layout",
-                "planarity and torsion summary",
-                "compactness and contact proxies",
-                "conformer dispersion summary",
-            ],
+            supported_scope=[definition.name for definition in MACRO_CAPABILITY_REGISTRY.values()],
             unsupported_requests=list(reasoning.execution_plan.unsupported_requests),
             steps=steps,
             expected_outputs=list(reasoning.expected_outputs),
             failure_reporting=reasoning.failure_policy,
+            macro_tool_request=macro_tool_request,
+            macro_tool_plan=macro_tool_plan,
         )
 
     def _runtime_context_summary(self) -> dict[str, Any]:
@@ -290,18 +355,24 @@ class MacroAgent:
             "macro_model": self._config.macro_model,
             "macro_temperature": self._config.macro_temperature,
             "macro_timeout_seconds": self._config.macro_timeout_seconds,
-            "supported_scope": [
-                "shared prepared structure reuse",
-                "SMILES-only structural fallback",
-                "deterministic low-cost topology analysis",
-                "deterministic low-cost geometry proxy analysis",
-            ],
+            "supported_scope": [definition.name for definition in MACRO_CAPABILITY_REGISTRY.values()],
             "unsupported_scope": [
                 "packing simulation",
                 "aggregate-state modeling",
                 "heavy global conformer search",
                 "global mechanism adjudication",
             ],
+            "capability_registry": {
+                name: {
+                    "purpose": definition.purpose,
+                    "structure_target": definition.structure_target,
+                    "supported_deliverables": list(definition.supported_deliverables),
+                    "evidence_goal_tags": list(definition.evidence_goal_tags),
+                    "exact_observable_tags": list(definition.exact_observable_tags),
+                    "unsupported_requests_note": definition.unsupported_requests_note,
+                }
+                for name, definition in MACRO_CAPABILITY_REGISTRY.items()
+            },
         }
 
     def _shared_context_note(self, shared_structure_context: Optional[SharedStructureContext]) -> str:
@@ -330,7 +401,8 @@ class MacroAgent:
         return " ".join(f"[{step.step_id}] {step.description}" for step in plan.steps)
 
     def _successful_result_summary(self, raw_result: dict[str, Any]) -> str:
-        return (
+        capability_summary = str(raw_result.get("capability_result_summary") or "").strip()
+        metrics_summary = (
             f"The macro scan recorded aromatic_atom_count={raw_result['aromatic_atom_count']}, "
             f"hetero_atom_count={raw_result['hetero_atom_count']}, "
             f"branch_point_count={raw_result['branch_point_count']}, "
@@ -339,16 +411,90 @@ class MacroAgent:
             f"compactness_proxy={raw_result['compactness_and_contact_proxies']['compactness_proxy']}, and "
             f"conformer_dispersion_proxy={raw_result['conformer_dispersion_summary']['conformer_dispersion_proxy']}."
         )
+        if capability_summary:
+            return f"{capability_summary} {metrics_summary}"
+        return metrics_summary
 
-    def _task_completion(self, plan: MacroExecutionPlan) -> tuple[str, str]:
-        if plan.unsupported_requests:
-            unsupported = "; ".join(plan.unsupported_requests)
+    def _task_completion(self, plan: MacroExecutionPlan, raw_result: dict[str, Any]) -> tuple[str, str]:
+        missing_deliverables = list(raw_result.get("missing_deliverables") or [])
+        if plan.unsupported_requests or missing_deliverables:
+            detail_parts: list[str] = []
+            if plan.unsupported_requests:
+                detail_parts.append("; ".join(plan.unsupported_requests))
+            if missing_deliverables:
+                detail_parts.append(f"Missing deliverables: {'; '.join(missing_deliverables)}.")
             return (
                 "contracted",
                 "Task was completed only in a capability-limited contracted form. The agent returned bounded macro evidence, but it could not "
-                f"complete unsupported parts of the Planner instruction: {unsupported}.",
+                f"complete unsupported parts of the Planner instruction: {' '.join(detail_parts)}",
             )
         return (
             "completed",
             "Task completed successfully within current macro capability.",
         )
+
+    def _requested_capability_from_task(self, task_received: str) -> Optional[MacroCapabilityName]:
+        lowered = task_received.lower()
+        for capability_name in MACRO_CAPABILITY_REGISTRY:
+            if capability_name in lowered:
+                return capability_name
+        return None
+
+    def _binding_mode_from_task(
+        self,
+        task_received: str,
+        requested_capability: Optional[MacroCapabilityName],
+    ) -> MacroTranslationBindingMode:
+        if requested_capability is None:
+            return "none"
+        lowered = task_received.lower()
+        if "execute only" in lowered or "exactly one registry-backed" in lowered:
+            return "hard"
+        return "preferred"
+
+    def _resolve_selected_capability(
+        self,
+        *,
+        reasoning: MacroReasoningResponse,
+        task_received: str,
+        shared_structure_context: Optional[SharedStructureContext],
+        requested_capability: Optional[MacroCapabilityName],
+    ) -> MacroCapabilityName:
+        if reasoning.execution_plan.selected_capability in MACRO_CAPABILITY_REGISTRY:
+            return reasoning.execution_plan.selected_capability
+        if requested_capability is not None:
+            return requested_capability
+        focus_areas = [item.lower() for item in reasoning.execution_plan.focus_areas]
+        task_lower = task_received.lower()
+        capability_by_token: list[tuple[MacroCapabilityName, tuple[str, ...]]] = [
+            (
+                "screen_intramolecular_hbond_preorganization",
+                ("h-bond", "hydrogen bond", "proton", "esipt", "o-h", "phenolic", "imine"),
+            ),
+            ("screen_rotor_torsion_topology", ("rotor", "torsion", "twist")),
+            ("screen_donor_acceptor_layout", ("donor-acceptor", "donor acceptor", "charge transfer", "layout", "partition")),
+            ("screen_conformer_geometry_proxy", ("conformer", "dispersion")),
+            ("screen_neutral_aromatic_structure", ("neutral aromatic", "aromatic core", "ring-system", "ring system")),
+            ("screen_planarity_compactness", ("planarity", "compactness", "principal span")),
+        ]
+        for capability_name, tokens in capability_by_token:
+            if any(token in task_lower for token in tokens):
+                return capability_name
+            if any(token in area for area in focus_areas for token in tokens):
+                return capability_name
+        if shared_structure_context is not None:
+            return "screen_planarity_compactness"
+        return "screen_donor_acceptor_layout"
+
+    def _resolved_target_ids(
+        self,
+        shared_structure_context: Optional[SharedStructureContext],
+    ) -> dict[str, Any]:
+        if shared_structure_context is None:
+            return {"structure_source": "smiles_only_fallback"}
+        return {
+            "structure_source": "shared_prepared_structure",
+            "prepared_xyz_path": shared_structure_context.prepared_xyz_path,
+            "prepared_sdf_path": shared_structure_context.prepared_sdf_path,
+            "selected_conformer_id": shared_structure_context.selected_conformer_id,
+        }
