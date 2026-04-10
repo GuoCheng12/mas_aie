@@ -1284,6 +1284,57 @@ def test_planner_reweight_redirects_finalize_to_targeted_task_when_closure_is_mi
     assert result["decision"].closure_justification_basis == "new_targeted_task"
 
 
+def test_planner_reweight_does_not_use_main_gap_keywords_to_force_macro_pairwise_agent(
+    tmp_path: Path,
+) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            """
+            {
+              "hypothesis_pool": [
+                {"name": "ICT", "confidence": 0.64},
+                {"name": "neutral aromatic", "confidence": 0.24},
+                {"name": "TICT", "confidence": 0.05},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.03}
+              ],
+              "diagnosis": "Verifier supplementation exists, but closure justification has not yet been established for ICT versus neutral aromatic.",
+              "action": "finalize",
+              "current_hypothesis": "ICT",
+              "confidence": 0.64,
+              "finalize": true,
+              "evidence_summary": "Verifier returned new external context, but no closing discriminator was yet stated.",
+              "main_gap": "Need a final planarity and rotor discriminator between ICT and neutral aromatic.",
+              "conflict_status": "none"
+            }
+            """
+        ],
+    )
+
+    result = planner.plan_reweight_or_finalize(
+        _base_state(
+            runner_up_hypothesis="neutral aromatic",
+            runner_up_confidence=0.24,
+            decision_pair=["ICT", "neutral aromatic"],
+            hypothesis_pool=[
+                {"name": "ICT", "confidence": 0.64},
+                {"name": "neutral aromatic", "confidence": 0.24},
+                {"name": "TICT", "confidence": 0.05},
+                {"name": "ESIPT", "confidence": 0.04},
+                {"name": "unknown", "confidence": 0.03},
+            ],
+            verifier_reports=[_verifier_report_for_pair("ICT__vs__neutral aromatic", "close_family")],
+        )
+    )
+
+    assert result["decision"].action == "microscopic"
+    assert result["decision"].planned_agents == ["microscopic"]
+    assert result["decision"].finalize is False
+    assert result["decision"].decision_gate_status == "needs_pairwise_discriminative_task"
+    assert "bounded microscopic discriminative task" in (result["decision"].task_instruction or "")
+
+
 def test_planner_reweight_normalizes_prepare_finalization_alias_to_finalize(tmp_path: Path) -> None:
     planner, _ = _build_planner(
         tmp_path,

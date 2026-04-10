@@ -867,23 +867,9 @@ def _normalize_closure_justification_basis(raw_basis: str | None) -> str | None:
     return None
 
 
-def _default_pairwise_task_agent(main_gap: str, preferred_action: str | None = None) -> str:
+def _default_pairwise_task_agent(preferred_action: str | None = None) -> str:
     if preferred_action in {"macro", "microscopic"}:
         return preferred_action
-    lower_gap = main_gap.lower()
-    if any(
-        token in lower_gap
-        for token in (
-            "topology",
-            "rotor",
-            "planarity",
-            "structural proxy",
-            "compactness",
-            "donor-acceptor layout",
-            "ring system",
-        )
-    ):
-        return "macro"
     return "microscopic"
 
 
@@ -2590,7 +2576,7 @@ class OpenAIPlannerBackend:
         decision: PlannerDecision,
         main_gap: str,
     ) -> PlannerDecision:
-        pairwise_task_agent = decision.pairwise_task_agent or _default_pairwise_task_agent(main_gap, decision.action)
+        pairwise_task_agent = decision.pairwise_task_agent or _default_pairwise_task_agent(decision.action)
         decision.action = pairwise_task_agent
         decision.needs_verifier = False
         decision.finalize = False
