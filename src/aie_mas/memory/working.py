@@ -413,6 +413,19 @@ class WorkingMemoryManager:
                 "executed_capability": structured_results.get("executed_capability"),
                 "performed_new_calculations": structured_results.get("performed_new_calculations"),
                 "reused_existing_artifacts": structured_results.get("reused_existing_artifacts"),
+                "fulfillment_mode": structured_results.get("fulfillment_mode"),
+                "binding_mode": structured_results.get("binding_mode"),
+                "planner_requested_capability": structured_results.get("planner_requested_capability"),
+                "translation_substituted_action": structured_results.get("translation_substituted_action"),
+                "translation_substitution_reason": self._truncate(
+                    str(structured_results.get("translation_substitution_reason") or ""),
+                    220,
+                ),
+                "requested_observable_tags": list(structured_results.get("requested_observable_tags") or []),
+                "covered_observable_tags": list(structured_results.get("covered_observable_tags") or []),
+                "residual_unmet_observable_tags": list(
+                    structured_results.get("residual_unmet_observable_tags") or []
+                ),
                 "resolved_target_ids": dict(structured_results.get("resolved_target_ids") or {}),
                 "honored_constraints": list(structured_results.get("honored_constraints") or []),
                 "unmet_constraints": list(structured_results.get("unmet_constraints") or []),
@@ -471,6 +484,17 @@ class WorkingMemoryManager:
         observations: list[str] = []
         if executed_capability:
             observations.append(f"executed_capability={executed_capability}")
+        fulfillment_mode = str(structured_results.get("fulfillment_mode") or "").strip()
+        if fulfillment_mode:
+            observations.append(f"fulfillment_mode={fulfillment_mode}")
+        if structured_results.get("translation_substituted_action"):
+            substitution_reason = self._truncate(
+                str(structured_results.get("translation_substitution_reason") or ""),
+                140,
+            )
+            observations.append(
+                substitution_reason or "translation_substituted_action=true"
+            )
         result_summary = self._truncate(str(getattr(report, "result_summary", "") or ""), 180)
         if result_summary:
             observations.append(result_summary)
@@ -481,6 +505,13 @@ class WorkingMemoryManager:
                 observations.append(self._truncate(route_label, 160))
         return {
             "executed_capability": executed_capability or None,
+            "fulfillment_mode": fulfillment_mode or None,
+            "planner_requested_capability": structured_results.get("planner_requested_capability"),
+            "translation_substituted_action": bool(structured_results.get("translation_substituted_action")),
+            "covered_observable_tags": list(structured_results.get("covered_observable_tags") or []),
+            "residual_unmet_observable_tags": list(
+                structured_results.get("residual_unmet_observable_tags") or []
+            ),
             "key_observations": observations[:3],
             "key_missing_deliverables": list(structured_results.get("missing_deliverables") or []),
             "artifact_references": [

@@ -12,7 +12,7 @@ from aie_mas.graph.state import (
 )
 from aie_mas.tools.amesp import AmespExecutionError
 
-from .compiler import MicroscopicReasoningParseError
+from .compiler import MicroscopicReasoningParseError, normalize_reasoning_outcome_for_best_fit_translation
 from .interpreter import MicroscopicReasoningOutcome
 
 
@@ -99,6 +99,11 @@ class MicroscopicExecutorMixin:
                 screening_focus_summary=screening_focus_summary,
                 parse_error=exc,
             )
+        outcome = normalize_reasoning_outcome_for_best_fit_translation(
+            outcome,
+            payload=reasoning_payload,
+            config=self._config,
+        )
         reasoning = outcome.reasoning_response
         plan = outcome.compiled_execution_plan
         action_decision = outcome.action_decision
@@ -292,6 +297,7 @@ class MicroscopicExecutorMixin:
                 plan.capability_route,
                 plan.microscopic_tool_request.capability_name,
             ),
+            **self._translation_render_fields(action_decision=action_decision, plan=plan),
         }
         draft = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
 
@@ -371,6 +377,7 @@ class MicroscopicExecutorMixin:
                 ),
                 "oscillator_strength_proxy": getattr(run_result.s1, "first_oscillator_strength", None),
                 "relaxation_gap": getattr(run_result.s1, "first_excitation_energy_ev", None),
+                **self._translation_structured_fields(action_decision=action_decision, plan=plan),
             }
             raw_results = {
                 "reasoning_output": reasoning.model_dump(mode="json"),
@@ -437,6 +444,7 @@ class MicroscopicExecutorMixin:
                 "supported_scope": plan.supported_scope,
                 "unsupported_requests": plan.unsupported_requests,
                 "error": exc.to_payload(),
+                **self._translation_structured_fields(action_decision=action_decision, plan=plan),
                 **exc.structured_results,
             }
             raw_results = {
@@ -463,7 +471,11 @@ class MicroscopicExecutorMixin:
             task_mode=task_spec.mode,
             capability_route=plan.capability_route,
             requested_capability=plan.microscopic_tool_request.capability_name,
+            planner_requested_capability=structured_results.get("planner_requested_capability"),
             executed_capability=structured_results.get("executed_capability"),
+            fulfillment_mode=structured_results.get("fulfillment_mode"),
+            translation_substituted_action=bool(structured_results.get("translation_substituted_action")),
+            translation_substitution_reason=structured_results.get("translation_substitution_reason"),
             performed_new_calculations=bool(structured_results.get("performed_new_calculations")),
             reused_existing_artifacts=bool(structured_results.get("reused_existing_artifacts")),
             resolved_target_ids=dict(structured_results.get("resolved_target_ids") or {}),

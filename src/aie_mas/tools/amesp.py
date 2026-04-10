@@ -143,6 +143,12 @@ class AmespCapabilityDefinition(BaseModel):
     )
     unsupported_requests_note: Optional[str] = None
     default_budget_behavior: str
+    target_object_kind: Literal["prepared_structure", "artifact_bundle", "artifact_inventory", "none"] = "none"
+    supports_artifact_reuse_only: bool = False
+    evidence_goal_tags: list[str] = Field(default_factory=list)
+    exact_observable_tags: list[str] = Field(default_factory=list)
+    proxy_observable_tags: list[str] = Field(default_factory=list)
+    fulfillment_tier: Literal["exact", "proxy", "inventory"] = "exact"
 
 
 AmespActionKind = Literal["discovery", "execution"]
@@ -180,6 +186,13 @@ class AmespActionDefinition(BaseModel):
     action_name: MicroscopicCapabilityName
     action_kind: AmespActionKind
     purpose: str
+    requires_new_calculation: bool = True
+    target_object_kind: Literal["prepared_structure", "artifact_bundle", "artifact_inventory", "none"] = "none"
+    supports_artifact_reuse_only: bool = False
+    evidence_goal_tags: list[str] = Field(default_factory=list)
+    exact_observable_tags: list[str] = Field(default_factory=list)
+    proxy_observable_tags: list[str] = Field(default_factory=list)
+    fulfillment_tier: Literal["exact", "proxy", "inventory"] = "exact"
     allowed_llm_params: list[str] = Field(default_factory=list)
     python_owned_params: list[str] = Field(default_factory=list)
     required_params: list[str] = Field(default_factory=list)
@@ -1382,6 +1395,196 @@ AMESP_ACTION_REGISTRY: dict[MicroscopicCapabilityName, AmespActionDefinition] = 
 }
 
 
+_ACTION_SELECTION_METADATA: dict[MicroscopicCapabilityName, dict[str, Any]] = {
+    "run_baseline_bundle": {
+        "requires_new_calculation": True,
+        "target_object_kind": "prepared_structure",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "charge_distribution"],
+        "exact_observable_tags": ["state_ordering", "oscillator_strength", "charge_distribution"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_conformer_bundle": {
+        "requires_new_calculation": True,
+        "target_object_kind": "prepared_structure",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "geometry_descriptor"],
+        "exact_observable_tags": ["state_ordering", "oscillator_strength", "geometry_descriptor"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_torsion_snapshots": {
+        "requires_new_calculation": True,
+        "target_object_kind": "prepared_structure",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "geometry_descriptor"],
+        "exact_observable_tags": ["state_ordering", "oscillator_strength", "geometry_descriptor"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_charge_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["charge_distribution"],
+        "exact_observable_tags": ["charge_distribution"],
+        "proxy_observable_tags": ["ct_localization_proxy"],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_localized_orbital_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["ct_localization_proxy", "dominant_transitions"],
+        "exact_observable_tags": ["ct_localization_proxy", "dominant_transitions"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_natural_orbital_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["dominant_transitions", "state_ordering"],
+        "exact_observable_tags": ["dominant_transitions", "state_ordering"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_density_population_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["charge_distribution"],
+        "exact_observable_tags": ["charge_distribution"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_transition_dipole_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["transition_dipole", "oscillator_strength"],
+        "exact_observable_tags": ["transition_dipole", "oscillator_strength"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_approx_delta_dipole_analysis": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["delta_dipole", "excited_state_dipole", "approx_delta_dipole"],
+        "exact_observable_tags": ["approx_delta_dipole"],
+        "proxy_observable_tags": ["delta_dipole", "excited_state_dipole"],
+        "fulfillment_tier": "proxy",
+    },
+    "run_ris_state_characterization": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["state_ordering", "dominant_transitions"],
+        "exact_observable_tags": ["state_ordering", "dominant_transitions"],
+        "proxy_observable_tags": ["ct_localization_proxy"],
+        "fulfillment_tier": "exact",
+    },
+    "run_targeted_state_characterization": {
+        "requires_new_calculation": True,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": ["state_ordering", "dominant_transitions", "ct_localization_proxy"],
+        "exact_observable_tags": ["state_ordering", "dominant_transitions", "ct_localization_proxy"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "parse_snapshot_outputs": {
+        "requires_new_calculation": False,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": True,
+        "evidence_goal_tags": ["state_ordering", "oscillator_strength", "dominant_transitions"],
+        "exact_observable_tags": ["state_ordering", "oscillator_strength", "dominant_transitions"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "extract_ct_descriptors_from_bundle": {
+        "requires_new_calculation": False,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": True,
+        "evidence_goal_tags": ["ct_localization_proxy", "dominant_transitions", "charge_distribution"],
+        "exact_observable_tags": ["ct_localization_proxy", "dominant_transitions", "charge_distribution"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "extract_geometry_descriptors_from_bundle": {
+        "requires_new_calculation": False,
+        "target_object_kind": "artifact_bundle",
+        "supports_artifact_reuse_only": True,
+        "evidence_goal_tags": ["geometry_descriptor"],
+        "exact_observable_tags": ["geometry_descriptor"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "exact",
+    },
+    "inspect_raw_artifact_bundle": {
+        "requires_new_calculation": False,
+        "target_object_kind": "artifact_inventory",
+        "supports_artifact_reuse_only": True,
+        "evidence_goal_tags": ["raw_observable_inventory"],
+        "exact_observable_tags": ["raw_observable_inventory"],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "inventory",
+    },
+    "unsupported_excited_state_relaxation": {
+        "requires_new_calculation": False,
+        "target_object_kind": "none",
+        "supports_artifact_reuse_only": False,
+        "evidence_goal_tags": [],
+        "exact_observable_tags": [],
+        "proxy_observable_tags": [],
+        "fulfillment_tier": "inventory",
+    },
+}
+
+
+def _apply_selection_metadata_to_registries() -> None:
+    for capability_name, metadata in _ACTION_SELECTION_METADATA.items():
+        action = AMESP_ACTION_REGISTRY.get(capability_name)
+        if action is not None:
+            for key, value in metadata.items():
+                setattr(action, key, value)
+        capability = AMESP_CAPABILITY_REGISTRY.get(capability_name)
+        if capability is not None:
+            for key, value in metadata.items():
+                if key == "requires_new_calculation":
+                    continue
+                setattr(capability, key, value)
+
+
+_apply_selection_metadata_to_registries()
+
+
+def render_amesp_action_selection_catalog() -> list[dict[str, Any]]:
+    catalog: list[dict[str, Any]] = []
+    for action in AMESP_ACTION_REGISTRY.values():
+        if _is_temporarily_disabled_amesp_capability(action.action_name):
+            continue
+        if action.action_kind != "execution":
+            continue
+        catalog.append(
+            {
+                "action_name": action.action_name,
+                "purpose": action.purpose,
+                "requires_new_calculation": action.requires_new_calculation,
+                "target_object_kind": action.target_object_kind,
+                "supports_artifact_reuse_only": action.supports_artifact_reuse_only,
+                "evidence_goal_tags": list(action.evidence_goal_tags),
+                "exact_observable_tags": list(action.exact_observable_tags),
+                "proxy_observable_tags": list(action.proxy_observable_tags),
+                "fulfillment_tier": action.fulfillment_tier,
+                "allowed_discovery_actions": list(action.allowed_discovery_actions),
+                "default_deliverables": list(action.default_deliverables),
+            }
+        )
+    return catalog
+
+
 def render_amesp_capability_registry() -> str:
     lines: list[str] = []
     for capability in AMESP_CAPABILITY_REGISTRY.values():
@@ -1607,6 +1810,14 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             {
                 "status": "supported",
                 "execution_action": "run_targeted_transition_dipole_analysis",
+                "fulfillment_mode": "exact",
+                "binding_mode": "preferred",
+                "planner_requested_capability": "run_targeted_transition_dipole_analysis",
+                "translation_substituted_action": False,
+                "translation_substitution_reason": None,
+                "requested_observable_tags": ["transition_dipole"],
+                "covered_observable_tags": ["transition_dipole"],
+                "residual_unmet_observable_tags": [],
                 "discovery_actions": ["list_artifact_bundles"],
                 "params": {
                     "perform_new_calculation": True,
@@ -1629,6 +1840,17 @@ def render_registry_backed_microscopic_examples() -> dict[str, str]:
             {
                 "status": "supported",
                 "execution_action": "run_targeted_approx_delta_dipole_analysis",
+                "fulfillment_mode": "proxy",
+                "binding_mode": "preferred",
+                "planner_requested_capability": "extract_ct_descriptors_from_bundle",
+                "translation_substituted_action": True,
+                "translation_substitution_reason": (
+                    "Selected the approximate dipole-change route because the local evidence goal requires delta-dipole-like "
+                    "support and the non-hard-bound Planner request did not directly expose that observable."
+                ),
+                "requested_observable_tags": ["delta_dipole", "excited_state_dipole"],
+                "covered_observable_tags": ["delta_dipole", "excited_state_dipole"],
+                "residual_unmet_observable_tags": [],
                 "discovery_actions": ["list_artifact_bundles"],
                 "params": {
                     "perform_new_calculation": True,

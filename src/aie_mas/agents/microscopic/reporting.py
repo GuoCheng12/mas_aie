@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from aie_mas.graph.state import (
     AgentFramingMode,
     AgentReport,
@@ -9,10 +11,122 @@ from aie_mas.graph.state import (
 )
 
 from .interpreter import MicroscopicReasoningOutcome
-from .compiler import MicroscopicReasoningParseError, _closest_supported_actions_for_unsupported_parts
+from .compiler import (
+    MicroscopicActionDecision,
+    MicroscopicReasoningParseError,
+    _closest_supported_actions_for_unsupported_parts,
+)
 
 
 class MicroscopicReportingMixin:
+    def _translation_render_fields(
+        self,
+        *,
+        action_decision: MicroscopicActionDecision | None = None,
+        plan: Any = None,
+    ) -> dict[str, str]:
+        fulfillment_mode = (
+            getattr(plan, "fulfillment_mode", None)
+            or getattr(action_decision, "fulfillment_mode", None)
+            or "unsupported"
+        )
+        binding_mode = (
+            getattr(plan, "binding_mode", None)
+            or getattr(action_decision, "binding_mode", None)
+            or "none"
+        )
+        planner_requested_capability = (
+            getattr(plan, "planner_requested_capability", None)
+            or getattr(action_decision, "planner_requested_capability", None)
+            or "none"
+        )
+        translation_substituted_action = (
+            getattr(plan, "translation_substituted_action", None)
+            if plan is not None
+            else getattr(action_decision, "translation_substituted_action", False)
+        )
+        translation_substitution_reason = (
+            getattr(plan, "translation_substitution_reason", None)
+            or getattr(action_decision, "translation_substitution_reason", None)
+            or "none"
+        )
+        requested_observable_tags = list(
+            getattr(plan, "requested_observable_tags", None)
+            or getattr(action_decision, "requested_observable_tags", None)
+            or []
+        )
+        covered_observable_tags = list(
+            getattr(plan, "covered_observable_tags", None)
+            or getattr(action_decision, "covered_observable_tags", None)
+            or []
+        )
+        residual_unmet_observable_tags = list(
+            getattr(plan, "residual_unmet_observable_tags", None)
+            or getattr(action_decision, "residual_unmet_observable_tags", None)
+            or []
+        )
+        return {
+            "translation_fulfillment_mode": str(fulfillment_mode),
+            "translation_binding_mode": str(binding_mode),
+            "planner_requested_capability": str(planner_requested_capability),
+            "translation_substituted_action": str(bool(translation_substituted_action)).lower(),
+            "translation_substitution_reason": str(translation_substitution_reason),
+            "requested_observable_tags_text": ", ".join(requested_observable_tags) if requested_observable_tags else "none",
+            "covered_observable_tags_text": ", ".join(covered_observable_tags) if covered_observable_tags else "none",
+            "residual_unmet_observable_tags_text": (
+                ", ".join(residual_unmet_observable_tags) if residual_unmet_observable_tags else "none"
+            ),
+        }
+
+    def _translation_structured_fields(
+        self,
+        *,
+        action_decision: MicroscopicActionDecision | None = None,
+        plan: Any = None,
+    ) -> dict[str, Any]:
+        fulfillment_mode = (
+            getattr(plan, "fulfillment_mode", None)
+            or getattr(action_decision, "fulfillment_mode", None)
+            or "unsupported"
+        )
+        binding_mode = (
+            getattr(plan, "binding_mode", None)
+            or getattr(action_decision, "binding_mode", None)
+            or "none"
+        )
+        return {
+            "fulfillment_mode": fulfillment_mode,
+            "binding_mode": binding_mode,
+            "planner_requested_capability": (
+                getattr(plan, "planner_requested_capability", None)
+                or getattr(action_decision, "planner_requested_capability", None)
+            ),
+            "translation_substituted_action": bool(
+                getattr(plan, "translation_substituted_action", None)
+                if plan is not None
+                else getattr(action_decision, "translation_substituted_action", False)
+            ),
+            "translation_substitution_reason": (
+                getattr(plan, "translation_substitution_reason", None)
+                or getattr(action_decision, "translation_substitution_reason", None)
+            ),
+            "requested_observable_tags": list(
+                getattr(plan, "requested_observable_tags", None)
+                or getattr(action_decision, "requested_observable_tags", None)
+                or []
+            ),
+            "covered_observable_tags": list(
+                getattr(plan, "covered_observable_tags", None)
+                or getattr(action_decision, "covered_observable_tags", None)
+                or []
+            ),
+            "residual_unmet_observable_tags": list(
+                getattr(plan, "residual_unmet_observable_tags", None)
+                or getattr(action_decision, "residual_unmet_observable_tags", None)
+                or []
+            ),
+        }
+
     def _framing_note(
         self,
         *,
@@ -97,6 +211,7 @@ class MicroscopicReportingMixin:
             "local_uncertainty_detail": (
                 "the Planner did not receive new microscopic evidence because local action-decision parsing failed before any Amesp execution could begin"
             ),
+            **self._translation_render_fields(),
         }
         rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
         structured_results = {
@@ -144,6 +259,7 @@ class MicroscopicReportingMixin:
             "unsupported_requests": self._unsupported_requests(task_received, task_spec),
             "artifact_bundle_id": None,
             "artifact_bundle_kind": None,
+            **self._translation_structured_fields(),
         }
         return AgentReport(
             agent_name="microscopic",
@@ -231,6 +347,7 @@ class MicroscopicReportingMixin:
                 "shared prepared structure context is unavailable in the normal graph path, so no bounded microscopic runtime "
                 "result could be collected without violating the shared-structure-first policy."
             ),
+            **self._translation_render_fields(action_decision=outcome.action_decision, plan=plan),
         }
         rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
         return AgentReport(
@@ -290,6 +407,7 @@ class MicroscopicReportingMixin:
                 "unsupported_requests": plan.unsupported_requests,
                 "artifact_bundle_id": None,
                 "artifact_bundle_kind": None,
+                **self._translation_structured_fields(action_decision=outcome.action_decision, plan=plan),
             },
             generated_artifacts={},
             status="partial",
@@ -399,6 +517,7 @@ class MicroscopicReportingMixin:
                 "the current Amesp registry does not expose the requested microscopic action, so no new local evidence "
                 "was collected in this round"
             ),
+            **self._translation_render_fields(action_decision=action_decision, plan=plan),
         }
         rendered = self._prompts.render_sections("microscopic_amesp_specialized", render_payload)
         return AgentReport(
@@ -458,6 +577,7 @@ class MicroscopicReportingMixin:
                 "artifact_bundle_id": None,
                 "artifact_bundle_kind": None,
                 "retry_without_new_capability": False,
+                **self._translation_structured_fields(action_decision=action_decision, plan=plan),
             },
             generated_artifacts={},
             status="failed",

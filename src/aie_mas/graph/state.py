@@ -112,6 +112,8 @@ MicroscopicCompletionReasonCode = Literal[
     "action_not_supported_by_registry",
     "partial_observable_only",
 ]
+MicroscopicTranslationFulfillmentMode = Literal["exact", "proxy", "inventory_only", "unsupported"]
+MicroscopicTranslationBindingMode = Literal["hard", "preferred", "none"]
 MacroPlanStepType = Literal["shared_context_load", "topology_analysis", "geometry_proxy_analysis", "focus_selection"]
 MacroStructureSource = Literal["shared_prepared_structure", "smiles_only_fallback"]
 VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
@@ -543,6 +545,14 @@ class MicroscopicExecutionPlan(BaseModel):
     supported_scope: list[str] = Field(default_factory=list)
     unsupported_requests: list[str] = Field(default_factory=list)
     planning_unmet_constraints: list[str] = Field(default_factory=list)
+    fulfillment_mode: Optional[MicroscopicTranslationFulfillmentMode] = None
+    binding_mode: Optional[MicroscopicTranslationBindingMode] = None
+    planner_requested_capability: Optional[MicroscopicCapabilityName] = None
+    translation_substituted_action: bool = False
+    translation_substitution_reason: Optional[str] = None
+    requested_observable_tags: list[str] = Field(default_factory=list)
+    covered_observable_tags: list[str] = Field(default_factory=list)
+    residual_unmet_observable_tags: list[str] = Field(default_factory=list)
     steps: list[MicroscopicExecutionStep] = Field(default_factory=list)
     expected_outputs: list[str] = Field(default_factory=list)
     failure_reporting: str

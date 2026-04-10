@@ -326,6 +326,7 @@ def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Pa
     prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
     assert "amesp_interface_catalog" in prompt_payload
     assert "action_registry" in prompt_payload
+    assert "action_selection_catalog" in prompt_payload
     assert "baseline_reasoned_action_example" in prompt_payload
     assert "torsion_reasoned_action_example" in prompt_payload
 
@@ -393,6 +394,246 @@ def test_openai_microscopic_supports_reasoned_action_text_baseline(tmp_path: Pat
     assert len(plan["microscopic_tool_plan"]["calls"]) == 1
     assert plan["microscopic_tool_plan"]["calls"][0]["call_kind"] == "execution"
     assert "response_format" not in fake_client.chat.completions.calls[0]
+
+
+def test_microscopic_best_fit_translation_selects_approx_delta_dipole_proxy(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner mentioned CT-descriptor extraction on an existing torsion bundle.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse the existing torsion bundle and collect one bounded local microscopic follow-up.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            approximate dipole-change proxy summary
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "extract_ct_descriptors_from_bundle",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": false,
+                "artifact_bundle_id": "round_05_torsion_snapshots"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Start from the mentioned bundle and collect one bounded local follow-up."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Use run_targeted_charge_analysis for bundle_id=`round_05_torsion_snapshots` if helpful, "
+            "but return a delta dipole / excited-state dipole discriminator from that torsion bundle."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="approx-delta-follow-up",
+            objective="Collect a bounded dipole-change proxy.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["executed_capability"] == "run_targeted_approx_delta_dipole_analysis"
+    assert report.structured_results["fulfillment_mode"] == "proxy"
+    assert report.structured_results["planner_requested_capability"] == "run_targeted_charge_analysis"
+    assert report.structured_results["translation_substituted_action"] is True
+    assert "delta_dipole" in report.structured_results["covered_observable_tags"]
+    assert "excited_state_dipole" in report.structured_results["covered_observable_tags"]
+
+
+def test_microscopic_best_fit_translation_selects_transition_dipole_exact_route(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner referenced one reusable torsion bundle.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse the existing torsion bundle and collect one bounded local microscopic follow-up.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            transition-dipole summary
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "extract_ct_descriptors_from_bundle",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": false,
+                "artifact_bundle_id": "round_07_torsion_snapshots"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Start from the mentioned bundle and collect one bounded local follow-up."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Use extract_ct_descriptors_from_bundle for bundle_id=`round_07_torsion_snapshots` if helpful, "
+            "but return transition dipole moments for the key torsion snapshots."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="transition-dipole-follow-up",
+            objective="Collect bounded transition dipole evidence.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["executed_capability"] == "run_targeted_transition_dipole_analysis"
+    assert report.structured_results["fulfillment_mode"] == "exact"
+    assert "transition_dipole" in report.structured_results["covered_observable_tags"]
+    assert report.structured_results["translation_substituted_action"] is True
+
+
+def test_microscopic_best_fit_translation_selects_inventory_only_raw_inspection(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner referenced one reusable torsion bundle.
+            </task_understanding>
+            <reasoning_summary>
+            Reuse the existing torsion bundle and inspect what raw observables are available.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            raw artifact file inventory
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "parse_snapshot_outputs",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": false,
+                "artifact_bundle_id": "round_08_torsion_snapshots"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Reuse the existing torsion bundle and collect one bounded local follow-up."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Use parse_snapshot_outputs for bundle_id=`round_08_torsion_snapshots` if helpful, "
+            "but return a raw file inventory and file locations for any observables present."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="raw-inventory-follow-up",
+            objective="Inspect raw observable inventory.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
+    assert report.structured_results["fulfillment_mode"] == "inventory_only"
+    assert report.structured_results["translation_substituted_action"] is True
+    assert report.structured_results["covered_observable_tags"] == ["raw_observable_inventory"]
+
+
+def test_microscopic_hard_bound_only_request_does_not_substitute(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            The Planner explicitly hard-bound a single registry-backed action.
+            </task_understanding>
+            <reasoning_summary>
+            No alternate microscopic action should be selected.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to registry-backed low-cost targeted follow-up routes.
+            </capability_limit_note>
+            <expected_outputs>
+            CT descriptor availability note
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "unsupported",
+              "unsupported_parts": ["delta dipole not directly available from the mentioned route"],
+              "local_execution_rationale": "The initially suggested local route does not directly expose the requested delta dipole evidence."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received=(
+            "Execute ONLY `extract_ct_descriptors_from_bundle` for bundle_id=`round_09_torsion_snapshots` "
+            "and return delta dipole evidence if available."
+        ),
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="hard-bound-ct-extract",
+            objective="Respect the hard-bound microscopic capability.",
+        ),
+        case_id="case123",
+        round_index=2,
+    )
+
+    assert report.status == "success"
+    assert report.structured_results["executed_capability"] == "extract_ct_descriptors_from_bundle"
+    assert report.structured_results["binding_mode"] == "hard"
+    assert report.structured_results["translation_substituted_action"] is False
+    assert report.structured_results["planner_requested_capability"] == "extract_ct_descriptors_from_bundle"
 
 
 def test_microscopic_baseline_requested_deliverables_ignore_conformer_and_torsion_hints(tmp_path: Path) -> None:

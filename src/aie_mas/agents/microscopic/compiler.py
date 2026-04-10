@@ -72,6 +72,8 @@ _PLACEHOLDER_TARGET_PATTERNS = (
 )
 
 MicroscopicActionStatus = Literal["supported", "unsupported"]
+MicroscopicTranslationFulfillmentMode = Literal["exact", "proxy", "inventory_only", "unsupported"]
+MicroscopicTranslationBindingMode = Literal["hard", "preferred", "none"]
 
 
 def _default_prompt_repository() -> PromptRepository:
@@ -92,6 +94,7 @@ def _compatibility_route_for_capability_name(capability_name: AmespCapabilityNam
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
     }:
@@ -187,6 +190,7 @@ class MicroscopicReasoningPlanDraft(BaseModel):
             "run_targeted_natural_orbital_analysis",
             "run_targeted_density_population_analysis",
             "run_targeted_transition_dipole_analysis",
+            "run_targeted_approx_delta_dipole_analysis",
             "run_ris_state_characterization",
             "run_targeted_state_characterization",
             "parse_snapshot_outputs",
@@ -365,6 +369,7 @@ class MicroscopicSemanticContractDraft(BaseModel):
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "list_artifact_bundle_members",
@@ -396,6 +401,7 @@ class MicroscopicActionCardDraft(BaseModel):
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
         "list_artifact_bundle_members",
@@ -419,6 +425,14 @@ class MicroscopicActionDecision(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     unsupported_parts: list[str] = Field(default_factory=list)
     local_execution_rationale: str
+    fulfillment_mode: Optional[MicroscopicTranslationFulfillmentMode] = None
+    binding_mode: Optional[MicroscopicTranslationBindingMode] = None
+    planner_requested_capability: Optional[AmespCapabilityName] = None
+    translation_substituted_action: bool = False
+    translation_substitution_reason: Optional[str] = None
+    requested_observable_tags: list[str] = Field(default_factory=list)
+    covered_observable_tags: list[str] = Field(default_factory=list)
+    residual_unmet_observable_tags: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def _validate_supported_shape(self) -> "MicroscopicActionDecision":
@@ -1273,6 +1287,7 @@ def _semantic_contract_from_action_card(
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
     }:
@@ -1450,44 +1465,47 @@ def compile_action_decision_to_execution_plan(
         shared_structure_context=payload.get("shared_structure_context"),
         current_round_index=payload.get("current_round_index"),
     )
+    execution_plan.fulfillment_mode = decision.fulfillment_mode
+    execution_plan.binding_mode = decision.binding_mode
+    execution_plan.planner_requested_capability = decision.planner_requested_capability
+    execution_plan.translation_substituted_action = decision.translation_substituted_action
+    execution_plan.translation_substitution_reason = decision.translation_substitution_reason
+    execution_plan.requested_observable_tags = list(decision.requested_observable_tags)
+    execution_plan.covered_observable_tags = list(decision.covered_observable_tags)
+    execution_plan.residual_unmet_observable_tags = list(decision.residual_unmet_observable_tags)
     return execution_plan
 
 
 def _closest_supported_actions_for_unsupported_parts(
     unsupported_parts: list[str],
 ) -> list[AmespCapabilityName]:
-    lowered = " ".join(part.lower() for part in unsupported_parts)
-    if any(
-        token in lowered
-        for token in ("h-bond", "hbond", "distance", "angle", "planarity", "geometry descriptor")
-    ):
-        return ["extract_geometry_descriptors_from_bundle", "inspect_raw_artifact_bundle"]
-    if any(token in lowered for token in ("raw artifact", "raw file", ".aop", ".mo", "stdout")):
-        return ["inspect_raw_artifact_bundle"]
-    if any(
-        token in lowered
-        for token in (
-            "ct observable",
-            "ct proxy",
-            "charge transfer",
-            "electron-hole",
-            "state character",
-            "dark state identity",
-            "dominant transition",
+    requested_tags = _requested_observable_tags(
+        task_instruction="\n".join(unsupported_parts),
+        requested_deliverables=[],
+    )
+    candidates: list[tuple[tuple[int, int, int, int, int], AmespCapabilityName]] = []
+    context = {
+        "requested_observable_tags": requested_tags,
+        "planner_requested_capability": None,
+        "binding_mode": "none",
+    }
+    for action_name in _available_execution_actions():
+        fulfillment_mode, covered_tags, _ = _action_coverage_for_requested_tags(
+            action_name=action_name,
+            requested_observable_tags=requested_tags,
         )
-    ):
-        return [
-            "run_targeted_charge_analysis",
-            "run_targeted_localized_orbital_analysis",
-            "run_targeted_natural_orbital_analysis",
-            "run_targeted_density_population_analysis",
-            "run_targeted_transition_dipole_analysis",
-            "run_ris_state_characterization",
-            "run_targeted_state_characterization",
-            "extract_ct_descriptors_from_bundle",
-            "inspect_raw_artifact_bundle",
-        ]
-    return []
+        if fulfillment_mode == "unsupported":
+            continue
+        score = _selection_score(
+            action_name=action_name,
+            fulfillment_mode=fulfillment_mode,
+            covered_tags=covered_tags,
+            context=context,
+            llm_selected_action=None,
+        )
+        candidates.append((score, action_name))
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return [action_name for _, action_name in candidates[:3]]
 
 
 def _build_reasoning_response_from_action_decision(
@@ -1576,6 +1594,506 @@ def _source_round_selector_from_preference(source_round_preference: Optional[int
     return f"round_{int(source_round_preference):02d}"
 
 
+def _available_execution_actions() -> list[AmespCapabilityName]:
+    actions: list[AmespCapabilityName] = []
+    for action_name, action in AMESP_ACTION_REGISTRY.items():
+        if action.action_kind != "execution":
+            continue
+        if action_name == "unsupported_excited_state_relaxation":
+            continue
+        actions.append(action_name)
+    return actions
+
+
+def _mentioned_execution_actions(task_instruction: str) -> list[AmespCapabilityName]:
+    lowered = task_instruction.lower()
+    matches: list[tuple[int, AmespCapabilityName]] = []
+    for action_name in _available_execution_actions():
+        match = re.search(rf"`?{re.escape(action_name.lower())}`?", lowered)
+        if match is not None:
+            matches.append((match.start(), action_name))
+    matches.sort(key=lambda item: item[0])
+    return [action_name for _, action_name in matches]
+
+
+def _hard_bound_execution_action(
+    task_instruction: str,
+    mentioned_actions: list[AmespCapabilityName],
+) -> Optional[AmespCapabilityName]:
+    lowered = task_instruction.lower()
+    for action_name in mentioned_actions:
+        pattern = rf"(?:execute|run)\s+only\s+`?{re.escape(action_name.lower())}`?"
+        if re.search(pattern, lowered):
+            return action_name
+    if "execute exactly one" in lowered or "run exactly one" in lowered:
+        if len(mentioned_actions) == 1:
+            return mentioned_actions[0]
+    return None
+
+
+def _disallowed_execution_actions(task_instruction: str) -> list[AmespCapabilityName]:
+    lowered = task_instruction.lower()
+    blocked: list[AmespCapabilityName] = []
+    for action_name in _available_execution_actions():
+        pattern = rf"(?:do not run|must not run|do not execute|must not execute|do not call|must not call)\s+`?{re.escape(action_name.lower())}`?"
+        if re.search(pattern, lowered):
+            blocked.append(action_name)
+    return blocked
+
+
+def _extract_first_artifact_bundle_id_from_text(task_instruction: str) -> Optional[str]:
+    match = re.search(
+        r"\b(round_\d+_(?:baseline_bundle|torsion_snapshots|conformer_bundle|run_[a-z0-9_]+_bundle))\b",
+        task_instruction,
+    )
+    return match.group(1) if match is not None else None
+
+
+def _extract_artifact_member_ids_from_text(task_instruction: str) -> list[str]:
+    matches = re.findall(r"\b(?:torsion|conformer)_\d+\b|\bbaseline_bundle\b", task_instruction)
+    return list(dict.fromkeys(matches))
+
+
+def _extract_first_dihedral_id_from_text(task_instruction: str) -> Optional[str]:
+    match = re.search(r"\b(dih_[a-z0-9_]+)\b", task_instruction.lower())
+    return match.group(1) if match is not None else None
+
+
+def _infer_artifact_kind_from_bundle_id(bundle_id: Optional[str]) -> Optional[str]:
+    if not bundle_id:
+        return None
+    if bundle_id.endswith("baseline_bundle"):
+        return "baseline_bundle"
+    if bundle_id.endswith("torsion_snapshots"):
+        return "torsion_snapshots"
+    if bundle_id.endswith("conformer_bundle"):
+        return "conformer_bundle"
+    if "_run_" in bundle_id and bundle_id.endswith("_bundle"):
+        return "targeted_property_follow_up"
+    return None
+
+
+def _task_requires_reuse_only(task_instruction: str) -> bool:
+    lowered = task_instruction.lower()
+    return any(
+        token in lowered
+        for token in (
+            "parse-only",
+            "parse only",
+            "without new calculations",
+            "no new calculations",
+            "reuse existing artifacts only",
+            "using reusable artifacts only",
+            "without launching new calculations",
+        )
+    )
+
+
+def _references_reusable_artifact_bundle(task_instruction: str) -> bool:
+    lowered = task_instruction.lower()
+    return any(
+        token in lowered
+        for token in (
+            "artifact bundle",
+            "reusable bundle",
+            "reusable baseline bundle",
+            "baseline bundle",
+            "torsion outputs",
+            "snapshot outputs",
+            "raw baseline output files",
+            "reuse round",
+            "reuse the latest torsion outputs",
+        )
+    ) or _extract_first_artifact_bundle_id_from_text(task_instruction) is not None
+
+
+def _requested_observable_tags(
+    *,
+    task_instruction: str,
+    requested_deliverables: list[str],
+) -> list[str]:
+    lowered = f"{task_instruction}\n" + "\n".join(requested_deliverables)
+    lowered = lowered.lower()
+    tags: list[str] = []
+    if any(token in lowered for token in ("transition dipole", "transition-dipole", "transition_dipole", "excdip")):
+        tags.append("transition_dipole")
+    if any(token in lowered for token in ("oscillator strength", "brightness proxy", "brightness", "bright state")):
+        tags.append("oscillator_strength")
+    if any(
+        token in lowered
+        for token in (
+            "excited-state dipole",
+            "excited state dipole",
+            "state dipole",
+            "dipoles by state",
+        )
+    ):
+        tags.append("excited_state_dipole")
+    if any(token in lowered for token in ("delta dipole", "dipole change", "dipole-change", "delta_dipole")):
+        tags.append("delta_dipole")
+    if any(token in lowered for token in ("approximate dipole", "approx dipole", "approx_delta_dipole")):
+        tags.append("approx_delta_dipole")
+    if any(
+        token in lowered
+        for token in (
+            "ct localization",
+            "ct/localization",
+            "charge-transfer localization",
+            "charge transfer localization",
+            "electron-hole",
+            "electron hole",
+            "ct proxy",
+            "ct descriptor",
+            "ct descriptors",
+        )
+    ):
+        tags.append("ct_localization_proxy")
+    if any(token in lowered for token in ("dominant transition", "dominant transitions")):
+        tags.append("dominant_transitions")
+    if any(token in lowered for token in ("state ordering", "state-ordering", "state switching", "dark state")):
+        tags.append("state_ordering")
+    if any(
+        token in lowered
+        for token in ("dihedral", "torsion angle", "torsion-aligned", "planarity", "twist", "geometry descriptor")
+    ):
+        tags.append("geometry_descriptor")
+    if any(
+        token in lowered
+        for token in (
+            "raw artifact",
+            "raw file",
+            "raw output files",
+            "file locations",
+            "file inventory",
+            "inventory",
+            "aop",
+            "mo file",
+            "mo files",
+            "inspect the raw",
+        )
+    ):
+        tags.append("raw_observable_inventory")
+    if any(token in lowered for token in ("mulliken", "hirshfeld", "charge distribution", "charge summary", "population analysis")):
+        tags.append("charge_distribution")
+    return list(dict.fromkeys(tags))
+
+
+def _translation_context_from_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    task_instruction = str(payload.get("task_instruction") or "")
+    mentioned_actions = _mentioned_execution_actions(task_instruction)
+    hard_bound_action = _hard_bound_execution_action(task_instruction, mentioned_actions)
+    planner_requested_capability = hard_bound_action or (mentioned_actions[0] if mentioned_actions else None)
+    binding_mode: MicroscopicTranslationBindingMode = (
+        "hard" if hard_bound_action is not None else "preferred" if planner_requested_capability is not None else "none"
+    )
+    artifact_bundle_id = _extract_first_artifact_bundle_id_from_text(task_instruction)
+    artifact_member_ids = _extract_artifact_member_ids_from_text(task_instruction)
+    return {
+        "task_instruction": task_instruction,
+        "requested_observable_tags": _requested_observable_tags(
+            task_instruction=task_instruction,
+            requested_deliverables=list(payload.get("requested_deliverables") or []),
+        ),
+        "mentioned_actions": mentioned_actions,
+        "planner_requested_capability": planner_requested_capability,
+        "binding_mode": binding_mode,
+        "hard_bound_action": hard_bound_action,
+        "disallowed_actions": _disallowed_execution_actions(task_instruction),
+        "requires_reuse_only": _task_requires_reuse_only(task_instruction),
+        "artifact_bundle_context": _references_reusable_artifact_bundle(task_instruction),
+        "artifact_bundle_id": artifact_bundle_id,
+        "artifact_member_ids": artifact_member_ids,
+        "dihedral_id": _extract_first_dihedral_id_from_text(task_instruction),
+        "artifact_kind": _infer_artifact_kind_from_bundle_id(artifact_bundle_id),
+        "task_mode": str(payload.get("task_mode") or "targeted_follow_up"),
+    }
+
+
+def _compatibility_from_translation_context(
+    *,
+    action_name: AmespCapabilityName,
+    context: dict[str, Any],
+) -> bool:
+    action = AMESP_ACTION_REGISTRY[action_name]
+    if context["binding_mode"] == "hard" and context["hard_bound_action"] != action_name:
+        return False
+    if action_name in context["disallowed_actions"]:
+        return False
+    if context["task_mode"] == "baseline_s0_s1":
+        return action_name == "run_baseline_bundle"
+    if context["requires_reuse_only"] and action.requires_new_calculation:
+        return False
+    if context["artifact_bundle_context"] and action.target_object_kind == "prepared_structure":
+        return False
+    if not context["artifact_bundle_context"] and action.target_object_kind in {"artifact_bundle", "artifact_inventory"}:
+        return False
+    return True
+
+
+def _action_coverage_for_requested_tags(
+    *,
+    action_name: AmespCapabilityName,
+    requested_observable_tags: list[str],
+) -> tuple[MicroscopicTranslationFulfillmentMode, list[str], list[str]]:
+    action = AMESP_ACTION_REGISTRY[action_name]
+    exact_tags = set(action.exact_observable_tags)
+    proxy_tags = set(action.proxy_observable_tags)
+    requested = list(dict.fromkeys(requested_observable_tags))
+    covered_exact = [tag for tag in requested if tag in exact_tags]
+    covered_proxy = [tag for tag in requested if tag in proxy_tags and tag not in covered_exact]
+    covered = covered_exact + covered_proxy
+    residual = [tag for tag in requested if tag not in covered]
+    if not requested:
+        return "exact", [], []
+    if action.fulfillment_tier == "inventory" and covered_exact and not covered_proxy:
+        return "inventory_only", covered_exact, residual
+    if requested and not residual and set(requested).issubset(exact_tags):
+        return "exact", covered, residual
+    if covered:
+        if action.fulfillment_tier == "inventory" and not covered_exact and not covered_proxy:
+            return "inventory_only", covered, residual
+        if action.fulfillment_tier == "inventory" and covered == ["raw_observable_inventory"] and residual:
+            return "inventory_only", covered, residual
+        return "proxy", covered, residual
+    if action.fulfillment_tier == "inventory" and "raw_observable_inventory" in exact_tags and "raw_observable_inventory" in requested:
+        return "inventory_only", ["raw_observable_inventory"], [tag for tag in requested if tag != "raw_observable_inventory"]
+    return "unsupported", [], requested
+
+
+def _selection_score(
+    *,
+    action_name: AmespCapabilityName,
+    fulfillment_mode: MicroscopicTranslationFulfillmentMode,
+    covered_tags: list[str],
+    context: dict[str, Any],
+    llm_selected_action: Optional[AmespCapabilityName],
+) -> tuple[int, int, int, int, int]:
+    rank = {
+        "unsupported": 0,
+        "inventory_only": 1,
+        "proxy": 2,
+        "exact": 3,
+    }[fulfillment_mode]
+    action = AMESP_ACTION_REGISTRY[action_name]
+    planner_preferred = 1 if context["planner_requested_capability"] == action_name else 0
+    llm_preferred = 1 if llm_selected_action == action_name else 0
+    fewer_new_calcs = 1 if not action.requires_new_calculation else 0
+    lower_cost_reuse = 1 if action.supports_artifact_reuse_only else 0
+    return (rank, len(covered_tags), fewer_new_calcs, planner_preferred, lower_cost_reuse + llm_preferred)
+
+
+def _candidate_action_decision(
+    *,
+    action_name: AmespCapabilityName,
+    context: dict[str, Any],
+    original_decision: MicroscopicActionDecision,
+) -> MicroscopicActionDecision:
+    fulfillment_mode, covered_tags, residual_tags = _action_coverage_for_requested_tags(
+        action_name=action_name,
+        requested_observable_tags=list(context["requested_observable_tags"]),
+    )
+    params = dict(original_decision.params if original_decision.execution_action == action_name else {})
+    action_definition = AMESP_ACTION_REGISTRY[action_name]
+    allowed_params = set(action_definition.allowed_llm_params)
+    if "perform_new_calculation" in allowed_params and context["requires_reuse_only"]:
+        params["perform_new_calculation"] = False
+    if "reuse_existing_artifacts_only" in allowed_params and context["requires_reuse_only"]:
+        params["reuse_existing_artifacts_only"] = True
+    if context["artifact_bundle_id"] and "artifact_bundle_id" in allowed_params:
+        params["artifact_bundle_id"] = context["artifact_bundle_id"]
+    if context["artifact_kind"] and "artifact_kind" in allowed_params:
+        params["artifact_kind"] = context["artifact_kind"]
+    if context["artifact_member_ids"]:
+        if "artifact_member_ids" in allowed_params:
+            params["artifact_member_ids"] = list(context["artifact_member_ids"])
+        if "target_selection_mode" in allowed_params:
+            params["target_selection_mode"] = "exact_members"
+    if context["dihedral_id"] and "dihedral_id" in allowed_params:
+        params["dihedral_id"] = context["dihedral_id"]
+    substitution = (
+        bool(context["planner_requested_capability"])
+        and context["binding_mode"] != "hard"
+        and context["planner_requested_capability"] != action_name
+    )
+    substitution_reason = None
+    if substitution:
+        substitution_reason = (
+            f"Selected `{action_name}` instead of Planner-mentioned `{context['planner_requested_capability']}` "
+            "because it better fits the requested local evidence goal under current bounded microscopic capability."
+        )
+    return MicroscopicActionDecision(
+        status="supported",
+        execution_action=action_name,
+        discovery_actions=list(original_decision.discovery_actions if original_decision.execution_action == action_name else []),
+        params=params,
+        unsupported_parts=list(original_decision.unsupported_parts),
+        local_execution_rationale=(
+            original_decision.local_execution_rationale
+            if original_decision.execution_action == action_name and original_decision.local_execution_rationale
+            else f"Selected `{action_name}` as the best-fit bounded local microscopic action for the requested evidence goal."
+        ),
+        fulfillment_mode=fulfillment_mode,
+        binding_mode=context["binding_mode"],
+        planner_requested_capability=context["planner_requested_capability"],
+        translation_substituted_action=substitution,
+        translation_substitution_reason=substitution_reason,
+        requested_observable_tags=list(context["requested_observable_tags"]),
+        covered_observable_tags=covered_tags,
+        residual_unmet_observable_tags=residual_tags,
+    )
+
+
+def normalize_reasoning_outcome_for_best_fit_translation(
+    outcome: MicroscopicReasoningOutcome,
+    *,
+    payload: dict[str, Any],
+    config: AieMasConfig,
+) -> MicroscopicReasoningOutcome:
+    if payload.get("task_mode") == "baseline_s0_s1":
+        return outcome
+    if outcome.reasoning_contract_mode in {
+        "semantic_contract",
+        "legacy_semantic_contract_fallback",
+        "legacy_tagged_protocol_fallback",
+        "legacy_json_fallback",
+    }:
+        return outcome
+    context = _translation_context_from_payload(payload)
+    llm_selected_action = outcome.action_decision.execution_action if outcome.action_decision.status == "supported" else None
+
+    if context["binding_mode"] == "hard" and context["hard_bound_action"] is not None:
+        selected_action = context["hard_bound_action"]
+        if not _compatibility_from_translation_context(action_name=selected_action, context=context):
+            normalized_decision = outcome.action_decision.model_copy(
+                update={
+                    "status": "unsupported",
+                    "execution_action": None,
+                    "discovery_actions": [],
+                    "params": {},
+                    "unsupported_parts": list(
+                        dict.fromkeys(
+                            list(outcome.action_decision.unsupported_parts)
+                            + [f"Planner hard-bound `{selected_action}` but hard constraints prevent executing that action."]
+                        )
+                    ),
+                    "fulfillment_mode": "unsupported",
+                    "binding_mode": "hard",
+                    "planner_requested_capability": selected_action,
+                    "translation_substituted_action": False,
+                    "translation_substitution_reason": None,
+                    "requested_observable_tags": list(context["requested_observable_tags"]),
+                    "covered_observable_tags": [],
+                    "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
+                }
+            )
+            updated_response = outcome.reasoning_response.model_copy(
+                update={
+                    "reasoning_summary": (
+                        f"{outcome.reasoning_response.reasoning_summary} Planner hard-bound `{selected_action}`, "
+                        "so no alternate microscopic action was selected."
+                    ).strip()
+                }
+            )
+            return MicroscopicReasoningOutcome(
+                action_decision=normalized_decision,
+                reasoning_response=updated_response,
+                compiled_execution_plan=None,
+                reasoning_parse_mode=outcome.reasoning_parse_mode,
+                reasoning_contract_mode=outcome.reasoning_contract_mode,
+                reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+            )
+        selected_decision = _candidate_action_decision(
+            action_name=selected_action,
+            context=context,
+            original_decision=outcome.action_decision,
+        )
+    else:
+        candidates: list[tuple[tuple[int, int, int, int, int], MicroscopicActionDecision]] = []
+        for action_name in _available_execution_actions():
+            if not _compatibility_from_translation_context(action_name=action_name, context=context):
+                continue
+            candidate = _candidate_action_decision(
+                action_name=action_name,
+                context=context,
+                original_decision=outcome.action_decision,
+            )
+            if candidate.fulfillment_mode == "unsupported":
+                continue
+            score = _selection_score(
+                action_name=action_name,
+                fulfillment_mode=candidate.fulfillment_mode or "unsupported",
+                covered_tags=list(candidate.covered_observable_tags),
+                context=context,
+                llm_selected_action=llm_selected_action,
+            )
+            candidates.append((score, candidate))
+        if not candidates:
+            normalized_decision = outcome.action_decision.model_copy(
+                update={
+                    "status": "unsupported",
+                    "execution_action": None,
+                    "discovery_actions": [],
+                    "params": {},
+                    "fulfillment_mode": "unsupported",
+                    "binding_mode": context["binding_mode"],
+                    "planner_requested_capability": context["planner_requested_capability"],
+                    "translation_substituted_action": False,
+                    "translation_substitution_reason": None,
+                    "requested_observable_tags": list(context["requested_observable_tags"]),
+                    "covered_observable_tags": [],
+                    "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
+                }
+            )
+            return MicroscopicReasoningOutcome(
+                action_decision=normalized_decision,
+                reasoning_response=outcome.reasoning_response,
+                compiled_execution_plan=None,
+                reasoning_parse_mode=outcome.reasoning_parse_mode,
+                reasoning_contract_mode=outcome.reasoning_contract_mode,
+                reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+            )
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        selected_decision = candidates[0][1]
+
+    compiled_plan = compile_action_decision_to_execution_plan(
+        selected_decision,
+        payload=payload,
+        config=config,
+    )
+    if compiled_plan is not None:
+        compiled_plan.fulfillment_mode = selected_decision.fulfillment_mode
+        compiled_plan.binding_mode = selected_decision.binding_mode
+        compiled_plan.planner_requested_capability = selected_decision.planner_requested_capability
+        compiled_plan.translation_substituted_action = selected_decision.translation_substituted_action
+        compiled_plan.translation_substitution_reason = selected_decision.translation_substitution_reason
+        compiled_plan.requested_observable_tags = list(selected_decision.requested_observable_tags)
+        compiled_plan.covered_observable_tags = list(selected_decision.covered_observable_tags)
+        compiled_plan.residual_unmet_observable_tags = list(selected_decision.residual_unmet_observable_tags)
+    reasoning_summary = outcome.reasoning_response.reasoning_summary
+    if selected_decision.translation_substituted_action and selected_decision.translation_substitution_reason:
+        reasoning_summary = (
+            f"{reasoning_summary} {selected_decision.translation_substitution_reason}"
+        ).strip()
+    updated_response = outcome.reasoning_response.model_copy(
+        update={
+            "reasoning_summary": reasoning_summary,
+            "expected_outputs": (
+                list(compiled_plan.expected_outputs)
+                if compiled_plan is not None and compiled_plan.expected_outputs
+                else outcome.reasoning_response.expected_outputs
+            ),
+        }
+    )
+    return MicroscopicReasoningOutcome(
+        action_decision=selected_decision,
+        reasoning_response=updated_response,
+        compiled_execution_plan=compiled_plan,
+        reasoning_parse_mode=outcome.reasoning_parse_mode,
+        reasoning_contract_mode=outcome.reasoning_contract_mode,
+        reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+    )
+
+
 def _action_decision_from_execution_plan(
     execution_plan: MicroscopicExecutionPlan,
     *,
@@ -1629,6 +2147,14 @@ def _action_decision_from_execution_plan(
         params=params,
         unsupported_parts=list(unsupported_parts or execution_plan.unsupported_requests),
         local_execution_rationale=local_execution_rationale,
+        fulfillment_mode=execution_plan.fulfillment_mode,
+        binding_mode=execution_plan.binding_mode,
+        planner_requested_capability=execution_plan.planner_requested_capability,
+        translation_substituted_action=execution_plan.translation_substituted_action,
+        translation_substitution_reason=execution_plan.translation_substitution_reason,
+        requested_observable_tags=list(execution_plan.requested_observable_tags),
+        covered_observable_tags=list(execution_plan.covered_observable_tags),
+        residual_unmet_observable_tags=list(execution_plan.residual_unmet_observable_tags),
     )
 
 
@@ -1854,6 +2380,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
@@ -1871,6 +2398,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "inspect_raw_artifact_bundle",
@@ -1885,6 +2413,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "inspect_raw_artifact_bundle",
@@ -1900,6 +2429,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
@@ -1917,6 +2447,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "inspect_raw_artifact_bundle",
@@ -1947,6 +2478,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
@@ -1965,6 +2497,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
                 "parse_snapshot_outputs",
@@ -1995,6 +2528,7 @@ def compile_semantic_contract_to_tool_plan(
                 "run_targeted_natural_orbital_analysis",
                 "run_targeted_density_population_analysis",
                 "run_targeted_transition_dipole_analysis",
+                "run_targeted_approx_delta_dipole_analysis",
                 "run_ris_state_characterization",
                 "run_targeted_state_characterization",
             }
@@ -2699,6 +3233,7 @@ def _build_execution_steps(
         "run_targeted_natural_orbital_analysis",
         "run_targeted_density_population_analysis",
         "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
         "run_ris_state_characterization",
         "run_targeted_state_characterization",
     }:
@@ -2877,6 +3412,7 @@ def _supported_scope_descriptions(config: AieMasConfig) -> list[str]:
         "run_targeted_natural_orbital_analysis: bounded fixed-geometry targeted natural-orbital analysis on a small representative subset of existing artifact geometries",
         "run_targeted_density_population_analysis: bounded fixed-geometry targeted density/population analysis on a small representative subset of existing artifact geometries",
         "run_targeted_transition_dipole_analysis: bounded fixed-geometry targeted transition-dipole analysis on a small representative subset of existing artifact geometries",
+        "run_targeted_approx_delta_dipole_analysis: bounded approximate per-atom-charge-derived dipole proxy analysis on a small representative subset of existing artifact geometries",
         "run_ris_state_characterization: bounded fixed-geometry RIS state characterization on a small representative subset of existing artifact geometries",
         "run_targeted_state_characterization: bounded fixed-geometry state-character follow-up on a small representative subset of existing artifact geometries",
         "parse_snapshot_outputs: parse existing snapshot artifacts without new calculations",

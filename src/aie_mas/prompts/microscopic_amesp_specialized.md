@@ -7,6 +7,14 @@ Requested local focus: {requested_focus}
 Requested Amesp route summary: {requested_route_summary}
 Requested capability: {requested_capability}
 Executed capability: {executed_capability}
+Translation fulfillment mode: {translation_fulfillment_mode}
+Translation binding mode: {translation_binding_mode}
+Planner-requested capability: {planner_requested_capability}
+Translation substituted action: {translation_substituted_action}
+Translation substitution reason: {translation_substitution_reason}
+Requested observable tags: {requested_observable_tags_text}
+Covered observable tags: {covered_observable_tags_text}
+Residual unmet observable tags: {residual_unmet_observable_tags_text}
 Performed new calculations: {performed_new_calculations}
 Reused existing artifacts only: {reused_existing_artifacts}
 Resolved target IDs: {resolved_target_ids_text}

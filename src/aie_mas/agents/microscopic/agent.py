@@ -19,6 +19,7 @@ from aie_mas.tools.amesp import (
     AmespExecutionError,
     AmespMicroscopicTool,
     render_amesp_action_registry,
+    render_amesp_action_selection_catalog,
     render_amesp_capability_registry,
     render_amesp_interface_catalog,
     render_reasoned_microscopic_examples,
@@ -117,6 +118,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "budget_profile": self._config.microscopic_budget_profile,
             "amesp_interface_catalog": render_amesp_interface_catalog(),
             "action_registry": render_amesp_action_registry(),
+            "action_selection_catalog": render_amesp_action_selection_catalog(),
             "baseline_action_card_example": registry_examples["baseline"],
             "torsion_action_card_example": registry_examples["torsion"],
             "targeted_charge_analysis_action_card_example": registry_examples["targeted_charge_analysis"],
@@ -226,6 +228,8 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                     "torsion_snapshot_follow_up: bounded torsion sensitivity route "
                     f"(max {self._config.amesp_follow_up_max_torsion_snapshots_total} snapshots)"
                 ),
+                "targeted_transition_dipole_analysis: bounded fixed-geometry transition-dipole follow-up on one reusable artifact bundle",
+                "targeted_approx_delta_dipole_analysis: bounded approximate per-atom-charge-derived dipole proxy follow-up on one reusable artifact bundle",
             ],
             "unsupported_scope": [
                 "heavy full-DFT geometry optimization as a default first-round baseline",
@@ -262,6 +266,17 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             ]
             if "dipole" in lower_instruction:
                 deliverables.append("dipole summary")
+            if any(
+                token in lower_instruction
+                for token in (
+                    "delta dipole",
+                    "dipole change",
+                    "dipole-change",
+                    "excited-state dipole",
+                    "excited state dipole",
+                )
+            ):
+                deliverables.append("approximate dipole-change proxy summary")
             if any(
                 token in lower_instruction
                 for token in (
@@ -314,6 +329,17 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             deliverables.append("vertical excited-state manifold characterization")
         if "dipole" in lower_instruction:
             deliverables.append("dipole summary")
+        if any(
+            token in lower_instruction
+            for token in (
+                "delta dipole",
+                "dipole change",
+                "dipole-change",
+                "excited-state dipole",
+                "excited state dipole",
+            )
+        ):
+            deliverables.append("approximate dipole-change proxy summary")
         if any(
             token in lower_instruction
             for token in (
@@ -612,7 +638,11 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         task_mode: str,
         capability_route: MicroscopicCapabilityRoute,
         requested_capability: str,
+        planner_requested_capability: Optional[str],
         executed_capability: Optional[str],
+        fulfillment_mode: Optional[str],
+        translation_substituted_action: bool,
+        translation_substitution_reason: Optional[str],
         performed_new_calculations: bool,
         reused_existing_artifacts: bool,
         resolved_target_ids: dict[str, Any],
@@ -623,10 +653,18 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         error_payload: Optional[dict[str, Any]],
     ) -> tuple[str, Optional[MicroscopicCompletionReasonCode], str]:
         executed_capability = executed_capability or requested_capability
+        planner_requested_capability = planner_requested_capability or requested_capability
         action_clause = (
             f"I executed `{executed_capability}`, performed {'new calculations' if performed_new_calculations else 'no new calculations'}, "
             f"and {'reused existing artifacts' if reused_existing_artifacts else 'did not rely on existing artifacts only'}."
         )
+        translation_clause = ""
+        if translation_substituted_action:
+            translation_clause = (
+                f" Planner-requested capability was `{planner_requested_capability}`; local translation selected "
+                f"`{executed_capability}` with fulfillment_mode=`{fulfillment_mode or 'unsupported'}`. "
+                f"{translation_substitution_reason or 'The substitute action better matched the requested local evidence goal.'}"
+            )
         target_clause = (
             f" Resolved targets: {self._resolved_target_ids_text(resolved_target_ids)}."
             if resolved_target_ids
@@ -648,7 +686,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "failed",
                 reason_code,
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task failed while using Amesp route '{capability_route}': "
                     f"{error_message or 'no error details were provided.'}"
                 ),
@@ -659,7 +697,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "partial",
                 reason_code,
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task was only partially completed because Amesp route '{capability_route}' was incomplete: "
                     f"{error_message or 'no partial-execution details were provided.'}"
                 ),
@@ -679,7 +717,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 "contracted",
                 "partial_observable_only",
                 (
-                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The task completed in a contracted form via Amesp route '{capability_route}'.{missing_note}"
                     f"{unsupported_note}"
                 ),
@@ -690,7 +728,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 return (
                     "contracted",
                     "capability_unsupported",
-                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     "The requested excited-state relaxation follow-up is not yet validated "
                     f"within current Amesp capability, so route '{capability_route}' could not be executed. "
                     f"Unsupported parts were: {unsupported}.",
@@ -699,7 +737,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
                 return (
                     "contracted",
                     "partial_observable_only",
-                    f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                    f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The requested targeted microscopic follow-up could not be executed exactly as asked, so Amesp route "
                     f"'{capability_route}' returned the closest bounded substitute instead. "
                     f"Unsupported parts were: {unsupported}.",
@@ -707,7 +745,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             return (
                 "contracted",
                 "partial_observable_only",
-                f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                     f"The agent returned bounded Amesp route '{capability_route}' evidence, but it could not execute unsupported "
                     f"parts of the Planner instruction: {unsupported}.",
                 )
@@ -715,7 +753,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "completed",
             None,
             (
-                f"The Planner requested `{requested_capability}`. {action_clause}{target_clause}{honored_clause}{unmet_clause} "
+                f"The Planner requested `{requested_capability}`. {action_clause}{translation_clause}{target_clause}{honored_clause}{unmet_clause} "
                 "All requested deliverables were produced within current microscopic capability."
                 + (
                     " Unsupported background requests were noted but did not block the executed capability: "
