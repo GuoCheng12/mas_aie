@@ -212,15 +212,15 @@ class AieMasConfig(BaseModel):
         if self.macro_backend is None:
             self.macro_backend = "openai_sdk"
         if self.macro_base_url is None:
-            self.macro_base_url = self.planner_base_url
+            self.macro_base_url = self.microscopic_base_url
         if self.macro_model is None:
-            self.macro_model = self.planner_model
+            self.macro_model = self.microscopic_model
         if self.macro_api_key is None:
-            self.macro_api_key = self.planner_api_key
+            self.macro_api_key = self.microscopic_api_key
         if self.macro_temperature is None:
-            self.macro_temperature = self.planner_temperature
+            self.macro_temperature = self.microscopic_temperature
         if self.macro_timeout_seconds is None:
-            self.macro_timeout_seconds = self.planner_timeout_seconds
+            self.macro_timeout_seconds = self.microscopic_timeout_seconds
         if self.verifier_backend is None:
             self.verifier_backend = "openai_sdk"
         if self.verifier_base_url is None:

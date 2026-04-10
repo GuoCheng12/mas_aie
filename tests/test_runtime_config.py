@@ -135,10 +135,6 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.planner_model == "gpt-5.2"
     assert local_config.macro_backend == "openai_sdk"
     assert linux_config.macro_backend == "openai_sdk"
-    assert local_config.macro_model == "gpt-5.2"
-    assert linux_config.macro_model == "gpt-5.2"
-    assert local_config.macro_base_url == local_config.planner_base_url
-    assert linux_config.macro_base_url == linux_config.planner_base_url
     assert local_config.verifier_backend == "openai_sdk"
     assert linux_config.verifier_backend == "openai_sdk"
     assert local_config.verifier_model == "anthropic/claude-3.5-sonnet"
@@ -149,6 +145,14 @@ def test_planner_backend_defaults_follow_execution_profile(tmp_path: Path) -> No
     assert linux_config.microscopic_model == "gpt-4.1-mini"
     assert local_config.microscopic_base_url == local_config.planner_base_url
     assert linux_config.microscopic_base_url == linux_config.planner_base_url
+    assert local_config.macro_model == local_config.microscopic_model
+    assert linux_config.macro_model == linux_config.microscopic_model
+    assert local_config.macro_base_url == local_config.microscopic_base_url
+    assert linux_config.macro_base_url == linux_config.microscopic_base_url
+    assert local_config.macro_temperature == local_config.microscopic_temperature
+    assert linux_config.macro_temperature == linux_config.microscopic_temperature
+    assert local_config.macro_timeout_seconds == local_config.microscopic_timeout_seconds
+    assert linux_config.macro_timeout_seconds == linux_config.microscopic_timeout_seconds
     assert local_config.amesp_maxcore_mb == 2000
     assert linux_config.amesp_maxcore_mb == 12000
     assert local_config.amesp_use_ricosx is True
