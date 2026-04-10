@@ -3926,10 +3926,21 @@ class AmespMicroscopicTool:
                     "conformer_rank": artifact.get("conformer_rank"),
                     "source_snapshot_status": artifact.get("snapshot_status") or "success",
                     "geometry_source": geometry_payload["geometry_source"],
+                    "role_typing_mode": geometry_record["role_typing_mode"],
                     "donor_atom_count": geometry_record["donor_atom_count"],
                     "acceptor_atom_count": geometry_record["acceptor_atom_count"],
+                    "phenolic_oh_donor_count": geometry_record["phenolic_oh_donor_count"],
+                    "imine_hydrazone_n_acceptor_count": geometry_record["imine_hydrazone_n_acceptor_count"],
                     "intramolecular_hbond_candidates": geometry_record["intramolecular_hbond_candidates"],
                     "best_intramolecular_hbond": geometry_record["best_intramolecular_hbond"],
+                    "intramolecular_oh_n_candidates": geometry_record["intramolecular_oh_n_candidates"],
+                    "best_intramolecular_oh_n_contact": geometry_record["best_intramolecular_oh_n_contact"],
+                    "intramolecular_oh_n_proximity": geometry_record["intramolecular_oh_n_proximity"],
+                    "intramolecular_oh_n_orientation": geometry_record["intramolecular_oh_n_orientation"],
+                    "phenolic_oh_to_imine_n_candidates": geometry_record["phenolic_oh_to_imine_n_candidates"],
+                    "best_phenolic_oh_to_imine_n_contact": geometry_record["best_phenolic_oh_to_imine_n_contact"],
+                    "phenolic_oh_to_imine_n_proximity": geometry_record["phenolic_oh_to_imine_n_proximity"],
+                    "phenolic_oh_to_imine_n_orientation": geometry_record["phenolic_oh_to_imine_n_orientation"],
                     "local_planarity_proxy": geometry_record["local_planarity_proxy"],
                     "has_hbond_like_candidate": geometry_record["has_hbond_like_candidate"],
                     "available_geometry_descriptors": geometry_record["available_geometry_descriptors"],
@@ -3959,8 +3970,26 @@ class AmespMicroscopicTool:
         missing_geometry_descriptors = list(dict.fromkeys(missing_geometry_descriptors))
         missing_deliverables = [_humanize_descriptor_name(item) for item in missing_geometry_descriptors]
         hbond_like_records = sum(1 for record in parsed_records if record.get("has_hbond_like_candidate"))
+        oh_n_like_records = sum(
+            1
+            for record in parsed_records
+            if bool(record.get("intramolecular_oh_n_proximity", {}).get("matching_contact_found"))
+        )
+        phenolic_oh_to_imine_n_like_records = sum(
+            1
+            for record in parsed_records
+            if bool(record.get("phenolic_oh_to_imine_n_proximity", {}).get("matching_contact_found"))
+        )
         total_candidates = sum(
             len(list(record.get("intramolecular_hbond_candidates") or []))
+            for record in parsed_records
+        )
+        total_oh_n_candidates = sum(
+            len(list(record.get("intramolecular_oh_n_candidates") or []))
+            for record in parsed_records
+        )
+        total_phenolic_oh_to_imine_n_candidates = sum(
+            len(list(record.get("phenolic_oh_to_imine_n_candidates") or []))
             for record in parsed_records
         )
         route_summary = {
@@ -3972,8 +4001,13 @@ class AmespMicroscopicTool:
             "available_geometry_descriptors": sorted(available_geometry_descriptors),
             "missing_geometry_descriptors": missing_geometry_descriptors,
             "geometry_source_families": sorted(geometry_source_families),
+            "role_typing_modes": sorted({str(record.get("role_typing_mode")) for record in parsed_records}),
             "records_with_hbond_like_candidate": hbond_like_records,
             "intramolecular_hbond_candidate_count": total_candidates,
+            "records_with_oh_n_candidate": oh_n_like_records,
+            "intramolecular_oh_n_candidate_count": total_oh_n_candidates,
+            "records_with_phenolic_oh_to_imine_n_candidate": phenolic_oh_to_imine_n_like_records,
+            "phenolic_oh_to_imine_n_candidate_count": total_phenolic_oh_to_imine_n_candidates,
             "artifact_reuse_note": "Inspected an existing artifact bundle for bounded intramolecular geometry descriptors without generating new Amesp inputs.",
         }
         return AmespBaselineRunResult(
@@ -5512,8 +5546,14 @@ def _extract_intramolecular_geometry_record(
     symbols: Sequence[str],
     coordinates: Sequence[Sequence[float]],
 ) -> dict[str, Any]:
-    del prepared
     adjacency = _infer_bond_adjacency(symbols, coordinates)
+    esipt_role_summary = _classify_esipt_geometry_roles(
+        prepared=prepared,
+        symbols=symbols,
+        adjacency=adjacency,
+    )
+    phenolic_oh_donor_indices = esipt_role_summary["phenolic_oh_donor_indices"]
+    imine_hydrazone_acceptor_indices = esipt_role_summary["imine_hydrazone_acceptor_indices"]
     donor_indices = [
         atom_index
         for atom_index, symbol in enumerate(symbols)
@@ -5561,11 +5601,25 @@ def _extract_intramolecular_geometry_record(
                     and donor_acceptor_distance <= 3.2
                     and dha_angle >= 110.0
                 )
+                donor_role = "phenolic_oh" if donor_index in phenolic_oh_donor_indices else "generic_oh"
+                if symbols[acceptor_index] == "N":
+                    acceptor_role = (
+                        "imine_hydrazone_n"
+                        if acceptor_index in imine_hydrazone_acceptor_indices
+                        else "generic_n_acceptor"
+                    )
+                else:
+                    acceptor_role = "oxygen_acceptor"
                 candidates.append(
                     {
                         "donor_atom_index": donor_index,
+                        "donor_atom_symbol": symbols[donor_index],
+                        "donor_role": donor_role,
                         "hydrogen_atom_index": hydrogen_index,
+                        "hydrogen_atom_symbol": symbols[hydrogen_index],
                         "acceptor_atom_index": acceptor_index,
+                        "acceptor_atom_symbol": symbols[acceptor_index],
+                        "acceptor_role": acceptor_role,
                         "topological_separation_bonds": path_length,
                         "donor_acceptor_distance_angstrom": round(donor_acceptor_distance, 6),
                         "hydrogen_acceptor_distance_angstrom": round(hydrogen_acceptor_distance, 6),
@@ -5585,18 +5639,52 @@ def _extract_intramolecular_geometry_record(
         )
     )
     best_candidate = candidates[0] if candidates else None
+    oh_n_candidates = [item for item in candidates if item.get("acceptor_atom_symbol") == "N"]
+    best_oh_n_candidate = oh_n_candidates[0] if oh_n_candidates else None
+    phenolic_oh_to_imine_n_candidates = [
+        item
+        for item in oh_n_candidates
+        if item.get("donor_role") == "phenolic_oh"
+        and item.get("acceptor_role") == "imine_hydrazone_n"
+    ]
+    best_phenolic_oh_to_imine_n_candidate = (
+        phenolic_oh_to_imine_n_candidates[0] if phenolic_oh_to_imine_n_candidates else None
+    )
     available_geometry_descriptors = [
         "geometry_source",
+        "geometry_descriptor",
+        "intramolecular_geometry_descriptors",
         "intramolecular_hbond_candidates",
         "best_intramolecular_hbond",
+        "intramolecular_oh_n_proximity",
+        "intramolecular_oh_n_orientation",
+        "best_intramolecular_oh_n_contact",
+        "phenolic_oh_to_imine_n_proximity",
+        "phenolic_oh_to_imine_n_orientation",
+        "best_phenolic_oh_to_imine_n_contact",
     ]
     if best_candidate is not None and best_candidate.get("local_planarity_rmsd_angstrom") is not None:
         available_geometry_descriptors.append("local_planarity_proxy")
     return {
         "donor_atom_count": len(donor_indices),
         "acceptor_atom_count": len(acceptor_indices),
+        "role_typing_mode": esipt_role_summary["typing_mode"],
+        "phenolic_oh_donor_count": len(phenolic_oh_donor_indices),
+        "imine_hydrazone_n_acceptor_count": len(imine_hydrazone_acceptor_indices),
         "intramolecular_hbond_candidates": candidates,
         "best_intramolecular_hbond": best_candidate,
+        "intramolecular_oh_n_candidates": oh_n_candidates,
+        "best_intramolecular_oh_n_contact": best_oh_n_candidate,
+        "intramolecular_oh_n_proximity": _geometry_contact_proximity_descriptor(best_oh_n_candidate),
+        "intramolecular_oh_n_orientation": _geometry_contact_orientation_descriptor(best_oh_n_candidate),
+        "phenolic_oh_to_imine_n_candidates": phenolic_oh_to_imine_n_candidates,
+        "best_phenolic_oh_to_imine_n_contact": best_phenolic_oh_to_imine_n_candidate,
+        "phenolic_oh_to_imine_n_proximity": _geometry_contact_proximity_descriptor(
+            best_phenolic_oh_to_imine_n_candidate
+        ),
+        "phenolic_oh_to_imine_n_orientation": _geometry_contact_orientation_descriptor(
+            best_phenolic_oh_to_imine_n_candidate
+        ),
         "local_planarity_proxy": (
             best_candidate.get("local_planarity_rmsd_angstrom")
             if isinstance(best_candidate, dict)
@@ -5605,6 +5693,189 @@ def _extract_intramolecular_geometry_record(
         "has_hbond_like_candidate": bool(best_candidate and best_candidate.get("hbond_like_geometry")),
         "available_geometry_descriptors": available_geometry_descriptors,
     }
+
+
+def _geometry_contact_proximity_descriptor(contact: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(contact, dict):
+        return {
+            "matching_contact_found": False,
+            "donor_atom_index": None,
+            "hydrogen_atom_index": None,
+            "acceptor_atom_index": None,
+            "topological_separation_bonds": None,
+            "donor_acceptor_distance_angstrom": None,
+            "hydrogen_acceptor_distance_angstrom": None,
+        }
+    return {
+        "matching_contact_found": True,
+        "donor_atom_index": contact.get("donor_atom_index"),
+        "hydrogen_atom_index": contact.get("hydrogen_atom_index"),
+        "acceptor_atom_index": contact.get("acceptor_atom_index"),
+        "topological_separation_bonds": contact.get("topological_separation_bonds"),
+        "donor_acceptor_distance_angstrom": contact.get("donor_acceptor_distance_angstrom"),
+        "hydrogen_acceptor_distance_angstrom": contact.get("hydrogen_acceptor_distance_angstrom"),
+    }
+
+
+def _geometry_contact_orientation_descriptor(contact: dict[str, Any] | None) -> dict[str, Any]:
+    if not isinstance(contact, dict):
+        return {
+            "matching_contact_found": False,
+            "donor_atom_index": None,
+            "hydrogen_atom_index": None,
+            "acceptor_atom_index": None,
+            "donor_hydrogen_acceptor_angle_deg": None,
+            "local_planarity_rmsd_angstrom": None,
+            "hbond_like_geometry": False,
+        }
+    return {
+        "matching_contact_found": True,
+        "donor_atom_index": contact.get("donor_atom_index"),
+        "hydrogen_atom_index": contact.get("hydrogen_atom_index"),
+        "acceptor_atom_index": contact.get("acceptor_atom_index"),
+        "donor_hydrogen_acceptor_angle_deg": contact.get("donor_hydrogen_acceptor_angle_deg"),
+        "local_planarity_rmsd_angstrom": contact.get("local_planarity_rmsd_angstrom"),
+        "hbond_like_geometry": bool(contact.get("hbond_like_geometry")),
+    }
+
+
+def _classify_esipt_geometry_roles(
+    *,
+    prepared: PreparedStructure,
+    symbols: Sequence[str],
+    adjacency: dict[int, set[int]],
+) -> dict[str, Any]:
+    phenolic_oh_donor_indices = _fallback_phenolic_oh_donor_indices(symbols=symbols, adjacency=adjacency)
+    imine_hydrazone_acceptor_indices = _fallback_imine_hydrazone_n_indices(
+        symbols=symbols,
+        adjacency=adjacency,
+    )
+    typing_mode = "connectivity_heuristic"
+    rdkit_mol = _load_rdkit_mol_for_geometry_roles(prepared)
+    if rdkit_mol is not None and rdkit_mol.GetNumAtoms() == len(symbols):
+        rdkit_phenolic = _rdkit_phenolic_oh_donor_indices(rdkit_mol)
+        rdkit_imine = _rdkit_imine_hydrazone_n_indices(rdkit_mol)
+        if rdkit_phenolic or rdkit_imine:
+            phenolic_oh_donor_indices = rdkit_phenolic or phenolic_oh_donor_indices
+            imine_hydrazone_acceptor_indices = rdkit_imine or imine_hydrazone_acceptor_indices
+            typing_mode = "rdkit_bond_roles"
+    return {
+        "typing_mode": typing_mode,
+        "phenolic_oh_donor_indices": phenolic_oh_donor_indices,
+        "imine_hydrazone_acceptor_indices": imine_hydrazone_acceptor_indices,
+    }
+
+
+def _load_rdkit_mol_for_geometry_roles(prepared: PreparedStructure) -> Any | None:
+    try:
+        from rdkit import Chem
+    except Exception:
+        return None
+    try:
+        return Chem.MolFromMolFile(str(prepared.sdf_path), removeHs=False)
+    except Exception:
+        return None
+
+
+def _fallback_phenolic_oh_donor_indices(
+    *,
+    symbols: Sequence[str],
+    adjacency: dict[int, set[int]],
+) -> set[int]:
+    donor_indices: set[int] = set()
+    for atom_index, symbol in enumerate(symbols):
+        if symbol != "O":
+            continue
+        neighbors = adjacency.get(atom_index, set())
+        if not any(symbols[neighbor] == "H" for neighbor in neighbors):
+            continue
+        if any(symbols[neighbor] == "C" for neighbor in neighbors):
+            donor_indices.add(atom_index)
+    return donor_indices
+
+
+def _fallback_imine_hydrazone_n_indices(
+    *,
+    symbols: Sequence[str],
+    adjacency: dict[int, set[int]],
+) -> set[int]:
+    acceptor_indices: set[int] = set()
+    for atom_index, symbol in enumerate(symbols):
+        if symbol != "N":
+            continue
+        neighbors = adjacency.get(atom_index, set())
+        if any(symbols[neighbor] == "H" for neighbor in neighbors):
+            continue
+        heavy_neighbors = [neighbor for neighbor in neighbors if symbols[neighbor] != "H"]
+        if not heavy_neighbors:
+            continue
+        if len(heavy_neighbors) > 2:
+            continue
+        if any(symbols[neighbor] in {"C", "N"} for neighbor in heavy_neighbors):
+            acceptor_indices.add(atom_index)
+    return acceptor_indices
+
+
+def _rdkit_phenolic_oh_donor_indices(mol: Any) -> set[int]:
+    donor_indices: set[int] = set()
+    for atom in mol.GetAtoms():
+        if atom.GetAtomicNum() != 8:
+            continue
+        neighbors = list(atom.GetNeighbors())
+        if not any(neighbor.GetAtomicNum() == 1 for neighbor in neighbors):
+            continue
+        carbon_neighbors = [neighbor for neighbor in neighbors if neighbor.GetAtomicNum() == 6]
+        if not carbon_neighbors:
+            continue
+        if any(neighbor.GetIsAromatic() for neighbor in carbon_neighbors):
+            donor_indices.add(atom.GetIdx())
+            continue
+        if any(str(neighbor.GetHybridization()) in {"SP2", "SP"} for neighbor in carbon_neighbors):
+            donor_indices.add(atom.GetIdx())
+            continue
+        donor_indices.add(atom.GetIdx())
+    return donor_indices
+
+
+def _rdkit_imine_hydrazone_n_indices(mol: Any) -> set[int]:
+    acceptor_indices: set[int] = set()
+    for atom in mol.GetAtoms():
+        if atom.GetAtomicNum() != 7:
+            continue
+        if atom.GetFormalCharge() > 0 or atom.GetTotalNumHs() > 0:
+            continue
+        if _rdkit_is_imine_like_nitrogen(atom) or _rdkit_is_hydrazone_like_nitrogen(atom):
+            acceptor_indices.add(atom.GetIdx())
+    return acceptor_indices
+
+
+def _rdkit_is_imine_like_nitrogen(atom: Any) -> bool:
+    for bond in atom.GetBonds():
+        neighbor = bond.GetOtherAtom(atom)
+        if neighbor.GetAtomicNum() != 6:
+            continue
+        if _rdkit_bond_is_multiple_or_aromatic(bond):
+            return True
+    return False
+
+
+def _rdkit_is_hydrazone_like_nitrogen(atom: Any) -> bool:
+    for bond in atom.GetBonds():
+        neighbor = bond.GetOtherAtom(atom)
+        if neighbor.GetAtomicNum() != 7:
+            continue
+        for neighbor_bond in neighbor.GetBonds():
+            second = neighbor_bond.GetOtherAtom(neighbor)
+            if second.GetIdx() == atom.GetIdx() or second.GetAtomicNum() != 6:
+                continue
+            if _rdkit_bond_is_multiple_or_aromatic(neighbor_bond):
+                return True
+    return False
+
+
+def _rdkit_bond_is_multiple_or_aromatic(bond: Any) -> bool:
+    bond_type = str(bond.GetBondType())
+    return bond_type in {"DOUBLE", "TRIPLE", "AROMATIC"}
 
 
 def _infer_bond_adjacency(
@@ -6006,8 +6277,16 @@ def _humanize_descriptor_name(name: str) -> str:
         "ground_to_excited_transition_dipoles": "ground-to-excited transition dipoles",
         "excited_to_excited_transition_dipoles": "excited-to-excited transition dipoles",
         "molecular_orbital_files": "molecular-orbital files",
+        "geometry_descriptor": "geometry descriptor",
+        "intramolecular_geometry_descriptors": "intramolecular geometry descriptors",
         "intramolecular_hbond_candidates": "intramolecular H-bond candidates",
         "best_intramolecular_hbond": "best intramolecular H-bond",
+        "intramolecular_oh_n_proximity": "intramolecular O-H···N proximity",
+        "intramolecular_oh_n_orientation": "intramolecular O-H···N orientation",
+        "best_intramolecular_oh_n_contact": "best intramolecular O-H···N contact",
+        "phenolic_oh_to_imine_n_proximity": "phenolic O-H to imine/hydrazone N proximity",
+        "phenolic_oh_to_imine_n_orientation": "phenolic O-H to imine/hydrazone N orientation",
+        "best_phenolic_oh_to_imine_n_contact": "best phenolic O-H to imine/hydrazone N contact",
         "local_planarity_proxy": "local planarity proxy",
     }
     return mapping.get(normalized, name.replace("_", " "))

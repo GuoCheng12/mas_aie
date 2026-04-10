@@ -2086,7 +2086,14 @@ def test_amesp_extract_geometry_descriptors_from_bundle_reuses_baseline_bundle_a
                 artifact_bundle_id="round_02_baseline_bundle",
                 artifact_source_round=2,
                 artifact_scope="baseline_bundle",
-                descriptor_scope=["intramolecular_hbond_candidates", "local_planarity_proxy"],
+                descriptor_scope=[
+                    "intramolecular_hbond_candidates",
+                    "local_planarity_proxy",
+                    "intramolecular_oh_n_proximity",
+                    "intramolecular_oh_n_orientation",
+                    "phenolic_OH_to_imine_N_proximity",
+                    "phenolic_OH_to_imine_N_orientation",
+                ],
                 deliverables=[
                     "geometry-descriptor availability summary",
                     "bounded geometry descriptor records",
@@ -2109,12 +2116,23 @@ def test_amesp_extract_geometry_descriptors_from_bundle_reuses_baseline_bundle_a
     assert geometry_result.reused_existing_artifacts is True
     assert geometry_result.route_summary["artifact_scope"] == "baseline_bundle"
     assert geometry_result.route_summary["geometry_proxy_availability"] == "available"
+    assert "geometry_descriptor" in geometry_result.route_summary["available_geometry_descriptors"]
     assert "intramolecular_hbond_candidates" in geometry_result.route_summary["available_geometry_descriptors"]
+    assert "intramolecular_oh_n_proximity" in geometry_result.route_summary["available_geometry_descriptors"]
+    assert "intramolecular_oh_n_orientation" in geometry_result.route_summary["available_geometry_descriptors"]
+    assert "phenolic_oh_to_imine_n_proximity" in geometry_result.route_summary["available_geometry_descriptors"]
+    assert "phenolic_oh_to_imine_n_orientation" in geometry_result.route_summary["available_geometry_descriptors"]
     assert len(geometry_result.parsed_snapshot_records) == 1
     record = geometry_result.parsed_snapshot_records[0]
     assert record["donor_atom_count"] == 1
     assert record["acceptor_atom_count"] >= 2
     assert record["best_intramolecular_hbond"] is not None
+    assert record["best_intramolecular_oh_n_contact"] is not None
+    assert record["best_phenolic_oh_to_imine_n_contact"] is not None
+    assert record["intramolecular_oh_n_proximity"]["matching_contact_found"] is True
+    assert record["intramolecular_oh_n_orientation"]["matching_contact_found"] is True
+    assert record["phenolic_oh_to_imine_n_proximity"]["matching_contact_found"] is True
+    assert record["phenolic_oh_to_imine_n_orientation"]["matching_contact_found"] is True
     assert record["has_hbond_like_candidate"] is True
     assert record["local_planarity_proxy"] is not None
     assert geometry_result.missing_deliverables == []
