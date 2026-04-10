@@ -8,6 +8,7 @@ from typer.testing import CliRunner
 from aie_mas.cli.run_case import (
     LiveRunTracer,
     app,
+    build_planner_synthesis_payload,
     build_summary_payload,
     prepare_report_paths,
     run_case_workflow,
@@ -208,6 +209,11 @@ def test_summary_payload_groups_information_by_round(tmp_path: Path, install_spe
     assert first_round["working_memory"]["agent_reports"][0]["remaining_local_uncertainty"]
     assert "local_uncertainty_summary" in first_round["working_memory"]
 
+    planner_synthesis = build_planner_synthesis_payload(state)
+    assert planner_synthesis["猜想"]["当前结论"] == state.current_hypothesis
+    assert planner_synthesis["推理证据"]["关键轮次"]
+    assert planner_synthesis["建议"]
+
 
 def test_cli_writes_report_files_and_prints_concise_summary(
     tmp_path: Path,
@@ -241,14 +247,17 @@ def test_cli_writes_report_files_and_prints_concise_summary(
     terminal_summary = _parse_terminal_summary(result.stdout)
     summary_path = Path(terminal_summary["summary_file"])
     full_state_path = Path(terminal_summary["full_state_file"])
+    planner_synthesis_path = Path(terminal_summary["planner_synthesis_file"])
 
     assert summary_path.exists()
     assert full_state_path.exists()
+    assert planner_synthesis_path.exists()
     assert summary_path.parent.parent == report_dir
     assert terminal_summary["case_id"] == summary_path.parent.name.split("_", 1)[1]
 
     summary_payload = json.loads(summary_path.read_text(encoding="utf-8"))
     full_state_payload = json.loads(full_state_path.read_text(encoding="utf-8"))
+    planner_synthesis_payload = json.loads(planner_synthesis_path.read_text(encoding="utf-8"))
 
     assert summary_payload["case_id"] == terminal_summary["case_id"]
     assert summary_payload["current_hypothesis"] == terminal_summary["current_hypothesis"]
@@ -261,6 +270,11 @@ def test_cli_writes_report_files_and_prints_concise_summary(
     assert summary_payload["capability_assessment"]
     assert summary_payload["report_dir"] == str(summary_path.parent)
     assert terminal_summary["report_dir"] == str(summary_path.parent)
+    assert planner_synthesis_payload["case_id"] == summary_payload["case_id"]
+    assert planner_synthesis_payload["smiles"] == summary_payload["smiles"]
+    assert planner_synthesis_payload["猜想"]["当前结论"] == summary_payload["current_hypothesis"]
+    assert planner_synthesis_payload["推理证据"]["关键轮次"]
+    assert planner_synthesis_payload["建议"]
     assert len(summary_payload["rounds"]) == summary_payload["working_memory_rounds"]
     assert summary_payload["rounds"][0]["action_taken"] == "macro, microscopic"
     assert summary_payload["rounds"][0]["planner"]["selected_next_action"] in {"microscopic", "verifier"}

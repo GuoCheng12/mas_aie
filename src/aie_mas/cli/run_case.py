@@ -6,7 +6,7 @@ import sys
 import uuid
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 import typer
 
@@ -661,6 +661,107 @@ def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, obj
     }
 
 
+def _planner_synthesis_status(state: AieMasState, final_answer: dict[str, Any]) -> str:
+    if state.finalize:
+        mode = str(final_answer.get("finalization_mode") or "")
+        if mode == "decisive":
+            return "decisive"
+        if mode == "best_available":
+            return "best_available"
+        return "finalized"
+    return "incomplete"
+
+
+def _append_unique_text(items: list[str], text: object) -> None:
+    normalized = str(text or "").strip()
+    if not normalized or normalized in items:
+        return
+    items.append(normalized)
+
+
+def _key_round_evidence(state: AieMasState) -> list[dict[str, object]]:
+    entries = list(state.working_memory)
+    if not entries:
+        return []
+    selected: list[Any] = []
+    selected.append(entries[0])
+    verifier_entry = next((entry for entry in reversed(entries) if "verifier" in entry.action_taken), None)
+    if verifier_entry is not None and verifier_entry not in selected:
+        selected.append(verifier_entry)
+    last_entry = entries[-1]
+    if last_entry not in selected:
+        selected.append(last_entry)
+    payload: list[dict[str, object]] = []
+    for entry in selected:
+        payload.append(
+            {
+                "round_id": entry.round_id,
+                "current_hypothesis": entry.current_hypothesis,
+                "confidence": entry.confidence,
+                "action_taken": entry.action_taken,
+                "main_gap": entry.main_gap,
+                "evidence_summary": entry.evidence_summary,
+                "diagnosis_summary": entry.diagnosis_summary,
+            }
+        )
+    return payload
+
+
+def build_planner_synthesis_payload(state: AieMasState) -> dict[str, object]:
+    final_answer = state.final_answer or {}
+    guess_summary = (
+        final_answer.get("final_hypothesis_rationale")
+        or final_answer.get("diagnosis")
+        or state.latest_evidence_summary
+        or "No final planner synthesis was available."
+    )
+    reasoning_evidence: list[str] = []
+    for value in (
+        final_answer.get("diagnosis"),
+        final_answer.get("final_hypothesis_rationale"),
+        final_answer.get("verifier_supplement_summary"),
+        final_answer.get("pairwise_resolution_summary"),
+        final_answer.get("closure_justification_summary"),
+        final_answer.get("portfolio_screening_summary"),
+        final_answer.get("capability_assessment"),
+        state.latest_evidence_summary,
+    ):
+        _append_unique_text(reasoning_evidence, value)
+
+    suggestions: list[str] = []
+    main_gap = str(state.latest_main_gap or final_answer.get("main_gap") or "").strip()
+    if main_gap:
+        suggestions.append(f"如果需要更高置信度，优先补足当前主缺口：{main_gap}")
+    if final_answer.get("coverage_debt_hypotheses"):
+        debt = ", ".join(str(item) for item in (final_answer.get("coverage_debt_hypotheses") or []))
+        suggestions.append(f"当前仍有未清 coverage debt：{debt}。后续应优先做直接筛查或正式标记 blocked_by_capability。")
+    if final_answer.get("finalization_mode") == "best_available":
+        suggestions.append("当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。")
+    if final_answer.get("pairwise_task_outcome") == "best_available_tool_blocked" or final_answer.get("closure_justification_status") == "blocked":
+        suggestions.append("当前主要受能力边界限制。若要继续推进，应优先补充能直接输出关键判别量的新 microscopic capability 或更针对性的 verifier 外证。")
+    if not suggestions:
+        suggestions.append("当前流程已形成可用结论；如需进一步提升说服力，可补充更直接的分子特异性判别证据。")
+
+    return {
+        "case_id": state.case_id,
+        "smiles": state.smiles,
+        "生成方式": "state_derived_planner_synthesis_v1",
+        "猜想": {
+            "当前结论": state.current_hypothesis,
+            "置信度": state.confidence,
+            "次优假设": state.runner_up_hypothesis,
+            "次优置信度": state.runner_up_confidence,
+            "结论状态": _planner_synthesis_status(state, final_answer),
+            "摘要": guess_summary,
+        },
+        "推理证据": {
+            "最终证据摘要": reasoning_evidence,
+            "关键轮次": _key_round_evidence(state),
+        },
+        "建议": suggestions,
+    }
+
+
 def build_rounds_payload(state: AieMasState) -> list[dict[str, object]]:
     rounds: list[dict[str, object]] = []
     for entry in state.working_memory:
@@ -744,6 +845,7 @@ def prepare_report_paths(config: AieMasConfig, case_id: str) -> dict[str, Path]:
         "report_dir": report_dir,
         "summary_path": report_dir / "summary.json",
         "full_state_path": report_dir / "full_state.json",
+        "planner_synthesis_path": report_dir / "planner_synthesis.json",
         "live_trace_path": report_dir / "live_trace.jsonl",
         "live_status_path": report_dir / "live_status.md",
     }
@@ -759,8 +861,10 @@ def write_run_report(
     report_dir = report_paths["report_dir"]
     summary_path = report_paths["summary_path"]
     full_state_path = report_paths["full_state_path"]
+    planner_synthesis_path = report_paths["planner_synthesis_path"]
     summary_payload = build_summary_payload(state, report_dir)
     full_state_payload = build_full_state_payload(config, state, report_dir)
+    planner_synthesis_payload = build_planner_synthesis_payload(state)
 
     summary_path.write_text(
         json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n",
@@ -768,6 +872,10 @@ def write_run_report(
     )
     full_state_path.write_text(
         json.dumps(full_state_payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+    planner_synthesis_path.write_text(
+        json.dumps(planner_synthesis_payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
     return {
@@ -791,6 +899,7 @@ def render_terminal_summary(
         f"live_status_file: {report_paths['live_status_path']}",
         f"summary_file: {report_paths['summary_path']}",
         f"full_state_file: {report_paths['full_state_path']}",
+        f"planner_synthesis_file: {report_paths['planner_synthesis_path']}",
     ]
     typer.echo("\n".join(lines))
 
