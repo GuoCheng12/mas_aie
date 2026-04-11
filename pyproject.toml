@@ -34,6 +34,7 @@ linux-runtime = [
 [project.scripts]
 aie-mas-run-case = "aie_mas.cli.run_case:cli"
 aie-mas-benchmark-dataset = "aie_mas.cli.benchmark_dataset:cli"
+aie-mas-benchmark-zero-shot = "aie_mas.cli.benchmark_zero_shot:cli"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
