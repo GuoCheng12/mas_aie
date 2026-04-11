@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -8,10 +9,13 @@ from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, Field
 
+from aie_mas.chem.structure_prep import StructurePrepError
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import HypothesisEntry
 from aie_mas.llm.openai_compatible import OpenAICompatiblePlannerClient
+from aie_mas.tools.shared_structure import SharedStructurePrepTool
 from aie_mas.utils.prompts import PromptRepository
+from aie_mas.utils.smiles import extract_smiles_features
 
 ALLOWED_ZERO_SHOT_LABELS = ("ICT", "TICT", "ESIPT", "neutral aromatic", "unknown")
 _LABEL_MAP = {
@@ -57,16 +61,29 @@ class ZeroShotPredictor:
         config: AieMasConfig,
         prompt_repo: PromptRepository | None = None,
         client: OpenAICompatiblePlannerClient | None = None,
+        structure_summary_provider: Optional[Callable[[str, str], dict[str, Any]]] = None,
     ) -> None:
         self._config = config
         self._prompt_repo = prompt_repo or PromptRepository(config.prompts_dir)
         self._client = client or OpenAICompatiblePlannerClient(config)
+        self._shared_structure_tool = SharedStructurePrepTool()
+        self._config.ensure_runtime_dirs()
+        self._structure_summary_provider = structure_summary_provider or self._build_structure_summary
 
-    def predict(self, smiles: str) -> dict[str, Any]:
+    def predict(self, smiles: str, *, label: str | None = None) -> dict[str, Any]:
         system_prompt = self._prompt_repo.read_text("zero_shot_mechanism")
+        case_label = label or _default_prediction_label(smiles)
+        structure_summary = self._structure_summary_provider(smiles, case_label)
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"SMILES:\n{smiles}"},
+            {
+                "role": "user",
+                "content": (
+                    f"SMILES:\n{smiles}\n\n"
+                    "STRUCTURE SUMMARY (JSON):\n"
+                    f"{json.dumps(structure_summary, ensure_ascii=False, indent=2)}"
+                ),
+            },
         ]
         response = self._client.invoke_json_schema(
             messages=messages,
@@ -95,6 +112,45 @@ class ZeroShotPredictor:
             ),
         }
 
+    def _build_structure_summary(self, smiles: str, label: str) -> dict[str, Any]:
+        workdir = self._config.runtime_dir / "zero_shot_shared" / label
+        try:
+            payload = self._shared_structure_tool.invoke(
+                smiles=smiles,
+                label=label,
+                workdir=workdir,
+            )
+        except StructurePrepError as exc:
+            return _smiles_only_structure_summary(smiles, error=f"{exc.code}: {exc.message}")
+        except Exception as exc:  # pragma: no cover
+            return _smiles_only_structure_summary(smiles, error=f"{type(exc).__name__}: {exc}")
+
+        shared_context = payload.get("shared_structure_context")
+        identity_context = payload.get("molecule_identity_context")
+        if shared_context is None:
+            return _smiles_only_structure_summary(smiles, error="shared_structure_missing")
+        return {
+            "structure_source": "shared_prepared_structure",
+            "canonical_smiles": shared_context.canonical_smiles,
+            "molecular_formula": getattr(identity_context, "molecular_formula", None),
+            "charge": shared_context.charge,
+            "multiplicity": shared_context.multiplicity,
+            "atom_count": shared_context.atom_count,
+            "conformer_count": shared_context.conformer_count,
+            "selected_conformer_id": shared_context.selected_conformer_id,
+            "rotatable_bond_count": shared_context.rotatable_bond_count,
+            "aromatic_ring_count": shared_context.aromatic_ring_count,
+            "ring_system_count": shared_context.ring_system_count,
+            "hetero_atom_count": shared_context.hetero_atom_count,
+            "branch_point_count": shared_context.branch_point_count,
+            "donor_acceptor_partition_proxy": shared_context.donor_acceptor_partition_proxy,
+            "planarity_proxy": shared_context.planarity_proxy,
+            "compactness_proxy": shared_context.compactness_proxy,
+            "torsion_candidate_count": shared_context.torsion_candidate_count,
+            "principal_span_proxy": shared_context.principal_span_proxy,
+            "conformer_dispersion_proxy": shared_context.conformer_dispersion_proxy,
+        }
+
 
 def evaluate_zero_shot_rows(
     rows: list[dict[str, str]],
@@ -109,7 +165,10 @@ def evaluate_zero_shot_rows(
         if progress_callback is not None:
             progress_callback(index, total, row)
         try:
-            prediction = predictor.predict(row["SMILES"])
+            prediction = predictor.predict(
+                row["SMILES"],
+                label=_default_prediction_label(f"{row.get('code') or 'case'}_{row.get('id') or index}"),
+            )
         except Exception as exc:  # pragma: no cover
             result_row = {
                 **row,
@@ -173,7 +232,7 @@ def summarize_zero_shot_results(
             }
         )
     return {
-        "mode": "zero_shot",
+        "mode": "structure_aware_single_shot",
         "model": model,
         "supported_mechanism_labels": list(ALLOWED_ZERO_SHOT_LABELS),
         "dataset_row_count": len(dataset_rows),
@@ -324,7 +383,10 @@ def _normalize_reweight_explanation(
             continue
         normalized[label] = text.strip()
     for entry in hypothesis_pool:
-        normalized.setdefault(entry.name, f"Assigned confidence {float(entry.confidence or 0.0):.3f} from the SMILES-only zero-shot read.")
+        normalized.setdefault(
+            entry.name,
+            f"Assigned confidence {float(entry.confidence or 0.0):.3f} from the structure-aware single-shot read.",
+        )
     return normalized
 
 
@@ -347,3 +409,34 @@ def _normalize_label(raw_label: str | None) -> str | None:
         return None
     collapsed = re.sub(r"[\s_-]+", " ", raw_label.strip().lower())
     return _LABEL_MAP.get(collapsed)
+
+
+def _default_prediction_label(raw_text: str) -> str:
+    digest = hashlib.sha1(raw_text.encode("utf-8")).hexdigest()[:12]
+    return f"zero_shot_{digest}"
+
+
+def _smiles_only_structure_summary(smiles: str, *, error: str | None = None) -> dict[str, Any]:
+    features = extract_smiles_features(smiles)
+    return {
+        "structure_source": "smiles_only_fallback",
+        "fallback_reason": error,
+        "canonical_smiles": smiles,
+        "molecular_formula": None,
+        "charge": None,
+        "multiplicity": None,
+        "atom_count": None,
+        "conformer_count": 0,
+        "selected_conformer_id": None,
+        "rotatable_bond_count": max(0, features.branch_point_count // 2),
+        "aromatic_ring_count": max(0, features.aromatic_atom_count // 6),
+        "ring_system_count": max(0, features.ring_digit_count // 2),
+        "hetero_atom_count": features.hetero_atom_count,
+        "branch_point_count": features.branch_point_count,
+        "donor_acceptor_partition_proxy": min(1.0, float(features.donor_acceptor_proxy)),
+        "planarity_proxy": round(min(1.0, features.conjugation_proxy / 10.0), 6),
+        "compactness_proxy": round(max(0.0, 1.0 - min(features.length / 120.0, 1.0)), 6),
+        "torsion_candidate_count": features.branch_point_count,
+        "principal_span_proxy": round(min(features.length / 10.0, 20.0), 6),
+        "conformer_dispersion_proxy": 0.0,
+    }

@@ -78,6 +78,22 @@ def test_zero_shot_predictor_normalizes_pool_and_reasoning(tmp_path: Path) -> No
         config=config,
         prompt_repo=PromptRepository(PROMPTS_DIR),
         client=OpenAICompatiblePlannerClient(config, client=fake_client),
+        structure_summary_provider=lambda smiles, label: {
+            "structure_source": "shared_prepared_structure",
+            "canonical_smiles": smiles,
+            "label": label,
+            "rotatable_bond_count": 4,
+            "aromatic_ring_count": 3,
+            "ring_system_count": 2,
+            "hetero_atom_count": 2,
+            "branch_point_count": 5,
+            "donor_acceptor_partition_proxy": 0.5,
+            "planarity_proxy": 0.81,
+            "compactness_proxy": 0.42,
+            "torsion_candidate_count": 4,
+            "principal_span_proxy": 10.2,
+            "conformer_dispersion_proxy": 0.3,
+        },
     )
 
     result = predictor.predict("C1=CC=CC=C1")
@@ -88,6 +104,9 @@ def test_zero_shot_predictor_normalizes_pool_and_reasoning(tmp_path: Path) -> No
     assert {entry["name"] for entry in pool} == {"ICT", "TICT", "ESIPT", "neutral aromatic", "unknown"}
     assert "Neutral aromatic remains the main fallback" in result["reasoning_summary"]
     assert fake_client.chat.completions.calls[0]["model"] == "gpt-4.1-mini"
+    prompt_payload = fake_client.chat.completions.calls[0]["messages"][1]["content"]
+    assert "STRUCTURE SUMMARY" in prompt_payload
+    assert "rotatable_bond_count" in prompt_payload
 
 
 def test_zero_shot_cli_writes_outputs(monkeypatch, tmp_path: Path) -> None:
@@ -97,8 +116,8 @@ def test_zero_shot_cli_writes_outputs(monkeypatch, tmp_path: Path) -> None:
         def __init__(self, *args, **kwargs) -> None:
             del args, kwargs
 
-        def predict(self, smiles: str) -> dict[str, object]:
-            del smiles
+        def predict(self, smiles: str, *, label: str | None = None) -> dict[str, object]:
+            del smiles, label
             return {
                 "predicted_top1": "ICT",
                 "predicted_confidence": 0.61,
