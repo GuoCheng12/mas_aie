@@ -41,10 +41,13 @@ You will be given:
 - `max_rounds`
 - `rounds_remaining_including_current`
 - `shared_structure_status`
-- `shared_structure_context`
 - `molecule_identity_status`
-- `molecule_identity_context`
 - `runtime_context`
+
+Initial-stage evidence rule:
+- In the initial Planner stage, use `SMILES` as the chemistry input.
+- Treat `shared_structure_status` and `molecule_identity_status` only as readiness signals for downstream agent execution.
+- Do not use prepared-structure descriptors or molecule-identity metadata as first-layer mechanism evidence in this initial inference step.
 
 Round-budget rule:
 - The Planner must be aware of the current round and the total allowed rounds.

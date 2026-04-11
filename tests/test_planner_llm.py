@@ -535,7 +535,8 @@ def test_openai_planner_backend_invokes_chat_completions_with_configured_model(t
     assert "current_round_index" in prompt_payload
     assert "max_rounds" in prompt_payload
     assert "shared_structure_status" in prompt_payload
-    assert "shared_structure_context" in prompt_payload
+    assert "shared_structure_context" not in prompt_payload
+    assert "molecule_identity_context" not in prompt_payload
     assert "low-cost" in prompt_payload.lower()
 
 
