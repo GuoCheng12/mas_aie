@@ -1,0 +1,21 @@
+id,code,SMILES,mechanism_id
+2039.0,CBBHA-8,O=C(N/N=C/C1=CC(C(C2=CC(/C=N/NC(C3=CC=C(OCCCCCCCC)C=C3)=O)=C(O)C=C2)=O)=CC=C1O)C4=CC=C(OCCCCCCCC)C=C4,ESIPT
+1067.0,o-TPEPy,c1(/C(c2c(c3ccc4c5c3ccc6cccc(cc4)c56)cccc2)=C(c7ccccc7)/c8ccccc8)ccccc1,neutral aromatic
+73.0,DM-TPE-PA,O=Cc1ccc(c2ccc(/C(c3ccccc3)=C(c4ccc(OC)cc4)/c5ccc(OC)cc5)cc2)cc1,ICT
+37.0,TTB,C1(C2=CC=C(N(C3=CC=CC=C3)C4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)/C7=CC=CC=C7)C=C4)C=C2)=CC=C(C8=CC=C(N(C9=CC=CC=C9)C%10=CC=C(/C(C%11=CC=CC=C%11)=C(C%12=CC=CC=C%12)/C%13=CC=CC=C%13)C=C%10)C=C8)C%14=NSN=C1%14,ICT
+21.0,ESIPT-N3,N#N=NCCOc4ccc(/C=N/N=c2c1ccccc1c3ccccc23)c(O)c4,ESIPT
+2156.0,DMF-BP-PXZ,O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C5=CC6=C(C7=C(C6(C)C)C=CC=C7)C=C5,ICT
+2012.0,TNZtPPI,CC(C)(C)C(C=C1)=CC=C1N2C3=C(C(C=CC=C4)=C4C5=C3C=CC=C5)N=C2C(C=C6)=CC=C6C(C7=NSN=C78)=C9C(C=CC=C9)=C8C(C=C%10)=CC=C%10N(C%11=CC=CC=C%11)C%12=CC=CC=C%12,TICT
+1979.0,TPA-2Ph-SCP,C[N+](C=C1)=CC=C1C(C=C2)=CC=C2/C([N+]#[C-])=C/C(C=C3)=CC=C3/C=C(C4=CC=CC=C4)/C(C=C5)=CC=C5N(C6=CC=CC=C6)C7=CC=CC=C7,ICT
+291.0,(E)-TPEDEPy,c1(C#Cc2ccncc2)ccc(/C(c3ccccc3)=C(c4ccccc4)/c5ccc(C#Cc6ccncc6)cc5)cc1,neutral aromatic
+1075.0,(TPE)2SF,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=CC=C6)C=C3)C=C2)C7(C8=C(C=CC=C8)C9=C7C=CC=C9)C%10=C1C=CC(C%11=CC=C(/C(C%12=CC=CC=C%12)=C(C%13=CC=CC=C%13)\C%14=CC=CC=C%14)C=C%11)=C%10,neutral aromatic
+1074.0,TPE(PF)2,C12=C(C=C(C3=CC=C(/C(C4=CC=CC=C4)=C(C5=CC=CC=C5)/C6=CC=C(C(C=C7)=CC8=C7C(C=CC=C9)=C9C8(C%10=CC=CC=C%10)C%11=CC=CC=C%11)C=C6)C=C3)C=C2)C(C%12=CC=CC=C%12)(C%13=CC=CC=C%13)C%14=C1C=CC=C%14,neutral aromatic
+1991.0,BTPE-C4,C1(/C(C2=CC=CC=C2)=C(C3=CC=C(OCCCCOC4=CC=C(/C(C5=CC=CC=C5)=C(C6=CC=CC=C6)/C7=CC=CC=C7)C=C4)C=C3)C8=CC=CC=C8)=CC=CC=C1,ESIPT
+18.0,TPE-Tetrazole-1,c5ccc(/C(=C(c1ccccc1)\c3ccc(c2nnn[nH]2)cc3)c4ccccc4)cc5,neutral aromatic
+27.0,CM-i,N#Cc9nc(c4ccc(c3ccc(N(c1ccccc1)c2ccccc2)cc3)cc4)c(c8ccc(c7ccc(N(c5ccccc5)c6ccccc6)cc7)cc8)nc9C#N,ICT
+357.0,bBTAE-Pyr,C(=C(c1nc2ccccc2s1)c1nc2ccccc2s1)c1ccc2ccc3cccc4ccc1c2c34,ICT
+1072.0,l-TPEB,CC1=CC(C)=CC(C)=C1B(C2=C(C)C=C(C)C=C2C)C3=CC=C(C=C3)C(C=C4)=CC=C4C(C=C5)=CC=C5/C(C6=CC=CC=C6)=C(C7=CC=C(C8=CC=C(C9=CC=C(B(C%10=C(C)C=C(C)C=C%10C)C%11=C(C)C=C(C)C=C%11C)C=C9)C=C8)C=C7)\C%12=CC=CC=C%12,neutral aromatic
+1.0,TPE-IQ-2O,CCC[n+]6cc4ccc(/C(=C(c1ccc(OC)cc1)\c2ccc(OC)cc2)c3ccccc3)cc4c(c5ccccc5)c6c7ccccc7,ICT
+289.0,TPE-DOX,O=C(OCc1cc(C)cc(COC(NC2CC(CC3CC(C)(O)Cc4c(O)c(C(c5cccc(OC)c5C6=O)=O)c6c(O)c43)OC(C)C2O)=O)c1OCc7ccc(B8OC(C)(C)C(C)(C)O8)cc7)c9ccc(/C(c%10ccccc%10)=C(c%11ccccc%11)\c%12ccccc%12)cc9,neutral aromatic
+19.0,TPE-Tetrazole-2,c6ccc(/C(=C(c2ccc(c1nnn[nH]1)cc2)/c4ccc(c3nnn[nH]3)cc4)c5ccccc5)cc6,neutral aromatic
+316.0,SPOC-SQ,[O-]C1=C(N(c2ccc(Cl)cc2)c3ccc(Cl)cc3)C(/C1=[N+](c4ccc(Cl)cc4)/c5ccc(Cl)cc5)=O,ICT
