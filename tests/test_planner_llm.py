@@ -2601,3 +2601,57 @@ def test_working_memory_projection_exposes_esipt_typed_geometry_descriptors() ->
     }
     assert compact["structured_results"]["phenolic_oh_to_imine_n_proximity"]["matching_contact_found"] is True
     assert compact["structured_results"]["phenolic_oh_to_imine_n_orientation"]["matching_contact_found"] is True
+
+
+def test_planner_diagnosis_accepts_null_pairwise_fields(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            _round_response_json(
+                action="verifier",
+                pairwise_task_agent=None,
+                pairwise_task_completed_for_pair=None,
+                pairwise_task_rationale=None,
+                pairwise_resolution_mode=None,
+                pairwise_resolution_summary=None,
+                verifier_supplement_target_pair=None,
+                verifier_supplement_summary=None,
+                closure_justification_target_pair=None,
+                closure_justification_evidence_source=None,
+                closure_justification_basis=None,
+                closure_justification_summary=None,
+            )
+        ],
+    )
+
+    result = planner.plan_diagnosis(_base_state())
+
+    decision = result["decision"]
+    assert decision.action == "verifier"
+    assert decision.pairwise_task_agent is None
+    assert decision.pairwise_task_completed_for_pair is None
+
+
+def test_planner_diagnosis_normalizes_medium_screening_priority_to_normal(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            _round_response_json(
+                hypothesis_screening_ledger=[
+                    {
+                        "hypothesis": "ESIPT",
+                        "screening_status": "untested",
+                        "screening_priority": "medium",
+                        "evidence_families_covered": [],
+                        "screening_note": "Still needs a direct screen.",
+                    }
+                ]
+            )
+        ],
+    )
+
+    result = planner.plan_diagnosis(_base_state())
+
+    ledger = result["decision"].hypothesis_screening_ledger
+    assert ledger
+    assert ledger[0].screening_priority == "normal"

@@ -34,7 +34,7 @@ class PlannerInitialResponse(BaseModel):
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
-    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    hypothesis_screening_ledger: list["PlannerHypothesisScreeningRecordResponse"] = Field(default_factory=list)
     portfolio_screening_summary: str = ""
     screening_focus_hypotheses: list[str] = Field(default_factory=list)
     screening_focus_summary: str = ""
@@ -56,11 +56,11 @@ class PlannerInitialResponse(BaseModel):
     closure_justification_evidence_source: str = ""
     closure_justification_basis: str = ""
     closure_justification_summary: str = ""
-    pairwise_task_agent: str = ""
-    pairwise_task_completed_for_pair: str = ""
+    pairwise_task_agent: str | None = None
+    pairwise_task_completed_for_pair: str | None = None
     pairwise_task_outcome: str = "not_run"
-    pairwise_task_rationale: str = ""
-    pairwise_resolution_mode: str = ""
+    pairwise_task_rationale: str | None = None
+    pairwise_resolution_mode: str | None = None
     pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
     pairwise_resolution_summary: str = ""
     finalization_mode: str = "none"
@@ -73,7 +73,7 @@ class PlannerRoundResponse(BaseModel):
     portfolio_screening_complete: bool = False
     coverage_debt_hypotheses: list[str] = Field(default_factory=list)
     credible_alternative_hypotheses: list[str] = Field(default_factory=list)
-    hypothesis_screening_ledger: list[HypothesisScreeningRecord] = Field(default_factory=list)
+    hypothesis_screening_ledger: list["PlannerHypothesisScreeningRecordResponse"] = Field(default_factory=list)
     portfolio_screening_summary: str = ""
     screening_focus_hypotheses: list[str] = Field(default_factory=list)
     screening_focus_summary: str = ""
@@ -83,10 +83,10 @@ class PlannerRoundResponse(BaseModel):
     confidence: float
     needs_verifier: bool = False
     finalize: bool = False
-    task_instruction: str = ""
+    task_instruction: str | None = None
     agent_task_instructions: dict[str, str] = Field(default_factory=dict)
     hypothesis_uncertainty_note: str = "Hypothesis uncertainty has not been assessed."
-    final_hypothesis_rationale: str = ""
+    final_hypothesis_rationale: str | None = None
     capability_assessment: str = "Capability limits have not been assessed."
     stagnation_assessment: str = "Stagnation has not been assessed."
     contraction_reason: str = ""
@@ -99,24 +99,36 @@ class PlannerRoundResponse(BaseModel):
     capability_lesson_candidates: list[CapabilityLessonEntry] = Field(default_factory=list)
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
     decision_gate_status: DecisionGateStatus = "not_ready"
-    verifier_supplement_target_pair: str = ""
+    verifier_supplement_target_pair: str | None = None
     verifier_supplement_status: str = "missing"
     verifier_information_gain: str = "none"
     verifier_evidence_relation: str = "no_new_info"
-    verifier_supplement_summary: str = ""
-    closure_justification_target_pair: str = ""
+    verifier_supplement_summary: str | None = None
+    closure_justification_target_pair: str | None = None
     closure_justification_status: str = "missing"
-    closure_justification_evidence_source: str = ""
-    closure_justification_basis: str = ""
-    closure_justification_summary: str = ""
-    pairwise_task_agent: str = ""
-    pairwise_task_completed_for_pair: str = ""
+    closure_justification_evidence_source: str | None = None
+    closure_justification_basis: str | None = None
+    closure_justification_summary: str | None = None
+    pairwise_task_agent: str | None = None
+    pairwise_task_completed_for_pair: str | None = None
     pairwise_task_outcome: str = "not_run"
-    pairwise_task_rationale: str = ""
-    pairwise_resolution_mode: str = ""
+    pairwise_task_rationale: str | None = None
+    pairwise_resolution_mode: str | None = None
     pairwise_resolution_evidence_sources: list[str] = Field(default_factory=list)
-    pairwise_resolution_summary: str = ""
+    pairwise_resolution_summary: str | None = None
     finalization_mode: str = "none"
+
+
+class PlannerHypothesisScreeningRecordResponse(BaseModel):
+    hypothesis: str
+    screening_status: str = "untested"
+    screening_priority: str = "normal"
+    evidence_families_covered: list[str] = Field(default_factory=list)
+    screening_note: str | None = None
+
+
+PlannerInitialResponse.model_rebuild()
+PlannerRoundResponse.model_rebuild()
 
 
 ALLOWED_HYPOTHESIS_LABELS = ("ICT", "TICT", "ESIPT", "neutral aromatic", "unknown")
@@ -234,6 +246,10 @@ def _append_unique_detail(existing: str | None, addition: str) -> str:
         return normalized_existing
     separator = " " if normalized_existing.endswith((".", "!", "?")) else ". "
     return f"{normalized_existing}{separator}{normalized_addition}"
+
+
+def _safe_strip(value: Any) -> str:
+    return str(value or "").strip()
 
 
 def _structured_results_from_report(report: Any) -> dict[str, Any]:
@@ -676,8 +692,45 @@ def _normalize_hypothesis_name_list(
     return normalized
 
 
+def _normalize_screening_status(raw_status: str | None) -> str:
+    if raw_status in {
+        "untested",
+        "indirectly_weakened",
+        "directly_screened",
+        "blocked_by_capability",
+        "dropped_with_reason",
+    }:
+        return raw_status
+    return "untested"
+
+
+def _normalize_screening_priority(raw_priority: str | None) -> str:
+    if raw_priority in {"none", "low", "normal", "high"}:
+        return raw_priority
+    if raw_priority == "medium":
+        return "normal"
+    return "normal"
+
+
+def _normalize_evidence_family_list(raw_items: list[str]) -> list[str]:
+    allowed = {
+        "geometry_precondition",
+        "state_ordering_brightness",
+        "torsion_sensitivity",
+        "charge_localization",
+        "external_precedent",
+        "raw_artifact_inspection",
+    }
+    normalized: list[str] = []
+    for item in raw_items:
+        label = str(item or "").strip()
+        if label in allowed and label not in normalized:
+            normalized.append(label)
+    return normalized
+
+
 def _normalize_hypothesis_screening_ledger(
-    raw_ledger: list[HypothesisScreeningRecord],
+    raw_ledger: list[PlannerHypothesisScreeningRecordResponse],
     *,
     hypothesis_pool: list[HypothesisEntry],
 ) -> list[HypothesisScreeningRecord]:
@@ -689,9 +742,9 @@ def _normalize_hypothesis_screening_ledger(
             continue
         normalized[label] = HypothesisScreeningRecord(
             hypothesis=label,
-            screening_status=record.screening_status,
-            screening_priority=record.screening_priority,
-            evidence_families_covered=list(dict.fromkeys(record.evidence_families_covered)),
+            screening_status=_normalize_screening_status(record.screening_status),
+            screening_priority=_normalize_screening_priority(record.screening_priority),
+            evidence_families_covered=_normalize_evidence_family_list(record.evidence_families_covered),
             screening_note=(record.screening_note or "").strip() or None,
         )
     return list(normalized.values())
@@ -1316,7 +1369,7 @@ class OpenAIPlannerBackend:
             response.hypothesis_screening_ledger,
             hypothesis_pool=hypothesis_pool,
         )
-        portfolio_screening_summary = response.portfolio_screening_summary.strip() or None
+        portfolio_screening_summary = _safe_strip(response.portfolio_screening_summary) or None
         if _looks_like_legacy_portfolio_response(
             reasoning_phase=reasoning_phase,
             portfolio_screening_complete=response.portfolio_screening_complete,
@@ -1361,7 +1414,7 @@ class OpenAIPlannerBackend:
             needs_verifier=False,
             finalize=False,
             planned_agents=["macro", "microscopic"],
-            task_instruction=response.task_instruction.strip()
+            task_instruction=_safe_strip(response.task_instruction)
             or "Dispatch first-round specialized macro and microscopic tasks for the current hypothesis.",
             agent_task_instructions=agent_task_instructions,  # type: ignore[arg-type]
             hypothesis_uncertainty_note=response.hypothesis_uncertainty_note,
@@ -1383,7 +1436,7 @@ class OpenAIPlannerBackend:
                 response.screening_focus_hypotheses,
                 hypothesis_pool=hypothesis_pool,
             ),
-            screening_focus_summary=response.screening_focus_summary.strip() or None,
+            screening_focus_summary=_safe_strip(response.screening_focus_summary) or None,
             decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
             decision_gate_status="not_ready" if portfolio_screening_complete else "needs_portfolio_screening",
             verifier_supplement_target_pair=(
@@ -1408,11 +1461,11 @@ class OpenAIPlannerBackend:
             pairwise_task_completed_for_pair=None,
             pairwise_task_outcome="not_run",
             pairwise_task_rationale=None,
-            pairwise_resolution_mode=_normalize_pairwise_resolution_mode(response.pairwise_resolution_mode.strip() or None),
+            pairwise_resolution_mode=_normalize_pairwise_resolution_mode(_safe_strip(response.pairwise_resolution_mode) or None),
             pairwise_resolution_evidence_sources=[
                 item.strip() for item in response.pairwise_resolution_evidence_sources if item.strip()
             ],
-            pairwise_resolution_summary=response.pairwise_resolution_summary.strip() or None,
+            pairwise_resolution_summary=_safe_strip(response.pairwise_resolution_summary) or None,
             finalization_mode="none",
         )
         decision = _apply_stage_aware_agent_framing(decision, main_gap="Initial portfolio screening is still open.")
@@ -1483,7 +1536,7 @@ class OpenAIPlannerBackend:
             response.hypothesis_screening_ledger,
             hypothesis_pool=hypothesis_pool,
         )
-        portfolio_screening_summary = response.portfolio_screening_summary.strip() or None
+        portfolio_screening_summary = _safe_strip(response.portfolio_screening_summary) or None
         if _looks_like_legacy_portfolio_response(
             reasoning_phase=reasoning_phase,
             portfolio_screening_complete=response.portfolio_screening_complete,
@@ -1507,7 +1560,7 @@ class OpenAIPlannerBackend:
                 coverage_debt_hypotheses=coverage_debt_hypotheses,
                 hypothesis_screening_ledger=hypothesis_screening_ledger,
             )
-        task_instruction = response.task_instruction.strip() or _default_follow_up_task_instruction(
+        task_instruction = _safe_strip(response.task_instruction) or _default_follow_up_task_instruction(
             response.action,
             current_hypothesis,
             payload,
@@ -1523,10 +1576,10 @@ class OpenAIPlannerBackend:
         pairwise_task_agent = _normalize_pairwise_task_agent(response.pairwise_task_agent) or _normalize_pairwise_task_agent(
             str(payload.get("pairwise_task_agent") or "")
         )
-        pairwise_task_rationale = response.pairwise_task_rationale.strip() or str(
+        pairwise_task_rationale = _safe_strip(response.pairwise_task_rationale) or str(
             payload.get("pairwise_task_rationale") or ""
         ).strip() or None
-        pairwise_task_completed_for_pair = response.pairwise_task_completed_for_pair.strip() or str(
+        pairwise_task_completed_for_pair = _safe_strip(response.pairwise_task_completed_for_pair) or str(
             payload.get("pairwise_task_completed_for_pair") or ""
         ).strip() or None
         verifier_supplement_status = _normalize_verifier_supplement_status(
@@ -1558,17 +1611,17 @@ class OpenAIPlannerBackend:
                 str(payload.get("closure_justification_status") or "").strip() or None
             )
         closure_justification_evidence_source = _normalize_closure_justification_evidence_source(
-            response.closure_justification_evidence_source.strip() or None
+            _safe_strip(response.closure_justification_evidence_source) or None
         ) or _normalize_closure_justification_evidence_source(
             str(payload.get("closure_justification_evidence_source") or "").strip() or None
         )
         closure_justification_basis = _normalize_closure_justification_basis(
-            response.closure_justification_basis.strip() or None
+            _safe_strip(response.closure_justification_basis) or None
         ) or _normalize_closure_justification_basis(
             str(payload.get("closure_justification_basis") or "").strip() or None
         )
         pairwise_resolution_mode = _normalize_pairwise_resolution_mode(
-            response.pairwise_resolution_mode.strip() or None
+            _safe_strip(response.pairwise_resolution_mode) or None
         ) or _normalize_pairwise_resolution_mode(
             str(payload.get("pairwise_resolution_mode") or "").strip() or None
         )
@@ -1579,7 +1632,7 @@ class OpenAIPlannerBackend:
             for item in list(payload.get("pairwise_resolution_evidence_sources") or [])
             if isinstance(item, str) and item.strip()
         ]
-        pairwise_resolution_summary = response.pairwise_resolution_summary.strip() or str(
+        pairwise_resolution_summary = _safe_strip(response.pairwise_resolution_summary) or str(
             payload.get("pairwise_resolution_summary") or ""
         ).strip() or None
         payload_pairwise_task_outcome = str(payload.get("pairwise_task_outcome") or "").strip() or None
@@ -1644,10 +1697,10 @@ class OpenAIPlannerBackend:
                 response.screening_focus_hypotheses,
                 hypothesis_pool=hypothesis_pool,
             ),
-            screening_focus_summary=response.screening_focus_summary.strip() or None,
+            screening_focus_summary=_safe_strip(response.screening_focus_summary) or None,
             decision_pair=_decision_pair_from_pool(hypothesis_pool) if portfolio_screening_complete else [],
             decision_gate_status=response.decision_gate_status,
-            verifier_supplement_target_pair=response.verifier_supplement_target_pair.strip()
+            verifier_supplement_target_pair=_safe_strip(response.verifier_supplement_target_pair)
             or str(payload.get("verifier_supplement_target_pair") or "").strip()
             or (
                 _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
@@ -1657,10 +1710,10 @@ class OpenAIPlannerBackend:
             verifier_supplement_status=verifier_supplement_status,
             verifier_information_gain=verifier_information_gain,
             verifier_evidence_relation=verifier_evidence_relation,
-            verifier_supplement_summary=response.verifier_supplement_summary.strip()
+            verifier_supplement_summary=_safe_strip(response.verifier_supplement_summary)
             or str(payload.get("verifier_supplement_summary") or "").strip()
             or None,
-            closure_justification_target_pair=response.closure_justification_target_pair.strip()
+            closure_justification_target_pair=_safe_strip(response.closure_justification_target_pair)
             or str(payload.get("closure_justification_target_pair") or "").strip()
             or (
                 _decision_pair_key(_decision_pair_from_pool(hypothesis_pool))
@@ -1670,7 +1723,7 @@ class OpenAIPlannerBackend:
             closure_justification_status=closure_justification_status,
             closure_justification_evidence_source=closure_justification_evidence_source,
             closure_justification_basis=closure_justification_basis,
-            closure_justification_summary=response.closure_justification_summary.strip()
+            closure_justification_summary=_safe_strip(response.closure_justification_summary)
             or str(payload.get("closure_justification_summary") or "").strip()
             or None,
             pairwise_task_agent=pairwise_task_agent,
