@@ -1,0 +1,8 @@
+{
+  "case_id": "f1815323ca04",
+  "smiles": "c5ccc(/C(=C(c1ccccc1)\\c3ccc(c2nnn[nH]2)cc3)c4ccccc4)cc5",
+  "user_query": "Assess the likely AIE mechanism for this molecule.",
+  "error_type": "KeyError",
+  "error_message": "'selected_capability'",
+  "report_dir": "/mnt/afs/kuocheng/workspace/mas_aie/debug_reports/benchmark_with_memory/20260411-013109-369105_f1815323ca04"
+}

@@ -1,0 +1,8 @@
+{
+  "case_id": "6cf6da9dea76",
+  "smiles": "CC1=CC(C)=CC(C)=C1B(C2=C(C)C=C(C)C=C2C)C3=CC=C(C=C3)C(C=C4)=CC=C4C(C=C5)=CC=C5/C(C6=CC=CC=C6)=C(C7=CC=C(C8=CC=C(C9=CC=C(B(C%10=C(C)C=C(C)C=C%10C)C%11=C(C)C=C(C)C=C%11C)C=C9)C=C8)C=C7)\\C%12=CC=CC=C%12",
+  "user_query": "Assess the likely AIE mechanism for this molecule.",
+  "error_type": "KeyError",
+  "error_message": "'selected_capability'",
+  "report_dir": "/mnt/afs/kuocheng/workspace/mas_aie/debug_reports/benchmark_with_memory/20260411-013401-385851_6cf6da9dea76"
+}

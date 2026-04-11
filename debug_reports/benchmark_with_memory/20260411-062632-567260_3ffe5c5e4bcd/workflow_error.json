@@ -1,0 +1,8 @@
+{
+  "case_id": "3ffe5c5e4bcd",
+  "smiles": "c1(C#Cc2ccncc2)ccc(/C(c3ccccc3)=C(c4ccccc4)/c5ccc(C#Cc6ccncc6)cc5)cc1",
+  "user_query": "Assess the likely AIE mechanism for this molecule.",
+  "error_type": "ValidationError",
+  "error_message": "1 validation error for PlannerRoundResponse\nhypothesis_screening_ledger.1.screening_priority\n  Input should be 'none', 'low', 'normal' or 'high' [type=literal_error, input_value='medium', input_type=str]\n    For further information visit https://errors.pydantic.dev/2.12/v/literal_error",
+  "report_dir": "/mnt/afs/kuocheng/workspace/mas_aie/debug_reports/benchmark_with_memory/20260411-062632-567260_3ffe5c5e4bcd"
+}

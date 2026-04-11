@@ -1,0 +1,48 @@
+{
+  "case_id": "973db2944ec9",
+  "smiles": "CC(C)(C)C(C=C1)=CC=C1N2C3=C(C(C=CC=C4)=C4C5=C3C=CC=C5)N=C2C(C=C6)=CC=C6C(C7=NSN=C78)=C9C(C=CC=C9)=C8C(C=C%10)=CC=C%10N(C%11=CC=CC=C%11)C%12=CC=CC=C%12",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "neutral aromatic",
+    "置信度": 0.56,
+    "次优假设": "ICT",
+    "次优置信度": 0.22,
+    "结论状态": "best_available",
+    "摘要": "Best-available closure keeps 'neutral aromatic' ahead of 'ICT', but the main unresolved gap remains: The unresolved main gap is the lack of exact-molecule discriminative CT/localization evidence for neutral aromatic versus ICT after the only bounded internal ICT-direct route proved blocked by missing artifact observables. Best-available assignment is neutral aromatic. Across this run, TICT lost support after direct torsion-topology screening, ESIPT was removed after direct H-bond-preorganization screening, and ICT could not be directly confirmed on the available internal artifact route because CT/localization observables were unavailable. The verifier supplement then added sufficient pair-targeted external precedent from close-family systems that tends overall to support rigid, planar, fused aromatic AIE behavior with suppressed or non-dominant ICT more than a dominant ICT interpretation. Because that verifier evidence is mixed and not exact-molecule specific, the conclusion is not decisive, but neutral aromatic is the most supported label in the current five-way pool."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is neutral aromatic (0.56) and top2 is ICT (0.22). I interpret the verifier evidence as mixed but net-supportive of the current leader: the retrieved close-family evidence emphasizes AIE, rigidity, planarity, fused/polycyclic aromatic behavior, and ICT suppression in related systems, while also acknowledging donor-acceptor and ICT-relevant motifs in analogous emitters. This reduces uncertainty for the neutral aromatic versus ICT pair, but it does not provide exact-identity decisive proof because there is no exact InChIKey hit and the evidence is scaffold-family level. The verifier evidence does not reduce any remaining portfolio coverage debt because that debt was already cleared structurally and ICT had already been reclassified as blocked_by_capability; instead it supports pairwise contraction by supplying external precedent for the active pair. No still-credible hypothesis remains untested in coverage debt, but ICT remains only partially resolved because it is weakened rather than conclusively excluded. The case is therefore legitimately in pairwise contraction, not portfolio screening. Closure justification is still collecting: verifier supplementation for neutral aromatic vs ICT is sufficient, but the Planner still needs to state the best-available closure basis explicitly since the evidence remains indirect and close-family rather than exact-molecule decisive. The case is not yet ready for decisive finalize; it is ready for best-available finalize if no further bounded discriminative internal route is available.",
+      "Best-available closure keeps 'neutral aromatic' ahead of 'ICT', but the main unresolved gap remains: The unresolved main gap is the lack of exact-molecule discriminative CT/localization evidence for neutral aromatic versus ICT after the only bounded internal ICT-direct route proved blocked by missing artifact observables. Best-available assignment is neutral aromatic. Across this run, TICT lost support after direct torsion-topology screening, ESIPT was removed after direct H-bond-preorganization screening, and ICT could not be directly confirmed on the available internal artifact route because CT/localization observables were unavailable. The verifier supplement then added sufficient pair-targeted external precedent from close-family systems that tends overall to support rigid, planar, fused aromatic AIE behavior with suppressed or non-dominant ICT more than a dominant ICT interpretation. Because that verifier evidence is mixed and not exact-molecule specific, the conclusion is not decisive, but neutral aromatic is the most supported label in the current five-way pool.",
+      "Verifier supplementation for neutral aromatic versus ICT is sufficient. It retrieved 4 close-family evidence cards with themes spanning AIE, local excited-state behavior, rigidity/planarity, donor-acceptor and ICT motifs, and ICT-suppression/discriminator concepts. No exact InChIKey hit was found, so the supplement is informative but indirect.",
+      "Closure justification is sufficient for best-available, not decisive, finalization. The basis is convergent internal screening that removed TICT/ESIPT and capability-blocked direct ICT confirmation, combined with a sufficient but close-family verifier supplement favoring neutral aromatic over ICT on balance.",
+      "Portfolio screening is legitimately complete. TICT was directly screened, ESIPT was dropped with reason, and ICT was directly attempted then marked blocked_by_capability on the current internal artifact route. The verifier supplement does not reopen portfolio debt; instead it adds pair-relevant external precedent for the remaining neutral aromatic versus ICT contrast.",
+      "The workflow used available capabilities appropriately. Macro tools were effective for bounded structural debt reduction; the microscopic artifact-parse route clarified a real limitation by showing that the required CT/localization observables were absent from the existing baseline bundle; and the verifier was the right bounded supplement once the direct internal ICT route stalled. No further deterministic macro capability in the registry is likely to supply new pair-discriminative information beyond what is already covered.",
+      "Internal evidence: donor-acceptor layout plus baseline excited-state context left ICT plausible but not dominant; direct rotor/torsion screening weakened TICT; direct intramolecular H-bond preorganization screening removed ESIPT; direct CT-descriptor extraction from the round_01 baseline bundle was attempted but failed to return CT/localization observables, marking ICT as capability-blocked on the internal route. Verifier evidence: 4 close-family evidence cards covered AIE, locally excited state, rigidity, planarity, ICT suppression, donor-acceptor/ICT motifs, and discriminators such as solvatochromism, Stokes shift, NTO analysis, and lifetime behavior. The verifier supplement is sufficient and high-information for the current pair, but mixed and not exact-identity specific."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "neutral aromatic",
+        "confidence": 0.39,
+        "action_taken": "macro, microscopic",
+        "main_gap": "Direct bounded screening of TICT and ESIPT remains missing; among these, TICT is the highest-value unresolved alternative.",
+        "evidence_summary": "macro: executed_capability=screen_donor_acceptor_layout | fulfillment_mode=exact | Bounded donor-acceptor layout screening summarized donor/acceptor partition, hetero-atom burden, and conjugation-level layout from the availa... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-135.5101274047, homo_lumo_gap_ev=0.8226132, rmsd_from_prepared_structure_angstrom=1....",
+        "diagnosis_summary": "Top1 is neutral aromatic (0.39) and top2 is ICT (0.29). The latest evidence strengthens the current top1 slightly: macro screening confirmed only moderate donor-acceptor partitioning within a highly aromatic, rigid, compact scaffold, and..."
+      },
+      {
+        "round_id": 5,
+        "current_hypothesis": "neutral aromatic",
+        "confidence": 0.56,
+        "action_taken": "verifier",
+        "main_gap": "The unresolved main gap is the lack of exact-molecule discriminative CT/localization evidence for neutral aromatic versus ICT after the only bounded internal ICT-direct route proved blocked by missing artifact observables.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: aie, locally_excited_state, rigidity, planarity, ict_suppression, polycyclic_aromatic, triarylamine, donor-accep...",
+        "diagnosis_summary": "Top1 is neutral aromatic (0.56) and top2 is ICT (0.22). I interpret the verifier evidence as mixed but net-supportive of the current leader: the retrieved close-family evidence emphasizes AIE, rigidity, planarity, fused/polycyclic aromat..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The unresolved main gap is the lack of exact-molecule discriminative CT/localization evidence for neutral aromatic versus ICT after the only bounded internal ICT-direct route proved blocked by missing artifact observables.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}

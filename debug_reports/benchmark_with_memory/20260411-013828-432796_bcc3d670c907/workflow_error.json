@@ -1,0 +1,8 @@
+{
+  "case_id": "bcc3d670c907",
+  "smiles": "[O-]C1=C(N(c2ccc(Cl)cc2)c3ccc(Cl)cc3)C(/C1=[N+](c4ccc(Cl)cc4)/c5ccc(Cl)cc5)=O",
+  "user_query": "Assess the likely AIE mechanism for this molecule.",
+  "error_type": "KeyError",
+  "error_message": "'selected_capability'",
+  "report_dir": "/mnt/afs/kuocheng/workspace/mas_aie/debug_reports/benchmark_with_memory/20260411-013828-432796_bcc3d670c907"
+}
