@@ -1,6 +1,6 @@
 {
-  "mode": "zero_shot",
-  "model": "gpt-5.2",
+  "mode": "structure_aware_single_shot",
+  "model": "gpt-5.4",
   "supported_mechanism_labels": [
     "ICT",
     "TICT",
@@ -13,22 +13,22 @@
   "evaluated_row_count": 20,
   "successful_case_count": 20,
   "failed_case_count": 0,
-  "top1_accuracy": 0.7,
-  "macro_recall": 0.489583,
+  "top1_accuracy": 0.45,
+  "macro_recall": 0.28125,
   "seed": 0,
   "per_label": [
     {
       "label": "ICT",
       "support": 8,
-      "predicted_count": 8,
-      "true_positive": 6,
-      "recall": 0.75,
-      "precision": 0.75
+      "predicted_count": 6,
+      "true_positive": 4,
+      "recall": 0.5,
+      "precision": 0.666667
     },
     {
       "label": "TICT",
       "support": 1,
-      "predicted_count": 2,
+      "predicted_count": 6,
       "true_positive": 0,
       "recall": 0.0,
       "precision": 0.0
@@ -36,18 +36,18 @@
     {
       "label": "ESIPT",
       "support": 3,
-      "predicted_count": 1,
-      "true_positive": 1,
-      "recall": 0.333333,
-      "precision": 1.0
+      "predicted_count": 0,
+      "true_positive": 0,
+      "recall": 0.0,
+      "precision": null
     },
     {
       "label": "neutral aromatic",
       "support": 8,
-      "predicted_count": 9,
-      "true_positive": 7,
-      "recall": 0.875,
-      "precision": 0.777778
+      "predicted_count": 8,
+      "true_positive": 5,
+      "recall": 0.625,
+      "precision": 0.625
     },
     {
       "label": "unknown",
