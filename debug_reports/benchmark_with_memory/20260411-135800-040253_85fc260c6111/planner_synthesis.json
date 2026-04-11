@@ -1,0 +1,48 @@
+{
+  "case_id": "85fc260c6111",
+  "smiles": "O=C(C1=CC=C(N2C(C=CC=C3)=C3OC4=C2C=CC=C4)C=C1)C5=CC6=C(C7=C(C6(C)C)C=CC=C7)C=C5",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "ICT",
+    "置信度": 0.47,
+    "次优假设": "neutral aromatic",
+    "次优置信度": 0.34,
+    "结论状态": "best_available",
+    "摘要": "Best-available closure keeps 'ICT' ahead of 'neutral aromatic', but the main unresolved gap remains: The main unresolved gap is the absence of an exact-instance or newly computed pairwise electronic discriminator directly separating ICT from neutral aromatic after the internal CT/localization extraction route failed and the verifier evidence remained close-family rather than molecule-specific. Best available conclusion favors ICT over neutral aromatic. This is based on the run-local evidence chain: direct screening has already weakened TICT and ESIPT; neutral aromatic remains credible but structurally generic; the pair-targeted verifier supplement adds family-level support for donor-acceptor/solvatochromic/CT-like behavior; and no new evidence rescued a purely neutral aromatic explanation enough to overtake ICT. The remaining weakness is that the intended internal CT/localization observable was unavailable, so the close is not decisive."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is ICT (0.47) and top2 is neutral aromatic (0.34). I interpret the verifier evidence as pair-specific and informative: it is sufficient as a verifier supplement, has high information gain, and is mixed but overall leans toward ICT because the retrieved close-family evidence emphasizes donor-acceptor, solvatochromism, and NTO-analysis themes more compatible with CT involvement than with a purely neutral aromatic explanation. This verifier evidence does not reduce any portfolio coverage debt because portfolio screening was already complete; instead it supports pairwise contraction for the ICT versus neutral aromatic pair. No still-credible hypothesis remains untested, but neutral aromatic remains only indirectly weakened rather than decisively ruled out because the verifier evidence is not an exact InChIKey match and the internal CT/localization route failed. The case legitimately remains in pairwise contraction, not portfolio screening. Closure justification is still collecting rather than sufficient or blocked: verifier supplementation is now sufficient, but the main pairwise closure still rests on mixed evidence with no exact-instance discriminator. Therefore the case is ready for further follow-up if a new bounded direct pairwise task exists; however, given the current route stall and the available evidence chain, the safe gate status is best-available finalization readiness rather than decisive finalization readiness.",
+      "Best-available closure keeps 'ICT' ahead of 'neutral aromatic', but the main unresolved gap remains: The main unresolved gap is the absence of an exact-instance or newly computed pairwise electronic discriminator directly separating ICT from neutral aromatic after the internal CT/localization extraction route failed and the verifier evidence remained close-family rather than molecule-specific. Best available conclusion favors ICT over neutral aromatic. This is based on the run-local evidence chain: direct screening has already weakened TICT and ESIPT; neutral aromatic remains credible but structurally generic; the pair-targeted verifier supplement adds family-level support for donor-acceptor/solvatochromic/CT-like behavior; and no new evidence rescued a purely neutral aromatic explanation enough to overtake ICT. The remaining weakness is that the intended internal CT/localization observable was unavailable, so the close is not decisive.",
+      "Verifier supplementation for ICT__vs__neutral aromatic is sufficient and high-information. Retrieved evidence is close-family rather than exact-match, with mixed but overall ICT-leaning relevance centered on donor-acceptor, solvatochromism, and NTO-analysis themes.",
+      "Closure justification is not decisive because the desired internal CT/localization discriminator was unavailable and the verifier evidence is family-level rather than exact-instance. However, with portfolio screening complete and verifier supplementation sufficient, the remaining gap is explicit and a best-available close is justified under the current evidence chain and ample but not necessary remaining budget.",
+      "Portfolio screening remains complete at round 6/20. All non-leading alternatives have already been directly screened, with TICT and ESIPT substantially weakened and neutral aromatic retained as the sole credible challenger. The new verifier supplement does not reopen portfolio debt; it only informs the active ICT-versus-neutral-aromatic pairwise contraction.",
+      "Macro capability successfully cleared structural portfolio debt. The microscopic parse-only route proved insufficient for the needed pairwise CT/localization observable on the available artifact bundle, so that exact internal route should be treated as locally stalled for this pair and observable. Verifier supplementation was high-yield and appropriately used as an external supplement, but it supplied close-family rather than exact-instance evidence.",
+      "Verifier supplementation is now sufficient for ICT__vs__neutral aromatic and provided 4 evidence cards covering donor-acceptor, ICT, locally excited state, solvatochromism, photophysics, planarity, and NTO-analysis themes. The evidence is mixed but pair-relevant and high-information, with no exact InChIKey match. Internal pairwise CT/localization extraction from the baseline bundle previously failed to deliver the desired observables. Earlier direct screening continues to suppress TICT and ESIPT."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ICT",
+        "confidence": 0.41,
+        "action_taken": "macro, microscopic",
+        "main_gap": "The main gap is the lack of a direct bounded screen for the strongest unresolved alternative, neutral aromatic; after that, ESIPT still needs explicit discharge and TICT may require direct torsion-topology screening if it remains credible.",
+        "evidence_summary": "macro: executed_capability=screen_planarity_compactness | fulfillment_mode=exact | Bounded planarity/compactness screening summarized planarity, compactness, principal span, and conformer-dispersion proxies from the availabl... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-78.4286467287, homo_lumo_gap_ev=1.7238869, rmsd_from_prepared_structure_angstrom=0.4...",
+        "diagnosis_summary": "Top1 is ICT (0.41) and top2 is neutral aromatic (0.26). The latest evidence strengthens ICT modestly rather than decisively: the donor-acceptor architecture remains plausible and the baseline S1 result is compatible with CT-mixed excitat..."
+      },
+      {
+        "round_id": 6,
+        "current_hypothesis": "ICT",
+        "confidence": 0.47,
+        "action_taken": "verifier",
+        "main_gap": "The main unresolved gap is the absence of an exact-instance or newly computed pairwise electronic discriminator directly separating ICT from neutral aromatic after the internal CT/localization extraction route failed and the verifier evidence remained close-family rather than molecule-specific.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: ict, locally_excited_state, solvatochromism, donor-acceptor, photophysics, phenoxazine, tadf, carbonyl_acceptor,...",
+        "diagnosis_summary": "Top1 is ICT (0.47) and top2 is neutral aromatic (0.34). I interpret the verifier evidence as pair-specific and informative: it is sufficient as a verifier supplement, has high information gain, and is mixed but overall leans toward ICT b..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The main unresolved gap is the absence of an exact-instance or newly computed pairwise electronic discriminator directly separating ICT from neutral aromatic after the internal CT/localization extraction route failed and the verifier evidence remained close-family rather than molecule-specific.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}

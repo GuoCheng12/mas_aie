@@ -1,0 +1,58 @@
+{
+  "case_id": "dd73c2c5bec8",
+  "smiles": "c5ccc(/C(=C(c1ccccc1)\\c3ccc(c2nnn[nH]2)cc3)c4ccccc4)cc5",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "ICT",
+    "置信度": 0.49,
+    "次优假设": "TICT",
+    "次优置信度": 0.23,
+    "结论状态": "best_available",
+    "摘要": "Round-budget closure at round 20/20 keeps 'ICT' ahead of 'TICT'. The main unresolved gap remains: The unresolved gap is a more decisive ICT_vs_TICT closure justification from an independent or higher-specificity evidence source; however, verifier supplementation remains missing and the round budget is exhausted."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is ICT (0.49) and top2 is TICT (0.23). The latest evidence mildly strengthens the current top1: the fresh CT-descriptor parse from the round-18 baseline artifact is more compatible with an ICT-like emissive state than with a strongly twisted TICT picture, although the result is still proxy-level and incomplete. The latest evidence slightly weakens the top2 challenger TICT because it fails to add direct new support for a twisted dark-state or stronger CT-separation signature. An additional candidate, neutral aromatic, is essentially unchanged: structural rigidity and aromatic-core dominance keep it credible, but not competitive with the ICT/TICT pair. No still-credible additional hypothesis remains in coverage debt; portfolio screening is legitimately complete and the case remains in pairwise contraction. The key remaining discriminator is an independent high-specificity ICT-vs-TICT corroboration, ideally external, but that route is operationally stalled. Because this is round 20 of 20 with 1 round remaining including the current one, no further follow-up round can be planned; therefore the best action now is to finalize on a best-available basis rather than request another stalled or low-yield task.",
+      "Round-budget closure at round 20/20 keeps 'ICT' ahead of 'TICT'. The main unresolved gap remains: The unresolved gap is a more decisive ICT_vs_TICT closure justification from an independent or higher-specificity evidence source; however, verifier supplementation remains missing and the round budget is exhausted.",
+      "External supplementation for ICT_vs_TICT remains scientifically desirable but unavailable in practice because repeated verifier attempts produced no usable evidence under current operational limits.",
+      "A dedicated internal pairwise task was already completed via torsion snapshots, followed by bounded parse-only follow-ups and a fresh baseline artifact parse. These internal routes consistently gave mild advantage to ICT while failing to decisively establish TICT.",
+      "Closure justification improved modestly through the latest internal CT-descriptor parse, but it is still not ideal or decisive. With no rounds remaining after the current one, this evidence must be treated as sufficient only for best-available finalization, not decisive closure.",
+      "Portfolio screening remains complete at the final round. All credible non-top hypotheses have already been directly screened and no coverage debt remains, so the case legitimately remains in pairwise contraction rather than returning to portfolio work.",
+      "Macro capability already completed the needed portfolio work and is no longer the limiting factor. Microscopic capability was the most productive route and supplied incremental pairwise information through baseline, torsion-snapshot, and parse-only reuse of artifacts, but the latest CT-descriptor parse remained proxy-level with missing CT/localization deliverables. Verifier is scientifically valuable in principle, but repeated attempts failed operationally due to token/credit limits and therefore did not contribute usable external discrimination. Round budget exhausted at round 20/20; no additional specialized-agent execution can be scheduled beyond this point.",
+      "Latest evidence: microscopic execution of extract_ct_descriptors_from_bundle on round_18_baseline_bundle succeeded in artifact reuse mode and returned one parsed record without new calculations. The result provided only proxy CT-localization information, left some requested deliverables missing, and did not produce new support for a stronger twisted-state interpretation. Earlier direct screens already disfavored ESIPT and kept neutral aromatic secondary."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ICT",
+        "confidence": 0.41,
+        "action_taken": "macro, microscopic",
+        "main_gap": "The main gap is a direct bounded screen of TICT-relevant rotor/torsion topology to determine whether twisting is merely plausible or a genuinely strong challenger to ICT; neutral aromatic also still lacks a direct structural screen.",
+        "evidence_summary": "macro: executed_capability=screen_intramolecular_hbond_preorganization | fulfillment_mode=exact | Bounded intramolecular H-bond preorganization screening inspected reusable prepared geometry for generic H-bond candidates and... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-65.506668693, homo_lumo_gap_ev=2.8897672, rmsd_from_prepared_structure_angstrom=0.60...",
+        "diagnosis_summary": "Top1 is ICT (0.41) and top2 is TICT (0.29). The latest evidence modestly strengthens ICT: the bounded microscopic run supports an allowed low-energy S1 on a preserved conjugated scaffold, while the macro H-bond preorganization screen wea..."
+      },
+      {
+        "round_id": 17,
+        "current_hypothesis": "ICT",
+        "confidence": 0.45,
+        "action_taken": "verifier",
+        "main_gap": "The main gap is still a more decisive ICT_vs_TICT closure justification from an independent or at least newly discriminative route; repeated verifier attempts have stalled operationally, so the immediate actionable gap is a bounded internal pairwise discriminator that changes observable rather than repeating the same failed retrieval.",
+        "evidence_summary": "verifier: The verifier retrieved 0 evidence card(s) covering these topics: no specific topic tags.",
+        "diagnosis_summary": "Top1 remains ICT at 0.45 and top2 remains TICT at 0.29 after full five-label reweighting. I interpret the verifier evidence as operational failure only: it returned zero usable evidence cards, with a 402 credit/max-token limitation, so i..."
+      },
+      {
+        "round_id": 20,
+        "current_hypothesis": "ICT",
+        "confidence": 0.49,
+        "action_taken": "microscopic",
+        "main_gap": "The unresolved gap is a more decisive ICT_vs_TICT closure justification from an independent or higher-specificity evidence source; however, verifier supplementation remains missing and the round budget is exhausted.",
+        "evidence_summary": "microscopic: executed_capability=extract_ct_descriptors_from_bundle | fulfillment_mode=proxy | Amesp capability 'extract_ct_descriptors_from_bundle' reused existing microscopic artifacts and returned 1 parsed artifact records with...",
+        "diagnosis_summary": "Top1 is ICT (0.49) and top2 is TICT (0.23). The latest evidence mildly strengthens the current top1: the fresh CT-descriptor parse from the round-18 baseline artifact is more compatible with an ICT-like emissive state than with a strongl..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The unresolved gap is a more decisive ICT_vs_TICT closure justification from an independent or higher-specificity evidence source; however, verifier supplementation remains missing and the round budget is exhausted.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}

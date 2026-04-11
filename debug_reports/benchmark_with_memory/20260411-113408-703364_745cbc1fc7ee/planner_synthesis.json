@@ -1,0 +1,57 @@
+{
+  "case_id": "745cbc1fc7ee",
+  "smiles": "O=C(N/N=C/C1=CC(C(C2=CC(/C=N/NC(C3=CC=C(OCCCCCCCC)C=C3)=O)=C(O)C=C2)=O)=CC=C1O)C4=CC=C(OCCCCCCCC)C=C4",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "ESIPT",
+    "置信度": 0.58,
+    "次优假设": "ICT",
+    "次优置信度": 0.2,
+    "结论状态": "best_available",
+    "摘要": "Best-available closure keeps 'ESIPT' ahead of 'ICT', but repeated verifier-local limitations prevented further external shrinkage of the unresolved gap: The main gap is whether the observed conformer-level ESIPT-compatible preorganization should now be treated as a strong pairwise discriminator against ICT for this motif class, or only as permissive geometry that still commonly coexists with ICT-dominant emission."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is ESIPT (0.58) and top2 is ICT (0.20). The latest evidence strengthens the current top1: the microscopic parse of the round_14 conformer bundle found explicit phenolic-OH to imine-N H-bond-like geometry with donor-acceptor distance 2.697 A, H-acceptor distance 1.803 A, angle 149.0 deg, and low local planarity RMSD 0.085 A, with such candidates present across parsed conformers. This is more molecule-specific and more discriminative than prior motif-only support, so ESIPT gains relative weight. The top2 challenger ICT is weakened somewhat, not eliminated, because strong donor-acceptor segmentation and mixed verifier precedent still allow ICT or coexistence, but the new evidence makes a purely ICT-dominant interpretation less attractive. An additional candidate, TICT, also weakens slightly because the new conformer evidence indicates preserved local preorganization rather than torsion-driven disruption becoming the dominant feature, although flexibility keeps TICT credible. No still-credible hypothesis remains in coverage debt; the case has legitimately entered pairwise contraction and stays there. The key remaining discriminator is whether the conformer-bundle evidence can be summarized as robust ESIPT-ready preorganization across sampled conformers strongly enough to justify closure against ICT, rather than only compatibility. The chosen next action is a verifier step because external supplementation is already sufficient but now the highest-value bounded step is to challenge the strengthened ESIPT picture against the updated internal geometry evidence and ask whether close-family literature contains a sharper discriminator tying persistent o-hydroxy/imino preorganization to ESIPT dominance over ICT/coexistence for this motif class.",
+      "Best-available closure keeps 'ESIPT' ahead of 'ICT', but repeated verifier-local limitations prevented further external shrinkage of the unresolved gap: The main gap is whether the observed conformer-level ESIPT-compatible preorganization should now be treated as a strong pairwise discriminator against ICT for this motif class, or only as permissive geometry that still commonly coexists with ICT-dominant emission.",
+      "Verifier supplementation for ESIPT versus ICT is already sufficient as an external context source and remains high-information-gain but mixed. The best use of verifier now is not generic supplementation but a tightly bounded challenge test against the newly strengthened internal geometry-based ESIPT case.",
+      "Closure justification has improved because the internal conformer parse now gives explicit molecule-specific ESIPT-compatible geometry, but closure is not yet sufficient because we still need a sharper external read on whether that geometry is decisive versus merely compatible in close-family ESIPT/ICT systems.",
+      "Portfolio screening remains complete at round 15 of 20, with 6 rounds remaining including the current round. ICT, TICT, and neutral aromatic have already been directly screened, so there is no remaining coverage debt. The case legitimately stays in pairwise contraction.",
+      "With 6 rounds remaining including the current round, there is enough budget for one more bounded closure-oriented step. Macro screening is largely saturated for this pair, and parse-only microscopic work has now delivered useful geometry evidence but still cannot by itself decide mechanism dominance. Verifier work is the best next route only if it is tightly targeted to challenge whether this new geometry evidence is decisive or merely permissive in close-family systems. Recent working memory repeats the same verifier local uncertainty, so repeating the same verifier route is unlikely to shrink the current gap: Verifier evidence cards summarize external supervision but do not replace Planner-level synthesis; unresolved local gap: the evidence cards still need Planner-level synthesis before any mechanism decision.",
+      "Latest microscopic evidence: extract_geometry_descriptors_from_bundle on round_14_conformer_bundle reused existing artifacts and returned 3 parsed conformer records. Geometry descriptors were available, records_with_phenolic_oh_to_imine_n_candidate=3, and the best phenolic-OH to imine-N contact was H-bond-like with donor-acceptor distance 2.697042 A, hydrogen-acceptor distance 1.803084 A, donor-hydrogen-acceptor angle 149.011819 deg, and local planarity RMSD 0.08534 A."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ESIPT",
+        "confidence": 0.37,
+        "action_taken": "macro, microscopic",
+        "main_gap": "The main gap is unresolved direct screening of the strongest alternatives, especially ICT, using their own bounded evidence families before any pairwise contraction.",
+        "evidence_summary": "macro: executed_capability=screen_intramolecular_hbond_preorganization | fulfillment_mode=exact | Bounded intramolecular H-bond preorganization screening inspected reusable prepared geometry for generic H-bond candidates and... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-138.5030382062, homo_lumo_gap_ev=2.741129, rmsd_from_prepared_structure_angstrom=1.9...",
+        "diagnosis_summary": "Top1 is ESIPT (0.37) and top2 is ICT (0.29). The latest evidence modestly strengthens but does not confirm ESIPT: the structure contains multiple proton-transfer-capable motifs and macro preorganization screening did not contradict ESIPT..."
+      },
+      {
+        "round_id": 13,
+        "current_hypothesis": "ESIPT",
+        "confidence": 0.49,
+        "action_taken": "verifier",
+        "main_gap": "The main gap is a sharper molecule-relevant closure discriminator between ESIPT-dominant and ICT/coexisting interpretations. Current support for ESIPT is net positive but still qualitative and close-family-weighted rather than decisively pairwise for this exact molecule.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: esipt, acylhydrazone, salicylaldehyde_hydrazone, dual_emission, methylation_blocking, stokes_shift, ict, hydrazo...",
+        "diagnosis_summary": "Top1 is ESIPT at 0.49 and top2 is ICT at 0.24, with TICT still credible but secondary at 0.12. I interpret the latest verifier evidence as sufficient, high-information-gain, and mixed: it reinforces ESIPT through close-family o-hydroxy/a..."
+      },
+      {
+        "round_id": 15,
+        "current_hypothesis": "ESIPT",
+        "confidence": 0.58,
+        "action_taken": "microscopic",
+        "main_gap": "The main gap is whether the observed conformer-level ESIPT-compatible preorganization should now be treated as a strong pairwise discriminator against ICT for this motif class, or only as permissive geometry that still commonly coexists with ICT-dominant emission.",
+        "evidence_summary": "microscopic: executed_capability=extract_geometry_descriptors_from_bundle | fulfillment_mode=exact | Amesp capability 'extract_geometry_descriptors_from_bundle' reused existing microscopic artifacts and returned 3 parsed artifact ...",
+        "diagnosis_summary": "Top1 is ESIPT (0.58) and top2 is ICT (0.20). The latest evidence strengthens the current top1: the microscopic parse of the round_14 conformer bundle found explicit phenolic-OH to imine-N H-bond-like geometry with donor-acceptor distance..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The main gap is whether the observed conformer-level ESIPT-compatible preorganization should now be treated as a strong pairwise discriminator against ICT for this motif class, or only as permissive geometry that still commonly coexists with ICT-dominant emission.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}

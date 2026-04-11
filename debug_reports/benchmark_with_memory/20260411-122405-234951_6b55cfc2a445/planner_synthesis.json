@@ -1,0 +1,48 @@
+{
+  "case_id": "6b55cfc2a445",
+  "smiles": "O=Cc1ccc(c2ccc(/C(c3ccccc3)=C(c4ccc(OC)cc4)/c5ccc(OC)cc5)cc2)cc1",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "ICT",
+    "置信度": 0.84,
+    "次优假设": "TICT",
+    "次优置信度": 0.07,
+    "结论状态": "best_available",
+    "摘要": "Round-budget closure at round 20/20 keeps 'ICT' ahead of 'TICT'. The main unresolved gap remains: The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation. Best-available closure keeps 'ICT' ahead of 'TICT', but the main unresolved gap remains: The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation. Best-available closure favors ICT. The molecule-specific internal record repeatedly points away from a twist-dominant TICT picture across torsion-sensitive, state/brightness, charge-localization-proxy, and geometry-focused evidence, while the new verifier supplement now provides sufficient pair-targeted external context without introducing an exact-family contradiction. Because the decisive direct CT/localization retirement observable is unavailable in the current bounded workflow and the round budget is exhausted, the safest close is best-available rather than decisive."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is ICT (0.84) and top2 is TICT (0.07). I interpret the new verifier evidence as high-information, pair-targeted, and sufficient for external supplementation, but still mixed and close-family rather than exact-identity evidence. It does not create new portfolio coverage debt and does not directly retire TICT on its own; instead it strengthens pairwise contraction by supplying the missing external context for the active ICT__vs__TICT comparison. No still-credible hypothesis remains untested: TICT is already screened as blocked_by_capability after repeated bounded internal anti-TICT results and unavailable decisive CT/localization observables. The case is legitimately still in pairwise contraction, not portfolio screening. Closure justification is still collecting rather than sufficient because the verifier supplement is now sufficient, but the pairwise basis still relies on best-available inference after a capability-blocked decisive internal discriminator. With only 1 round remaining including the current one, the case is ready for best-available finalize, not further follow-up and not decisive finalize.",
+      "Round-budget closure at round 20/20 keeps 'ICT' ahead of 'TICT'. The main unresolved gap remains: The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation. Best-available closure keeps 'ICT' ahead of 'TICT', but the main unresolved gap remains: The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation. Best-available closure favors ICT. The molecule-specific internal record repeatedly points away from a twist-dominant TICT picture across torsion-sensitive, state/brightness, charge-localization-proxy, and geometry-focused evidence, while the new verifier supplement now provides sufficient pair-targeted external context without introducing an exact-family contradiction. Because the decisive direct CT/localization retirement observable is unavailable in the current bounded workflow and the round budget is exhausted, the safest close is best-available rather than decisive.",
+      "External retrieval targeted ICT vs TICT discrimination for this exact molecule and closest structural family. No exact-identity hit was found, but the supplement is now sufficient as close-family pairwise context and does not overturn the internal anti-TICT trend.",
+      "Closure justification is not decisive because the strongest direct internal CT/localization discriminator is capability-blocked. However, best-available closure is now justified by repeated exact-molecule anti-TICT evidence plus sufficient pair-targeted close-family verifier support.",
+      "Portfolio screening remains complete at the round budget limit because all non-top hypotheses have exited coverage debt through direct screening, dropping with reason, or capability blocking. The only remaining scientific uncertainty is pairwise closure for ICT versus TICT.",
+      "Macro screening is saturated and not the missing discriminator. Microscopic exact-molecule routes have already delivered the main useful internal evidence, but the direct CT/localization retirement observable for stronger anti-TICT closure is unavailable in the allowed bounded route set. The verifier was the highest-yield remaining route and has now supplied sufficient pair-targeted external context. Round budget exhausted at round 20/20; no additional specialized-agent execution can be scheduled beyond this point.",
+      "New verifier evidence retrieved 4 pair-targeted cards for ICT__vs__TICT in close triarylethylene/triarylalkene aldehyde-containing AIE families with methoxy donor and aldehyde acceptor context. The verifier reports no exact-identity hit, sufficient external supplementation, high information gain, and mixed evidence relation. Combined with the recent internal exact-molecule torsion-bundle geometry parse, the full record remains directionally pro-ICT and anti-TICT, though not decisively exact-identity-resolved."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ICT",
+        "confidence": 0.42,
+        "action_taken": "macro, microscopic",
+        "main_gap": "Direct screening debt remains for TICT and neutral aromatic; the most immediate gap is a bounded direct assessment of whether rotor/torsion topology provides specific support for TICT rather than only generic flexibility.",
+        "evidence_summary": "macro: executed_capability=screen_donor_acceptor_layout | fulfillment_mode=exact | Bounded donor-acceptor layout screening summarized donor/acceptor partition, hetero-atom burden, and conjugation-level layout from the availa... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-82.3235172038, homo_lumo_gap_ev=2.3199699, rmsd_from_prepared_structure_angstrom=0.6...",
+        "diagnosis_summary": "Top1 is ICT (0.42) and top2 is neutral aromatic (0.25), with TICT close behind (0.23). The latest evidence strengthens the current top1 slightly rather than decisively: macro screening confirms a real but moderate donor-acceptor layout, ..."
+      },
+      {
+        "round_id": 20,
+        "current_hypothesis": "ICT",
+        "confidence": 0.84,
+        "action_taken": "verifier",
+        "main_gap": "The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: exact_identity, no_direct_hit, triarylethylene, aie, aldehyde_substituent, ict, tpe, methoxy_donor, aldehyde_acc...",
+        "diagnosis_summary": "Top1 is ICT (0.84) and top2 is TICT (0.07). I interpret the new verifier evidence as high-information, pair-targeted, and sufficient for external supplementation, but still mixed and close-family rather than exact-identity evidence. It d..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The unresolved main gap is absence of a stronger direct exact-molecule CT/localization discriminator for ICT__vs__TICT; closure therefore rests on best-available synthesis of repeated internal anti-TICT evidence plus close-family external supplementation.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}
