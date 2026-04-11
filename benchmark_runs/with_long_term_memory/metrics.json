@@ -9,24 +9,24 @@
   "dataset_row_count": 264,
   "sampled_row_count": 20,
   "evaluated_row_count": 20,
-  "successful_case_count": 18,
-  "failed_case_count": 2,
-  "top1_accuracy": 0.5,
-  "macro_recall": 0.364583,
+  "successful_case_count": 20,
+  "failed_case_count": 0,
+  "top1_accuracy": 0.65,
+  "macro_recall": 0.510417,
   "seed": 42,
   "per_label": [
     {
       "label": "ICT",
       "support": 8,
-      "predicted_count": 6,
-      "true_positive": 5,
-      "recall": 0.625,
-      "precision": 0.833333
+      "predicted_count": 10,
+      "true_positive": 6,
+      "recall": 0.75,
+      "precision": 0.6
     },
     {
       "label": "TICT",
       "support": 1,
-      "predicted_count": 4,
+      "predicted_count": 2,
       "true_positive": 0,
       "recall": 0.0,
       "precision": 0.0
@@ -34,18 +34,18 @@
     {
       "label": "ESIPT",
       "support": 3,
-      "predicted_count": 1,
-      "true_positive": 1,
-      "recall": 0.333333,
+      "predicted_count": 2,
+      "true_positive": 2,
+      "recall": 0.666667,
       "precision": 1.0
     },
     {
       "label": "neutral aromatic",
       "support": 8,
-      "predicted_count": 7,
-      "true_positive": 4,
-      "recall": 0.5,
-      "precision": 0.571429
+      "predicted_count": 6,
+      "true_positive": 5,
+      "recall": 0.625,
+      "precision": 0.833333
     },
     {
       "label": "unknown",
