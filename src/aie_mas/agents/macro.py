@@ -10,6 +10,7 @@ from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AgentFramingMode,
     AgentReport,
+    CliActionSpec,
     MacroCapabilityName,
     MacroExecutionPlan,
     MacroExecutionStep,
@@ -20,6 +21,12 @@ from aie_mas.graph.state import (
     SharedStructureContext,
 )
 from aie_mas.llm.openai_compatible import OpenAICompatibleMacroClient
+from aie_mas.tools.cli_execution import (
+    CliExecutionError,
+    execute_cli_action,
+    macro_command_id,
+    render_cli_command_catalog,
+)
 from aie_mas.tools.macro import (
     MACRO_ACTION_REGISTRY,
     MACRO_CAPABILITY_REGISTRY,
@@ -44,7 +51,9 @@ class MacroReasoningPlanDraft(BaseModel):
 class MacroReasoningResponse(BaseModel):
     task_understanding: str
     reasoning_summary: str
-    execution_plan: MacroReasoningPlanDraft
+    cli_action: CliActionSpec | None = None
+    unsupported_requests: list[str] = Field(default_factory=list)
+    execution_plan: MacroReasoningPlanDraft | None = None
     capability_limit_note: str
     expected_outputs: list[str] = Field(default_factory=list)
     failure_policy: str
@@ -121,18 +130,79 @@ class MacroAgent:
         }
         rendered_prompt = self._prompts.render("macro_reasoning", reasoning_payload)
         reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
-        plan = self._normalize_execution_plan(
+        cli_action = self._normalize_cli_action(
+            reasoning,
+            task_received=task_received,
+            smiles=smiles,
+            shared_structure_context=shared_structure_context,
+        )
+        compatibility_plan = self._build_compatibility_execution_plan(
             reasoning,
             task_received=task_received,
             shared_structure_context=shared_structure_context,
         )
-        raw_result = self._tool.execute(
-            plan=plan,
-            smiles=smiles,
-            shared_structure_context=shared_structure_context,
-        )
-        task_completion_status, task_completion_text = self._task_completion(plan, raw_result)
-        executed_capability = str(raw_result.get("executed_capability") or plan.selected_capability or "").strip()
+        try:
+            cli_result = execute_cli_action(
+                config=self._config,
+                action=cli_action,
+                expected_agent_name="macro",
+            )
+        except CliExecutionError as exc:
+            return AgentReport(
+                agent_name="macro",
+                task_received=task_received,
+                task_completion_status="failed",
+                task_completion="Task failed because the bounded macro CLI execution did not complete successfully.",
+                task_understanding=reasoning.task_understanding,
+                reasoning_summary=reasoning.reasoning_summary,
+                execution_plan="Macro CLI execution failed before a local result payload could be returned.",
+                result_summary=f"Macro CLI execution failed: {exc}",
+                remaining_local_uncertainty="No bounded macro result was produced because the CLI execution layer failed.",
+                tool_calls=[f"{cli_action.command_program} {' '.join(cli_action.command_args)}"],
+                raw_results={
+                    "cli_error": {
+                        "message": str(exc),
+                        "stdout": exc.stdout,
+                        "stderr": exc.stderr,
+                    },
+                    "reasoning_output": reasoning.model_dump(mode="json"),
+                },
+                structured_results={
+                    "status": "failed",
+                    "command_id": cli_action.command_id,
+                    "command_program": cli_action.command_program,
+                    "command_args": list(cli_action.command_args),
+                    "stdin_payload_summary": dict(cli_action.stdin_payload),
+                    "cli_exit_code": exc.exit_code,
+                    "cli_stdout_excerpt": exc.stdout,
+                    "cli_stderr_excerpt": exc.stderr,
+                    "requested_capability": compatibility_plan.selected_capability,
+                    "selected_capability": compatibility_plan.selected_capability,
+                    "executed_capability": cli_action.command_id,
+                    "performed_new_calculations": cli_action.perform_new_calculation,
+                    "reused_existing_artifacts": cli_action.reused_existing_artifacts,
+                    "binding_mode": cli_action.binding_mode,
+                    "requested_observable_tags": list(cli_action.requested_observable_tags),
+                    "covered_observable_tags": [],
+                    "missing_deliverables": list(reasoning.expected_outputs),
+                    "resolved_target_ids": dict(cli_action.resolved_target_ids),
+                    "planner_requested_capability": compatibility_plan.selected_capability,
+                    "translation_substituted_action": False,
+                    "translation_substitution_reason": "",
+                    "fulfillment_mode": "unsupported",
+                    "error": {
+                        "message": str(exc),
+                        "stdout": exc.stdout,
+                        "stderr": exc.stderr,
+                    },
+                },
+                generated_artifacts={},
+                status="failed",
+                planner_readable_report="Task completion: bounded macro CLI execution failed before any local macro evidence could be returned.",
+            )
+        raw_result = dict(cli_result.parsed_json)
+        task_completion_status, task_completion_text = self._task_completion(compatibility_plan, raw_result)
+        executed_capability = str(raw_result.get("executed_capability") or compatibility_plan.selected_capability or "").strip()
         render_payload = {
             "task_received": task_received,
             "current_hypothesis": current_hypothesis,
@@ -148,9 +218,9 @@ class MacroAgent:
             "shared_context_note": self._shared_context_note(shared_structure_context),
             "reasoning_summary_text": reasoning.reasoning_summary,
             "capability_limit_note": reasoning.capability_limit_note,
-            "selected_capability": executed_capability or "none",
-            "focus_areas_text": ", ".join(plan.focus_areas) if plan.focus_areas else "general macro structural evidence",
-            "plan_steps": self._plan_steps_text(plan),
+            "selected_capability": cli_action.command_id,
+            "focus_areas_text": ", ".join(compatibility_plan.focus_areas) if compatibility_plan.focus_areas else "general macro structural evidence",
+            "plan_steps": self._plan_steps_text(compatibility_plan),
             "result_summary_text": self._successful_result_summary(raw_result),
             "local_uncertainty_detail": self._remaining_uncertainty_text(shared_structure_context),
             "aromatic_atom_count": raw_result["aromatic_atom_count"],
@@ -167,32 +237,40 @@ class MacroAgent:
             "conformer_dispersion_proxy": raw_result["conformer_dispersion_summary"]["conformer_dispersion_proxy"],
         }
         rendered = self._prompts.render_sections("macro_specialized", render_payload)
-        tool_call_parts = [f"capability='{executed_capability}'"]
+        tool_call_parts = [f"command_id='{cli_action.command_id}'"]
         if shared_structure_context is not None:
             tool_call_parts.append(f"shared_xyz='{shared_structure_context.prepared_xyz_path}'")
-        tool_calls = [f"{self._tool.name}(smiles='{smiles}', {', '.join(tool_call_parts)})"]
+        tool_calls = [f"{cli_action.command_program} {' '.join(cli_action.command_args)} ({', '.join(tool_call_parts)})"]
 
         structured_results = {
             **raw_result,
+            "command_id": cli_action.command_id,
+            "command_program": cli_action.command_program,
+            "command_args": list(cli_action.command_args),
+            "stdin_payload_summary": dict(cli_result.stdin_payload_summary),
+            "cli_exit_code": cli_result.cli_exit_code,
+            "cli_stdout_excerpt": cli_result.cli_stdout_excerpt,
+            "cli_stderr_excerpt": cli_result.cli_stderr_excerpt,
             "task_completion_status": task_completion_status,
             "task_completion": rendered["task_completion"],
             "reasoning": reasoning.model_dump(mode="json"),
-            "execution_plan": plan.model_dump(mode="json"),
-            "supported_scope": list(plan.supported_scope),
-            "unsupported_requests": list(plan.unsupported_requests),
-            "requested_capability": raw_result.get("requested_capability") or plan.selected_capability,
-            "selected_capability": raw_result.get("selected_capability") or plan.selected_capability,
-            "executed_capability": executed_capability or None,
-            "performed_new_calculations": False,
-            "reused_existing_artifacts": bool(raw_result.get("reused_existing_artifacts")),
-            "binding_mode": raw_result.get("binding_mode") or plan.binding_mode,
+            "cli_action": cli_action.model_dump(mode="json"),
+            "execution_plan": compatibility_plan.model_dump(mode="json"),
+            "supported_scope": list(compatibility_plan.supported_scope),
+            "unsupported_requests": list(reasoning.unsupported_requests or compatibility_plan.unsupported_requests),
+            "requested_capability": raw_result.get("requested_capability") or compatibility_plan.selected_capability,
+            "selected_capability": raw_result.get("selected_capability") or compatibility_plan.selected_capability,
+            "executed_capability": cli_action.command_id,
+            "performed_new_calculations": cli_action.perform_new_calculation,
+            "reused_existing_artifacts": cli_action.reused_existing_artifacts,
+            "binding_mode": raw_result.get("binding_mode") or cli_action.binding_mode,
             "requested_observable_tags": list(
-                raw_result.get("requested_observable_tags") or plan.requested_observable_tags
+                raw_result.get("requested_observable_tags") or cli_action.requested_observable_tags
             ),
             "covered_observable_tags": list(raw_result.get("covered_observable_tags") or []),
             "missing_deliverables": list(raw_result.get("missing_deliverables") or []),
-            "resolved_target_ids": dict(raw_result.get("resolved_target_ids") or plan.resolved_target_ids),
-            "planner_requested_capability": raw_result.get("planner_requested_capability") or plan.selected_capability,
+            "resolved_target_ids": dict(raw_result.get("resolved_target_ids") or cli_action.resolved_target_ids),
+            "planner_requested_capability": raw_result.get("planner_requested_capability") or compatibility_plan.selected_capability,
             "translation_substituted_action": bool(raw_result.get("translation_substituted_action")),
             "translation_substitution_reason": str(raw_result.get("translation_substitution_reason") or ""),
             "fulfillment_mode": str(raw_result.get("fulfillment_mode") or ""),
@@ -210,7 +288,11 @@ class MacroAgent:
             result_summary=rendered["result_summary"],
             remaining_local_uncertainty=rendered["remaining_local_uncertainty"],
             tool_calls=tool_calls,
-            raw_results={"macro_structure_scan": raw_result, "reasoning_output": reasoning.model_dump(mode="json")},
+            raw_results={
+                "macro_structure_scan": raw_result,
+                "reasoning_output": reasoning.model_dump(mode="json"),
+                "cli_command_result": cli_result.model_dump(mode="json"),
+            },
             structured_results=structured_results,
             generated_artifacts={},
             status="success",
@@ -251,7 +333,7 @@ class MacroAgent:
     ) -> MacroReasoningBackend:
         return OpenAIMacroReasoningBackend(config, client=llm_client)
 
-    def _normalize_execution_plan(
+    def _build_compatibility_execution_plan(
         self,
         reasoning: MacroReasoningResponse,
         *,
@@ -272,7 +354,7 @@ class MacroAgent:
             requested_capability=requested_capability,
         )
         action_definition = MACRO_ACTION_REGISTRY[selected_capability]
-        requested_observable_tags = list(reasoning.execution_plan.requested_observable_tags)
+        requested_observable_tags = list(reasoning.execution_plan.requested_observable_tags if reasoning.execution_plan is not None else [])
         if not requested_observable_tags:
             requested_observable_tags = list(action_definition.exact_observable_tags)
         steps = [
@@ -328,25 +410,93 @@ class MacroAgent:
             ],
             requested_route_summary=action_definition.purpose,
             requested_deliverables=list(reasoning.execution_plan.requested_deliverables)
-            or list(action_definition.default_deliverables),
+            if reasoning.execution_plan is not None
+            else list(action_definition.default_deliverables),
         )
         return MacroExecutionPlan(
-            local_goal=reasoning.execution_plan.local_goal,
-            requested_deliverables=list(reasoning.execution_plan.requested_deliverables)
-            or list(action_definition.default_deliverables),
+            local_goal=(
+                reasoning.execution_plan.local_goal
+                if reasoning.execution_plan is not None
+                else f"Execute bounded macro command `{macro_command_id(selected_capability)}`."
+            ),
+            requested_deliverables=(
+                list(reasoning.execution_plan.requested_deliverables)
+                if reasoning.execution_plan is not None and reasoning.execution_plan.requested_deliverables
+                else list(action_definition.default_deliverables)
+            ),
             structure_source=structure_source,  # type: ignore[arg-type]
             selected_capability=selected_capability,
             binding_mode=binding_mode,
             requested_observable_tags=requested_observable_tags,
             resolved_target_ids=self._resolved_target_ids(shared_structure_context),
-            focus_areas=list(reasoning.execution_plan.focus_areas),
+            focus_areas=list(reasoning.execution_plan.focus_areas if reasoning.execution_plan is not None else []),
             supported_scope=[definition.name for definition in MACRO_CAPABILITY_REGISTRY.values()],
-            unsupported_requests=list(reasoning.execution_plan.unsupported_requests),
+            unsupported_requests=list(reasoning.unsupported_requests or (reasoning.execution_plan.unsupported_requests if reasoning.execution_plan is not None else [])),
             steps=steps,
             expected_outputs=list(reasoning.expected_outputs),
             failure_reporting=reasoning.failure_policy,
             macro_tool_request=macro_tool_request,
             macro_tool_plan=macro_tool_plan,
+        )
+
+    def _normalize_cli_action(
+        self,
+        reasoning: MacroReasoningResponse,
+        *,
+        task_received: str,
+        smiles: str,
+        shared_structure_context: Optional[SharedStructureContext],
+    ) -> CliActionSpec:
+        requested_capability = self._requested_capability_from_task(task_received)
+        binding_mode = self._binding_mode_from_task(task_received, requested_capability)
+        selected_capability = self._resolve_selected_capability(
+            reasoning=reasoning,
+            task_received=task_received,
+            shared_structure_context=shared_structure_context,
+            requested_capability=requested_capability,
+        )
+        command_id = macro_command_id(selected_capability)
+        action = reasoning.cli_action
+        if action is not None and action.command_id == command_id:
+            return action.model_copy(
+                update={
+                    "command_program": "python3",
+                    "command_args": ["-m", "aie_mas.cli.macro_exec"],
+                }
+            )
+        action_definition = MACRO_ACTION_REGISTRY[selected_capability]
+        requested_observable_tags = (
+            list(reasoning.execution_plan.requested_observable_tags)
+            if reasoning.execution_plan is not None
+            else list(action_definition.exact_observable_tags)
+        )
+        return CliActionSpec(
+            command_id=command_id,
+            command_program="python3",
+            command_args=["-m", "aie_mas.cli.macro_exec"],
+            stdin_payload={
+                "selected_capability": selected_capability,
+                "requested_capability": requested_capability or selected_capability,
+                "requested_observable_tags": requested_observable_tags,
+                "requested_deliverables": (
+                    list(reasoning.execution_plan.requested_deliverables)
+                    if reasoning.execution_plan is not None and reasoning.execution_plan.requested_deliverables
+                    else list(action_definition.default_deliverables)
+                ),
+                "binding_mode": binding_mode,
+                "smiles": smiles,
+                "shared_structure_context": (
+                    shared_structure_context.model_dump(mode="json")
+                    if shared_structure_context is not None
+                    else None
+                ),
+            },
+            expected_outputs=list(reasoning.expected_outputs),
+            perform_new_calculation=False,
+            reused_existing_artifacts=shared_structure_context is not None,
+            resolved_target_ids=self._resolved_target_ids(shared_structure_context),
+            binding_mode=binding_mode,
+            requested_observable_tags=requested_observable_tags,
         )
 
     def _runtime_context_summary(self) -> dict[str, Any]:
@@ -362,6 +512,7 @@ class MacroAgent:
                 "heavy global conformer search",
                 "global mechanism adjudication",
             ],
+            "command_catalog": render_cli_command_catalog("macro"),
             "capability_registry": {
                 name: {
                     "purpose": definition.purpose,
@@ -460,11 +611,15 @@ class MacroAgent:
         shared_structure_context: Optional[SharedStructureContext],
         requested_capability: Optional[MacroCapabilityName],
     ) -> MacroCapabilityName:
-        if reasoning.execution_plan.selected_capability in MACRO_CAPABILITY_REGISTRY:
+        if reasoning.execution_plan is not None and reasoning.execution_plan.selected_capability in MACRO_CAPABILITY_REGISTRY:
             return reasoning.execution_plan.selected_capability
+        if reasoning.cli_action is not None and reasoning.cli_action.command_id.startswith("macro."):
+            candidate = reasoning.cli_action.command_id.split(".", 1)[1]
+            if candidate in MACRO_CAPABILITY_REGISTRY:
+                return candidate  # type: ignore[return-value]
         if requested_capability is not None:
             return requested_capability
-        focus_areas = [item.lower() for item in reasoning.execution_plan.focus_areas]
+        focus_areas = [item.lower() for item in (reasoning.execution_plan.focus_areas if reasoning.execution_plan is not None else [])]
         task_lower = task_received.lower()
         capability_by_token: list[tuple[MacroCapabilityName, tuple[str, ...]]] = [
             (

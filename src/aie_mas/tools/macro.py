@@ -126,6 +126,19 @@ class DeterministicMacroStructureTool:
         smiles: str,
         shared_structure_context: SharedStructureContext | None = None,
     ) -> dict[str, Any]:
+        return self.execute_local(
+            plan=plan,
+            smiles=smiles,
+            shared_structure_context=shared_structure_context,
+        )
+
+    def execute_local(
+        self,
+        *,
+        plan: MacroExecutionPlan,
+        smiles: str,
+        shared_structure_context: SharedStructureContext | None = None,
+    ) -> dict[str, Any]:
         selected_capability = plan.selected_capability or "screen_planarity_compactness"
         if selected_capability not in MACRO_CAPABILITY_REGISTRY:
             raise ValueError(f"Unsupported macro capability: {selected_capability}")

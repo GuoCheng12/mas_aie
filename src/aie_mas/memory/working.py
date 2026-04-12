@@ -434,6 +434,13 @@ class WorkingMemoryManager:
             first_geometry_record = parsed_snapshot_records[0] if parsed_snapshot_records else {}
             payload["structured_results"] = {
                 "status": structured_results.get("status"),
+                "command_id": structured_results.get("command_id"),
+                "command_program": structured_results.get("command_program"),
+                "command_args": list(structured_results.get("command_args") or []),
+                "stdin_payload_summary": dict(structured_results.get("stdin_payload_summary") or {}),
+                "cli_exit_code": structured_results.get("cli_exit_code"),
+                "cli_stdout_excerpt": self._truncate(str(structured_results.get("cli_stdout_excerpt") or ""), 220),
+                "cli_stderr_excerpt": self._truncate(str(structured_results.get("cli_stderr_excerpt") or ""), 220),
                 "requested_capability": structured_results.get("requested_capability"),
                 "executed_capability": structured_results.get("executed_capability"),
                 "selected_capability": structured_results.get("selected_capability"),
@@ -530,8 +537,11 @@ class WorkingMemoryManager:
 
     def _planner_compact_summary(self, report: Any) -> dict[str, object]:
         structured_results = getattr(report, "structured_results", {}) or {}
+        command_id = str(structured_results.get("command_id") or "").strip()
         executed_capability = str(structured_results.get("executed_capability") or "").strip()
         observations: list[str] = []
+        if command_id:
+            observations.append(f"command_id={command_id}")
         if executed_capability:
             observations.append(f"executed_capability={executed_capability}")
         fulfillment_mode = str(structured_results.get("fulfillment_mode") or "").strip()
@@ -568,6 +578,7 @@ class WorkingMemoryManager:
             if isinstance(first_geometry_record.get("best_phenolic_oh_to_imine_n_contact"), dict):
                 observations.append("best_phenolic_oh_to_imine_n_contact parsed")
         return {
+            "command_id": command_id or None,
             "executed_capability": executed_capability or None,
             "selected_capability": structured_results.get("selected_capability") or executed_capability or None,
             "fulfillment_mode": fulfillment_mode or None,
@@ -661,7 +672,7 @@ class WorkingMemoryManager:
             artifact_bundle_id=structured_results.get("artifact_bundle_id"),
             artifact_kind=structured_results.get("artifact_bundle_kind"),
             selected_member_ids=list(generated_artifacts.get("source_member_ids") or []),
-            source_capability=structured_results.get("executed_capability"),
+            source_capability=structured_results.get("command_id") or structured_results.get("executed_capability"),
         )
         for entry in list(generated_artifacts.get("artifact_bundle_registry_entries") or []):
             if not isinstance(entry, dict):
@@ -833,16 +844,18 @@ class WorkingMemoryManager:
             agent_name = getattr(report, "agent_name", None)
             if agent_name == "macro":
                 structured_results = getattr(report, "structured_results", {}) or {}
+                command_id = str(structured_results.get("command_id") or "").strip()
                 executed_capability = str(structured_results.get("executed_capability") or "").strip()
-                labels.append(executed_capability or "macro")
+                labels.append(command_id or executed_capability or "macro")
                 continue
             if agent_name == "verifier":
                 labels.append("verifier")
                 continue
             if agent_name == "microscopic":
                 structured_results = getattr(report, "structured_results", {}) or {}
+                command_id = str(structured_results.get("command_id") or "").strip()
                 executed_capability = str(structured_results.get("executed_capability") or "").strip()
-                labels.append(executed_capability or "microscopic")
+                labels.append(command_id or executed_capability or "microscopic")
         deduped: list[str] = []
         for label in labels:
             if label not in deduped:
@@ -852,7 +865,8 @@ class WorkingMemoryManager:
     def _executed_evidence_families(self, action_labels: list[str]) -> list[EvidenceFamily]:
         families: list[EvidenceFamily] = []
         for label in action_labels:
-            for family in _EVIDENCE_FAMILY_BY_ACTION.get(label, ()):
+            normalized_label = label.split(".", 1)[1] if "." in label else label
+            for family in _EVIDENCE_FAMILY_BY_ACTION.get(label, ()) or _EVIDENCE_FAMILY_BY_ACTION.get(normalized_label, ()):
                 if family not in families:
                     families.append(family)
         return families

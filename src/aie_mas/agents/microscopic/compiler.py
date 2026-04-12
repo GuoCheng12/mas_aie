@@ -13,6 +13,7 @@ from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
     AmespCapabilityName,
     AgentReport,
+    CliActionSpec,
     DihedralBondType,
     MicroscopicCapabilityRoute,
     MicroscopicCompletionReasonCode,
@@ -480,6 +481,8 @@ class MicroscopicToolPlanDraft(BaseModel):
 class MicroscopicReasoningResponse(BaseModel):
     task_understanding: str
     reasoning_summary: str
+    cli_action: CliActionSpec | None = None
+    unsupported_requests: list[str] = Field(default_factory=list)
     execution_plan: MicroscopicReasoningPlanDraft
     capability_limit_note: str
     expected_outputs: list[str] = Field(default_factory=list)

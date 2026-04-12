@@ -302,6 +302,7 @@ class AieMasConfig(BaseModel):
 
     def runtime_context(self) -> dict[str, Any]:
         from aie_mas.tools.macro import MACRO_CAPABILITY_REGISTRY
+        from aie_mas.tools.cli_execution import render_cli_command_catalog
 
         return {
             "execution_profile": self.execution_profile,
@@ -336,6 +337,8 @@ class AieMasConfig(BaseModel):
                 }
                 for name, definition in MACRO_CAPABILITY_REGISTRY.items()
             },
+            "macro_command_catalog": render_cli_command_catalog("macro"),
+            "microscopic_command_catalog": render_cli_command_catalog("microscopic"),
             "verifier_backend": self.verifier_backend,
             "verifier_base_url": self.verifier_base_url,
             "verifier_model": self.verifier_model,

@@ -25,6 +25,7 @@ from aie_mas.tools.amesp import (
     render_reasoned_microscopic_examples,
     render_registry_backed_microscopic_examples,
 )
+from aie_mas.tools.cli_execution import render_cli_command_catalog
 from aie_mas.utils.prompts import PromptRepository
 
 from .compiler import _default_prompt_repository
@@ -245,6 +246,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "shared_structure_policy": (
                 "prefer shared prepared structure context; only compatibility paths may fall back to private structure preparation"
             ),
+            "command_catalog": render_cli_command_catalog("microscopic"),
             "budget_profile": self._config.microscopic_budget_profile,
             "vertical_state_count_default": self._config.amesp_s1_nstates,
         }

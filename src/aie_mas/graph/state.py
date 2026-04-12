@@ -127,6 +127,33 @@ MacroCapabilityName = Literal[
     "screen_conformer_geometry_proxy",
     "screen_neutral_aromatic_structure",
 ]
+CliCommandId = Literal[
+    "macro.screen_donor_acceptor_layout",
+    "macro.screen_rotor_torsion_topology",
+    "macro.screen_planarity_compactness",
+    "macro.screen_intramolecular_hbond_preorganization",
+    "macro.screen_conformer_geometry_proxy",
+    "macro.screen_neutral_aromatic_structure",
+    "microscopic.list_rotatable_dihedrals",
+    "microscopic.list_available_conformers",
+    "microscopic.list_artifact_bundles",
+    "microscopic.list_artifact_bundle_members",
+    "microscopic.run_baseline_bundle",
+    "microscopic.run_conformer_bundle",
+    "microscopic.run_torsion_snapshots",
+    "microscopic.run_targeted_charge_analysis",
+    "microscopic.run_targeted_localized_orbital_analysis",
+    "microscopic.run_targeted_natural_orbital_analysis",
+    "microscopic.run_targeted_density_population_analysis",
+    "microscopic.run_targeted_transition_dipole_analysis",
+    "microscopic.run_targeted_approx_delta_dipole_analysis",
+    "microscopic.run_ris_state_characterization",
+    "microscopic.run_targeted_state_characterization",
+    "microscopic.parse_snapshot_outputs",
+    "microscopic.extract_ct_descriptors_from_bundle",
+    "microscopic.extract_geometry_descriptors_from_bundle",
+    "microscopic.inspect_raw_artifact_bundle",
+]
 VerifierEvidenceKind = Literal["case_memory", "external_summary", "mechanistic_note"]
 SharedStructureStatus = Literal["missing", "ready", "failed"]
 MoleculeIdentityStatus = Literal["missing", "ready", "partial", "failed"]
@@ -194,6 +221,40 @@ class AgentReport(BaseModel):
     generated_artifacts: dict[str, Any] = Field(default_factory=dict)
     status: Literal["success", "partial", "failed"] = "success"
     planner_readable_report: str
+
+
+class CliActionSpec(BaseModel):
+    command_id: CliCommandId
+    command_program: str
+    command_args: list[str] = Field(default_factory=list)
+    stdin_payload: dict[str, Any] = Field(default_factory=dict)
+    expected_outputs: list[str] = Field(default_factory=list)
+    perform_new_calculation: bool = False
+    reused_existing_artifacts: bool = False
+    resolved_target_ids: dict[str, Any] = Field(default_factory=dict)
+    binding_mode: Optional[Literal["hard", "preferred", "none"]] = None
+    requested_observable_tags: list[str] = Field(default_factory=list)
+
+
+class CliCommandDefinition(BaseModel):
+    command_id: CliCommandId
+    agent_name: Literal["macro", "microscopic"]
+    command_program: str
+    command_args: list[str] = Field(default_factory=list)
+    perform_new_calculation: bool = False
+    default_deliverables: list[str] = Field(default_factory=list)
+    expected_result_schema: str = "json_object"
+
+
+class CliCommandResult(BaseModel):
+    command_id: CliCommandId
+    command_program: str
+    command_args: list[str] = Field(default_factory=list)
+    stdin_payload_summary: dict[str, Any] = Field(default_factory=dict)
+    cli_exit_code: int = 0
+    cli_stdout_excerpt: str = ""
+    cli_stderr_excerpt: str = ""
+    parsed_json: dict[str, Any] = Field(default_factory=dict)
 
 
 class VerifierEvidenceCard(BaseModel):

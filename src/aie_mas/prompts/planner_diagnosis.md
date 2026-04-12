@@ -92,10 +92,11 @@ Important rules:
 - If external evidence is the most informative next step, choose `action=verifier` and keep that choice.
 - If action is `Verifier`, the task must explicitly distinguish the current leading hypothesis from the most relevant unresolved alternative or explain what portfolio-screening debt it is intended to reduce.
 - If action is `Macro`, keep it deterministic and bounded.
-- If action is `Macro`, the task should be expressible as exactly one registry-backed macro capability using `runtime_context.macro_capability_registry`.
+- If action is `Macro`, the task should describe one evidence goal that can map to exactly one command using `runtime_context.macro_command_catalog`.
 - If action is `Microscopic`, keep it low-cost and bounded.
-- If action is `Microscopic`, the task must map to exactly one registry-backed Amesp action in that round.
+- If action is `Microscopic`, the task must map to exactly one command in `runtime_context.microscopic_command_catalog` in that round.
 - Do not ask `Microscopic` to perform multiple sequential actions, multi-bundle analysis, or conditional workflows in one decision.
+- Do not write low-level capability names in `task_instruction` or `agent_task_instructions`; describe the evidence goal, hard constraints, and prohibited extra work instead.
 - If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
 - If `rounds_remaining_including_current` is 1, do not plan a future follow-up round after the current one; if portfolio screening is still incomplete, say so explicitly instead of pretending the case is pairwise-ready.
 - Do not ask specialized agents to decide the global mechanism or the next system-level action.

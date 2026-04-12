@@ -5,18 +5,66 @@ from typing import Any, Optional
 from aie_mas.graph.state import (
     AgentFramingMode,
     AgentReport,
+    CliActionSpec,
     MicroscopicTaskSpec,
     ReasoningPhase,
     SharedStructureContext,
     SharedStructureStatus,
 )
-from aie_mas.tools.amesp import AmespExecutionError
+from aie_mas.tools.amesp import AmespBaselineRunResult, AmespExecutionError
+from aie_mas.tools.cli_execution import CliExecutionError, execute_cli_action, microscopic_command_id
 
 from .compiler import MicroscopicReasoningParseError, normalize_reasoning_outcome_for_best_fit_translation
 from .interpreter import MicroscopicReasoningOutcome
 
 
 class MicroscopicExecutorMixin:
+    def _build_cli_action(
+        self,
+        *,
+        plan: Any,
+        smiles: str,
+        label: str,
+        workdir: Any,
+        available_artifacts: dict[str, Any],
+        round_index: int,
+        case_id: str,
+        current_hypothesis: str,
+    ) -> CliActionSpec:
+        capability_name = plan.microscopic_tool_request.capability_name
+        return CliActionSpec(
+            command_id=microscopic_command_id(capability_name),
+            command_program="python3",
+            command_args=["-m", "aie_mas.cli.microscopic_exec"],
+            stdin_payload={
+                "tool_config": {
+                    "amesp_bin": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
+                    "npara": self._config.amesp_npara,
+                    "maxcore_mb": self._config.amesp_maxcore_mb,
+                    "use_ricosx": self._config.amesp_use_ricosx,
+                    "s1_nstates": self._config.amesp_s1_nstates,
+                    "td_tout": self._config.amesp_td_tout,
+                    "follow_up_max_conformers": self._config.amesp_follow_up_max_conformers,
+                    "follow_up_max_torsion_snapshots_total": self._config.amesp_follow_up_max_torsion_snapshots_total,
+                    "probe_interval_seconds": self._config.amesp_probe_interval_seconds,
+                },
+                "plan": plan.model_dump(mode="json"),
+                "smiles": smiles,
+                "label": label,
+                "workdir": str(workdir),
+                "available_artifacts": available_artifacts,
+                "round_index": round_index,
+                "case_id": case_id,
+                "current_hypothesis": current_hypothesis,
+            },
+            expected_outputs=list(plan.expected_outputs),
+            perform_new_calculation=bool(plan.microscopic_tool_request.perform_new_calculation),
+            reused_existing_artifacts=bool(plan.microscopic_tool_request.reuse_existing_artifacts_only),
+            resolved_target_ids={},
+            binding_mode=plan.binding_mode,
+            requested_observable_tags=list(plan.requested_observable_tags),
+        )
+
     def _repeated_no_new_observable_gain(
         self,
         *,
@@ -342,12 +390,21 @@ class MicroscopicExecutorMixin:
 
         label = f"{case_id}_round_{round_index:02d}_micro"
         workdir = self._resolve_workdir(case_id=case_id, round_index=round_index)
+        cli_action = self._build_cli_action(
+            plan=plan,
+            smiles=smiles,
+            label=label,
+            workdir=workdir,
+            available_artifacts=available_artifacts,
+            round_index=round_index,
+            case_id=case_id,
+            current_hypothesis=current_hypothesis,
+        )
+        reasoning.cli_action = cli_action
+        reasoning.unsupported_requests = list(plan.unsupported_requests)
         tool_calls = [
             "microscopic_reasoning(task_instruction_to_execution_plan)",
-            (
-                f"{self._amesp_tool.name}.execute("
-                f"plan_version='{plan.plan_version}', capability='{plan.microscopic_tool_request.capability_name}', label='{label}')"
-            ),
+            f"{cli_action.command_program} {' '.join(cli_action.command_args)}(command_id='{cli_action.command_id}', label='{label}')",
         ]
         if plan.structure_source == "existing_prepared_structure":
             tool_calls.insert(1, "shared_structure_context(reuse_prepared_3d_structure)")
@@ -355,17 +412,12 @@ class MicroscopicExecutorMixin:
             tool_calls.insert(1, "structure_preparation(smiles_to_3d or reusable prepared structure)")
 
         try:
-            run_result = self._amesp_tool.execute(
-                plan=plan,
-                smiles=smiles,
-                label=label,
-                workdir=workdir,
-                available_artifacts=available_artifacts,
-                progress_callback=self._progress_callback,
-                round_index=round_index,
-                case_id=case_id,
-                current_hypothesis=current_hypothesis,
+            cli_result = execute_cli_action(
+                config=self._config,
+                action=cli_action,
+                expected_agent_name="microscopic",
             )
+            run_result = AmespBaselineRunResult.model_validate(cli_result.parsed_json)
             structured_results = {
                 "backend": "amesp",
                 "reasoning_backend": self._config.microscopic_backend,
@@ -382,10 +434,18 @@ class MicroscopicExecutorMixin:
                 "closest_supported_actions": [],
                 "registry_action_name": plan.microscopic_tool_request.capability_name,
                 "registry_validation_errors": [],
+                "command_id": cli_action.command_id,
+                "command_program": cli_action.command_program,
+                "command_args": list(cli_action.command_args),
+                "stdin_payload_summary": dict(cli_result.stdin_payload_summary),
+                "cli_exit_code": cli_result.cli_exit_code,
+                "cli_stdout_excerpt": cli_result.cli_stdout_excerpt,
+                "cli_stderr_excerpt": cli_result.cli_stderr_excerpt,
+                "cli_action": cli_action.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": getattr(run_result, "route", plan.capability_route),
                 "requested_capability": plan.microscopic_tool_request.capability_name,
-                "executed_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
+                "executed_capability": cli_action.command_id,
                 "selected_capability": getattr(run_result, "executed_capability", plan.microscopic_tool_request.capability_name),
                 "performed_new_calculations": getattr(run_result, "performed_new_calculations", True),
                 "reused_existing_artifacts": getattr(run_result, "reused_existing_artifacts", False),
@@ -423,11 +483,75 @@ class MicroscopicExecutorMixin:
                 "reasoning_output": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "amesp_raw_step_results": run_result.raw_step_results,
+                "cli_command_result": cli_result.model_dump(mode="json"),
             }
             generated_artifacts = dict(run_result.generated_artifacts)
             generated_artifacts["source_round"] = round_index
             result_summary_text = self._successful_result_summary(structured_results)
             status = "success"
+        except CliExecutionError as exc:
+            structured_results = {
+                "backend": "amesp",
+                "reasoning_backend": self._config.microscopic_backend,
+                "task_mode": task_spec.mode,
+                "task_label": task_spec.task_label,
+                "task_objective": task_spec.objective,
+                "reasoning": reasoning.model_dump(mode="json"),
+                "reasoning_parse_mode": reasoning_parse_mode,
+                "reasoning_contract_mode": reasoning_contract_mode,
+                "reasoning_contract_errors": reasoning_contract_errors,
+                "microscopic_action_status": action_decision.status,
+                "unsupported_intent": None,
+                "unsupported_parts": list(action_decision.unsupported_parts),
+                "closest_supported_actions": [],
+                "registry_action_name": plan.microscopic_tool_request.capability_name,
+                "registry_validation_errors": [],
+                "command_id": cli_action.command_id,
+                "command_program": cli_action.command_program,
+                "command_args": list(cli_action.command_args),
+                "stdin_payload_summary": dict(cli_action.stdin_payload),
+                "cli_exit_code": exc.exit_code,
+                "cli_stdout_excerpt": exc.stdout,
+                "cli_stderr_excerpt": exc.stderr,
+                "cli_action": cli_action.model_dump(mode="json"),
+                "execution_plan": plan.model_dump(mode="json"),
+                "attempted_route": plan.capability_route,
+                "requested_capability": plan.microscopic_tool_request.capability_name,
+                "executed_capability": cli_action.command_id,
+                "selected_capability": plan.microscopic_tool_request.capability_name,
+                "performed_new_calculations": bool(plan.microscopic_tool_request.perform_new_calculation),
+                "reused_existing_artifacts": bool(plan.microscopic_tool_request.reuse_existing_artifacts_only),
+                "resolved_target_ids": {},
+                "honored_constraints": [],
+                "unmet_constraints": [],
+                "missing_deliverables": list(plan.requested_deliverables),
+                "structure_source": plan.structure_source,
+                "supported_scope": plan.supported_scope,
+                "unsupported_requests": plan.unsupported_requests,
+                "error": {
+                    "message": str(exc),
+                    "stdout": exc.stdout,
+                    "stderr": exc.stderr,
+                },
+                **self._translation_structured_fields(action_decision=action_decision, plan=plan),
+            }
+            raw_results = {
+                "reasoning_output": reasoning.model_dump(mode="json"),
+                "execution_plan": plan.model_dump(mode="json"),
+                "cli_command_result": {
+                    "command_id": cli_action.command_id,
+                    "command_program": cli_action.command_program,
+                    "command_args": list(cli_action.command_args),
+                    "stdin_payload_summary": dict(cli_action.stdin_payload),
+                    "cli_exit_code": exc.exit_code,
+                    "cli_stdout_excerpt": exc.stdout,
+                    "cli_stderr_excerpt": exc.stderr,
+                    "parsed_json": {},
+                },
+            }
+            generated_artifacts = {}
+            result_summary_text = f"Microscopic CLI execution failed before a valid JSON result could be returned: {exc}"
+            status = "failed"
         except AmespExecutionError as exc:
             structured_results = {
                 "backend": "amesp",
@@ -445,15 +569,15 @@ class MicroscopicExecutorMixin:
                 "closest_supported_actions": [],
                 "registry_action_name": plan.microscopic_tool_request.capability_name,
                 "registry_validation_errors": [],
+                "command_id": cli_action.command_id,
+                "command_program": cli_action.command_program,
+                "command_args": list(cli_action.command_args),
+                "stdin_payload_summary": dict(cli_action.stdin_payload),
+                "cli_action": cli_action.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
                 "attempted_route": plan.capability_route,
                 "requested_capability": plan.microscopic_tool_request.capability_name,
-                "executed_capability": (
-                    exc.structured_results.get("executed_capability")
-                    if isinstance(exc.structured_results, dict)
-                    else None
-                )
-                or plan.microscopic_tool_request.capability_name,
+                "executed_capability": cli_action.command_id,
                 "selected_capability": (
                     exc.structured_results.get("executed_capability")
                     if isinstance(exc.structured_results, dict)
@@ -496,6 +620,16 @@ class MicroscopicExecutorMixin:
             raw_results = {
                 "reasoning_output": reasoning.model_dump(mode="json"),
                 "execution_plan": plan.model_dump(mode="json"),
+                "cli_command_result": {
+                    "command_id": cli_action.command_id,
+                    "command_program": cli_action.command_program,
+                    "command_args": list(cli_action.command_args),
+                    "stdin_payload_summary": dict(cli_action.stdin_payload),
+                    "cli_exit_code": 0,
+                    "cli_stdout_excerpt": "",
+                    "cli_stderr_excerpt": "",
+                    "parsed_json": {},
+                },
                 "amesp_error": exc.to_payload(),
                 **exc.raw_results,
             }

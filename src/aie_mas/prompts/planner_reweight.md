@@ -80,10 +80,11 @@ Important rules:
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
 - If the next action is `Macro`, keep it deterministic and bounded.
-- If the next action is `Macro`, the task should be expressible as exactly one registry-backed macro capability using `runtime_context.macro_capability_registry`.
+- If the next action is `Macro`, the task should describe one evidence goal that can map to exactly one command using `runtime_context.macro_command_catalog`.
 - If top2 changes after verifier reweighting, re-evaluate the pairwise target only if portfolio screening is already complete.
 - If `recent_capability_context.repeated_local_uncertainties` shows that the same specialized-agent local limitation has already repeated for the same route, treat that route as stalled unless you are explicitly changing the observable or route.
 - When such a repeated local limitation is present, do not keep scheduling the same stalled route by inertia.
+- Do not write low-level capability names in `task_instruction` or `agent_task_instructions`; describe the evidence goal, hard constraints, and prohibited extra work instead.
 - If `rounds_remaining_including_current` is 1, you may only finalize if portfolio screening is complete. Otherwise explicitly say that the case is ending with unresolved screening debt under the round budget.
 - Do not ask specialized agents to decide the global mechanism.
 
