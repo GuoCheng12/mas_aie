@@ -1,0 +1,48 @@
+{
+  "case_id": "20f5d17cea23",
+  "smiles": "N#N=NCCOc4ccc(/C=N/N=c2c1ccccc1c3ccccc23)c(O)c4",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "neutral aromatic",
+    "置信度": 0.39,
+    "次优假设": "TICT",
+    "次优置信度": 0.22,
+    "结论状态": "best_available",
+    "摘要": "Best-available closure keeps 'neutral aromatic' ahead of 'TICT', but repeated verifier-local limitations prevented further external shrinkage of the unresolved gap: The main gap is an explicit pairwise closure rationale separating neutral aromatic from ICT on this molecule using evidence more discriminative than generic mixed close-family context."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is neutral aromatic and top2 is TICT after reweighting, with unknown still slightly above ICT because ICT continues to accumulate repeated weakening or missing-evidence signals without any direct positive support family. I interpret the latest verifier evidence as high-information but mixed close-family context: it reinforces that related systems can show neutral-aromatic/AIE/RIR or locally excited behavior, while also keeping donor-acceptor/TICT/ICT language present in the surrounding family literature. This verifier evidence does not reduce portfolio coverage debt because coverage debt was already closed; instead it supports pairwise contraction contextually, but not decisively. No still-credible hypothesis remains untested as active portfolio debt: TICT is explicitly blocked by capability, ICT is dropped with reason, ESIPT is directly weakened, and unknown is residual only. The case therefore remains legitimately in pairwise contraction rather than portfolio screening because the current top1 has direct support families in the ledger. Closure justification is still collecting rather than sufficient, because the verifier retrieval remained close-family and mixed and did not cleanly close neutral aromatic versus ICT on this exact molecule. The case is not ready for decisive finalize or best-available finalize yet; one more bounded verifier supplement targeted to neutral aromatic versus ICT is warranted.",
+      "Best-available closure keeps 'neutral aromatic' ahead of 'TICT', but repeated verifier-local limitations prevented further external shrinkage of the unresolved gap: The main gap is an explicit pairwise closure rationale separating neutral aromatic from ICT on this molecule using evidence more discriminative than generic mixed close-family context.",
+      "The latest verifier retrieval was high-information but effectively still mixed and not cleanly aligned to the remaining closure pair. Although it contains ICT-relevant topics, the completed verifier evidence record is still better characterized as partial support for neutral aromatic versus ICT closure rather than sufficient decisive supplementation.",
+      "Closure is still collecting because the remaining decisive need is a sharper pairwise rationale for neutral aromatic versus ICT on this exact molecule, and current evidence is still mixed close-family support rather than decisive exact-identity discrimination.",
+      "Portfolio screening remains complete. The latest verifier evidence adds pairwise context and does not reopen any unresolved hypothesis screen. TICT remains blocked rather than untested, while ICT, ESIPT, and unknown remain outside coverage debt with explicit reasons.",
+      "Macro capabilities have been reliable and useful for molecule-specific structural screening, especially for neutral-aromatic support. Verifier capability is currently the best active route for bounded pairwise discrimination. Microscopic Amesp-dependent routes are stalled by repeated runtime failure and should not be rescheduled on the same observable without a route change. Recent working memory repeats the same verifier local uncertainty, so repeating the same verifier route is unlikely to shrink the current gap: Verifier evidence cards summarize external supervision but do not replace Planner-level synthesis; unresolved local gap: the evidence cards still need Planner-level synthesis before any mechanism decision.",
+      "The latest verifier retrieved 4 close-family evidence cards covering AIE, RIR, neutral_aromatic, locally_excited_state, donor-acceptor, solvatochromism, dual_fluorescence, hydrazone, ICT, TICT, C=N rotation, phenol, and retrieval limitation topics. No exact-identity hit was found. This adds high-information but mixed external context and does not override the existing molecule-specific neutral-aromatic structural support or the repeated ESIPT-preorganization weakening."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ICT",
+        "confidence": 0.34,
+        "action_taken": "macro, microscopic",
+        "main_gap": "The main gap is the absence of any direct discriminative evidence separating ICT, TICT, and ESIPT, especially because the planned baseline microscopic route failed at runtime.",
+        "evidence_summary": "macro: executed_capability=screen_intramolecular_hbond_preorganization | fulfillment_mode=exact | Bounded intramolecular H-bond preorganization screening inspected reusable prepared geometry for generic H-bond candidates and... | microscopic: executed_capability=run_baseline_bundle | fulfillment_mode=exact | Amesp microscopic execution returned status=failed with amesp_binary_missing: Amesp binary was not found at /mnt/afs/kuocheng/workspace/mas_aie_eviden...",
+        "diagnosis_summary": "Current top1 is ICT and current top2 is TICT, with ESIPT very close behind. The latest evidence leaves the current top1 unresolved rather than strengthened: macro screening confirmed only that a reusable geometry inspection was possible,..."
+      },
+      {
+        "round_id": 11,
+        "current_hypothesis": "neutral aromatic",
+        "confidence": 0.39,
+        "action_taken": "verifier",
+        "main_gap": "The main gap is an explicit pairwise closure rationale separating neutral aromatic from ICT on this molecule using evidence more discriminative than generic mixed close-family context.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: aie, rir, tict, neutral_aromatic, locally_excited_state, donor-acceptor, solvatochromism, dual_fluorescence, hyd...",
+        "diagnosis_summary": "Top1 is neutral aromatic and top2 is TICT after reweighting, with unknown still slightly above ICT because ICT continues to accumulate repeated weakening or missing-evidence signals without any direct positive support family. I interpret..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：The main gap is an explicit pairwise closure rationale separating neutral aromatic from ICT on this molecule using evidence more discriminative than generic mixed close-family context.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。"
+  ]
+}
