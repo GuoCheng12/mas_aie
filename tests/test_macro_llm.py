@@ -2,10 +2,13 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from aie_mas.agents.macro import MacroAgent
+import pytest
+
+from aie_mas.agents.macro import MacroAgent, MacroReasoningPlanDraft, MacroReasoningResponse
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import SharedStructureContext
 from aie_mas.llm.openai_compatible import OpenAICompatibleMacroClient
+from aie_mas.tools.cli_execution import CliExecutionError
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -40,6 +43,30 @@ class _FakeChatCompletions:
 class _FakeClient:
     def __init__(self, responses: list[str]) -> None:
         self.chat = type("FakeChat", (), {"completions": _FakeChatCompletions(responses)})()
+
+
+class _MacroRetryBackend:
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, object]] = []
+
+    def reason(self, rendered_prompt, payload):  # noqa: ANN001
+        del rendered_prompt
+        self.payloads.append(payload)
+        return MacroReasoningResponse(
+            task_understanding="Run one bounded macro CLI action only.",
+            reasoning_summary="Translate the local task into one bounded macro CLI action.",
+            execution_plan=MacroReasoningPlanDraft(
+                local_goal="Collect bounded macro structural evidence only.",
+                requested_deliverables=["planarity and torsion summary"],
+                selected_capability="screen_planarity_compactness",
+                requested_observable_tags=["planarity_proxy", "compactness_proxy"],
+                focus_areas=["planarity"],
+                unsupported_requests=[],
+            ),
+            capability_limit_note="Only bounded deterministic macro analysis is allowed.",
+            expected_outputs=["planarity and torsion summary"],
+            failure_policy="Retry locally on CLI invocation failure before returning a failed report.",
+        )
 
 
 def _shared_structure_context(tmp_path: Path) -> SharedStructureContext:
@@ -262,3 +289,44 @@ def test_macro_agent_recovers_requested_capability_from_task_instruction(tmp_pat
     assert report.structured_results["execution_plan"]["selected_capability"] == "screen_intramolecular_hbond_preorganization"
     assert report.structured_results["binding_mode"] == "hard"
     assert report.structured_results["executed_capability"] == "screen_intramolecular_hbond_preorganization"
+
+
+def test_macro_agent_retries_locally_after_cli_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    config = AieMasConfig(
+        project_root=tmp_path,
+        execution_profile="local-dev",
+        macro_backend="openai_sdk",
+        prompts_dir=PROMPTS_DIR,
+        cli_local_retry_attempts=1,
+    )
+    agent = MacroAgent(
+        prompts=PromptRepository(PROMPTS_DIR),
+        config=config,
+    )
+    backend = _MacroRetryBackend()
+    agent._reasoning_backend = backend
+
+    def _fail_cli(*, config, action, expected_agent_name):  # noqa: ANN001
+        del config, expected_agent_name
+        raise CliExecutionError(
+            "macro CLI argv invalid",
+            command_id=action.command_id,
+            exit_code=2,
+            stdout="",
+            stderr="argv invalid",
+        )
+
+    monkeypatch.setattr("aie_mas.agents.macro.execute_cli_action", _fail_cli)
+
+    report = agent.run(
+        smiles="C1=CC=CC=C1",
+        task_received="Inspect bounded planarity and compactness evidence only.",
+        current_hypothesis="neutral aromatic",
+    )
+
+    assert report.status == "failed"
+    assert len(backend.payloads) == 2
+    assert backend.payloads[0]["previous_cli_failure_context"] is None
+    assert backend.payloads[1]["previous_cli_failure_context"]["cli_exit_code"] == 2
+    assert report.structured_results["cli_retry_attempts_used"] == 2
+    assert len(report.structured_results["cli_retry_history"]) == 2

@@ -19,6 +19,7 @@ The human message contains a JSON object named `context_json`. Use these fields 
 - `task_mode`
 - `requested_deliverables`
 - `unsupported_requests`
+- `previous_cli_failure_context`
 - `amesp_interface_catalog`
 - `action_registry`
 - `action_selection_catalog`
@@ -45,6 +46,7 @@ Local operational reasoning rules:
 - Preserve explicit hard constraints such as parse-only, without-new-calculations, reuse-existing-artifacts-only, exact bundle/member targets, exact dihedral targets, and explicit do-not-run exclusions.
 - Do not silently substitute: every non-hard-bound substitution must be explicit in the action decision metadata.
 - Use `action_selection_catalog` as the structured source of truth for exact/proxy/inventory coverage and bounded action fit.
+- If `previous_cli_failure_context` is present, repair the failed local invocation by revising the action decision or parameters locally instead of repeating the same invalid CLI attempt unchanged.
 
 Output contract:
 - Return exactly these tagged sections and nothing else:

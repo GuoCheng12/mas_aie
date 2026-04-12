@@ -10,6 +10,7 @@ import pytest
 from aie_mas.agents.result_agents import MicroscopicAgent
 from aie_mas.chem.structure_prep import PreparedStructure, StructurePrepError
 from aie_mas.cli.run_case import run_case_workflow
+from aie_mas.config import AieMasConfig
 from aie_mas.graph import builder as graph_builder
 from aie_mas.graph.state import MicroscopicTaskSpec
 from aie_mas.graph.state import MicroscopicExecutionPlan
@@ -32,6 +33,7 @@ from aie_mas.tools.amesp import (
 from aie_mas.tools.factory import ToolSet
 from aie_mas.tools.macro import DeterministicMacroStructureTool
 from aie_mas.tools.shared_structure import SharedStructurePrepTool
+from aie_mas.tools.cli_execution import CliExecutionError
 
 
 S0_AOP_TEXT = """
@@ -2866,6 +2868,60 @@ def test_real_microscopic_agent_builds_understanding_and_execution_plan(
         event["phase"] == "probe"
         and event["details"].get("probe_stage") == "execution_plan"
         and event["details"].get("probe_status") == "end"
+        for event in progress_events
+    )
+
+
+def test_real_microscopic_agent_retries_locally_after_cli_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    install_specialized_test_doubles,
+) -> None:
+    install_specialized_test_doubles()
+    progress_events: list[dict[str, object]] = []
+    agent = MicroscopicAgent(
+        amesp_tool=_SuccessfulAmespTool(),
+        tools_work_dir=tmp_path / "tools",
+        progress_callback=progress_events.append,
+        config=AieMasConfig(
+            project_root=tmp_path,
+            prompts_dir=Path(__file__).resolve().parents[1] / "src" / "aie_mas" / "prompts",
+            cli_local_retry_attempts=1,
+        ),
+    )
+
+    def _fail_cli(*, config, action, expected_agent_name):  # noqa: ANN001
+        del config, expected_agent_name
+        raise CliExecutionError(
+            "microscopic CLI argv invalid",
+            command_id=action.command_id,
+            exit_code=2,
+            stdout="",
+            stderr="argv invalid",
+        )
+
+    monkeypatch.setattr("aie_mas.agents.microscopic.executor.execute_cli_action", _fail_cli)
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Use Amesp to optimize the ground-state geometry and characterize the first excited singlet.",
+        task_spec=MicroscopicTaskSpec(
+            mode="baseline_s0_s1",
+            task_label="initial-baseline",
+            objective="Use Amesp to optimize the ground-state geometry and characterize the first excited singlet.",
+        ),
+        current_hypothesis="ICT",
+        case_id="case123",
+        round_index=1,
+    )
+
+    assert report.status == "failed"
+    assert report.structured_results["cli_retry_attempts_used"] == 2
+    assert len(report.structured_results["cli_retry_history"]) == 2
+    assert any(
+        event["phase"] == "probe"
+        and event["details"].get("probe_stage") == "cli_repair_reasoning"
+        and event["details"].get("probe_status") == "start"
         for event in progress_events
     )
 

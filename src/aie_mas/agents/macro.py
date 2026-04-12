@@ -128,78 +128,108 @@ class MacroAgent:
             ),
             "runtime_context": self._runtime_context_summary(),
         }
-        rendered_prompt = self._prompts.render("macro_reasoning", reasoning_payload)
-        reasoning = self._reasoning_backend.reason(rendered_prompt, reasoning_payload)
-        cli_action = self._normalize_cli_action(
-            reasoning,
-            task_received=task_received,
-            smiles=smiles,
-            shared_structure_context=shared_structure_context,
-        )
-        compatibility_plan = self._build_compatibility_execution_plan(
-            reasoning,
-            task_received=task_received,
-            shared_structure_context=shared_structure_context,
-        )
-        try:
-            cli_result = execute_cli_action(
-                config=self._config,
-                action=cli_action,
-                expected_agent_name="macro",
-            )
-        except CliExecutionError as exc:
-            return AgentReport(
-                agent_name="macro",
+        retry_history: list[dict[str, Any]] = []
+        previous_cli_failure_context: dict[str, Any] | None = None
+        cli_action: CliActionSpec | None = None
+        compatibility_plan: MacroExecutionPlan | None = None
+        reasoning: MacroReasoningResponse | None = None
+        cli_result = None
+        for retry_index in range(self._config.cli_local_retry_attempts + 1):
+            attempt_payload = {
+                **reasoning_payload,
+                "cli_retry_attempt_index": retry_index,
+                "previous_cli_failure_context": previous_cli_failure_context,
+            }
+            rendered_prompt = self._prompts.render("macro_reasoning", attempt_payload)
+            reasoning = self._reasoning_backend.reason(rendered_prompt, attempt_payload)
+            cli_action = self._normalize_cli_action(
+                reasoning,
                 task_received=task_received,
-                task_completion_status="failed",
-                task_completion="Task failed because the bounded macro CLI execution did not complete successfully.",
-                task_understanding=reasoning.task_understanding,
-                reasoning_summary=reasoning.reasoning_summary,
-                execution_plan="Macro CLI execution failed before a local result payload could be returned.",
-                result_summary=f"Macro CLI execution failed: {exc}",
-                remaining_local_uncertainty="No bounded macro result was produced because the CLI execution layer failed.",
-                tool_calls=[f"{cli_action.command_program} {' '.join(cli_action.command_args)}"],
-                raw_results={
-                    "cli_error": {
-                        "message": str(exc),
-                        "stdout": exc.stdout,
-                        "stderr": exc.stderr,
-                    },
-                    "reasoning_output": reasoning.model_dump(mode="json"),
-                },
-                structured_results={
-                    "status": "failed",
-                    "command_id": cli_action.command_id,
-                    "command_program": cli_action.command_program,
-                    "command_args": list(cli_action.command_args),
-                    "stdin_payload_summary": dict(cli_action.stdin_payload),
-                    "cli_exit_code": exc.exit_code,
-                    "cli_stdout_excerpt": exc.stdout,
-                    "cli_stderr_excerpt": exc.stderr,
-                    "requested_capability": compatibility_plan.selected_capability,
-                    "selected_capability": compatibility_plan.selected_capability,
-                    "executed_capability": cli_action.command_id,
-                    "performed_new_calculations": cli_action.perform_new_calculation,
-                    "reused_existing_artifacts": cli_action.reused_existing_artifacts,
-                    "binding_mode": cli_action.binding_mode,
-                    "requested_observable_tags": list(cli_action.requested_observable_tags),
-                    "covered_observable_tags": [],
-                    "missing_deliverables": list(reasoning.expected_outputs),
-                    "resolved_target_ids": dict(cli_action.resolved_target_ids),
-                    "planner_requested_capability": compatibility_plan.selected_capability,
-                    "translation_substituted_action": False,
-                    "translation_substitution_reason": "",
-                    "fulfillment_mode": "unsupported",
-                    "error": {
-                        "message": str(exc),
-                        "stdout": exc.stdout,
-                        "stderr": exc.stderr,
-                    },
-                },
-                generated_artifacts={},
-                status="failed",
-                planner_readable_report="Task completion: bounded macro CLI execution failed before any local macro evidence could be returned.",
+                smiles=smiles,
+                shared_structure_context=shared_structure_context,
             )
+            compatibility_plan = self._build_compatibility_execution_plan(
+                reasoning,
+                task_received=task_received,
+                shared_structure_context=shared_structure_context,
+            )
+            try:
+                cli_result = execute_cli_action(
+                    config=self._config,
+                    action=cli_action,
+                    expected_agent_name="macro",
+                )
+                break
+            except CliExecutionError as exc:
+                failure_context = self._cli_failure_context(
+                    retry_index=retry_index,
+                    action=cli_action,
+                    error=exc,
+                )
+                retry_history.append(failure_context)
+                previous_cli_failure_context = failure_context
+                if retry_index >= self._config.cli_local_retry_attempts:
+                    assert reasoning is not None
+                    assert compatibility_plan is not None
+                    return AgentReport(
+                        agent_name="macro",
+                        task_received=task_received,
+                        task_completion_status="failed",
+                        task_completion="Task failed because the bounded macro CLI execution did not complete successfully.",
+                        task_understanding=reasoning.task_understanding,
+                        reasoning_summary=reasoning.reasoning_summary,
+                        execution_plan="Macro CLI execution failed before a local result payload could be returned.",
+                        result_summary=f"Macro CLI execution failed: {exc}",
+                        remaining_local_uncertainty="No bounded macro result was produced because the CLI execution layer failed.",
+                        tool_calls=[f"{cli_action.command_program} {' '.join(cli_action.command_args)}"],
+                        raw_results={
+                            "cli_error": {
+                                "message": str(exc),
+                                "stdout": exc.stdout,
+                                "stderr": exc.stderr,
+                            },
+                            "cli_retry_history": retry_history,
+                            "reasoning_output": reasoning.model_dump(mode="json"),
+                        },
+                        structured_results={
+                            "status": "failed",
+                            "command_id": cli_action.command_id,
+                            "command_program": cli_action.command_program,
+                            "command_args": list(cli_action.command_args),
+                            "stdin_payload_summary": dict(cli_action.stdin_payload),
+                            "cli_exit_code": exc.exit_code,
+                            "cli_stdout_excerpt": exc.stdout,
+                            "cli_stderr_excerpt": exc.stderr,
+                            "requested_capability": compatibility_plan.selected_capability,
+                            "selected_capability": compatibility_plan.selected_capability,
+                            "executed_capability": cli_action.command_id,
+                            "performed_new_calculations": cli_action.perform_new_calculation,
+                            "reused_existing_artifacts": cli_action.reused_existing_artifacts,
+                            "binding_mode": cli_action.binding_mode,
+                            "requested_observable_tags": list(cli_action.requested_observable_tags),
+                            "covered_observable_tags": [],
+                            "missing_deliverables": list(reasoning.expected_outputs),
+                            "resolved_target_ids": dict(cli_action.resolved_target_ids),
+                            "planner_requested_capability": compatibility_plan.selected_capability,
+                            "translation_substituted_action": False,
+                            "translation_substitution_reason": "",
+                            "fulfillment_mode": "unsupported",
+                            "error": {
+                                "message": str(exc),
+                                "stdout": exc.stdout,
+                                "stderr": exc.stderr,
+                            },
+                            "cli_retry_attempts_used": len(retry_history),
+                            "cli_retry_history": retry_history,
+                        },
+                        generated_artifacts={},
+                        status="failed",
+                        planner_readable_report="Task completion: bounded macro CLI execution failed before any local macro evidence could be returned.",
+                    )
+        assert reasoning is not None
+        assert cli_action is not None
+        assert compatibility_plan is not None
+        assert cli_result is not None
         raw_result = dict(cli_result.parsed_json)
         task_completion_status, task_completion_text = self._task_completion(compatibility_plan, raw_result)
         executed_capability = str(raw_result.get("executed_capability") or compatibility_plan.selected_capability or "").strip()
@@ -251,6 +281,8 @@ class MacroAgent:
             "cli_exit_code": cli_result.cli_exit_code,
             "cli_stdout_excerpt": cli_result.cli_stdout_excerpt,
             "cli_stderr_excerpt": cli_result.cli_stderr_excerpt,
+            "cli_retry_attempts_used": len(retry_history),
+            "cli_retry_history": retry_history,
             "task_completion_status": task_completion_status,
             "task_completion": rendered["task_completion"],
             "reasoning": reasoning.model_dump(mode="json"),
@@ -292,6 +324,7 @@ class MacroAgent:
                 "macro_structure_scan": raw_result,
                 "reasoning_output": reasoning.model_dump(mode="json"),
                 "cli_command_result": cli_result.model_dump(mode="json"),
+                "cli_retry_history": retry_history,
             },
             structured_results=structured_results,
             generated_artifacts={},
@@ -505,6 +538,7 @@ class MacroAgent:
             "macro_model": self._config.macro_model,
             "macro_temperature": self._config.macro_temperature,
             "macro_timeout_seconds": self._config.macro_timeout_seconds,
+            "cli_local_retry_attempts": self._config.cli_local_retry_attempts,
             "supported_scope": [definition.name for definition in MACRO_CAPABILITY_REGISTRY.values()],
             "unsupported_scope": [
                 "packing simulation",
@@ -524,6 +558,25 @@ class MacroAgent:
                 }
                 for name, definition in MACRO_CAPABILITY_REGISTRY.items()
             },
+        }
+
+    def _cli_failure_context(
+        self,
+        *,
+        retry_index: int,
+        action: CliActionSpec,
+        error: CliExecutionError,
+    ) -> dict[str, Any]:
+        return {
+            "retry_index": retry_index,
+            "command_id": action.command_id,
+            "command_program": action.command_program,
+            "command_args": list(action.command_args),
+            "stdin_payload": dict(action.stdin_payload),
+            "message": str(error),
+            "cli_exit_code": error.exit_code,
+            "cli_stdout_excerpt": error.stdout,
+            "cli_stderr_excerpt": error.stderr,
         }
 
     def _shared_context_note(self, shared_structure_context: Optional[SharedStructureContext]) -> str:

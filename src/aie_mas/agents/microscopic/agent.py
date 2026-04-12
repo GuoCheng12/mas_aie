@@ -100,6 +100,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
         available_artifacts: dict[str, Any],
         shared_structure_context: Optional[SharedStructureContext],
         round_index: int,
+        previous_cli_failure_context: Optional[dict[str, Any]] = None,
     ) -> dict[str, Any]:
         requested_deliverables = self._requested_deliverables(task_instruction, task_spec)
         unsupported_requests = self._unsupported_requests(task_instruction, task_spec)
@@ -114,6 +115,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "task_instruction": task_instruction,
             "task_mode": task_spec.mode,
             "current_round_index": round_index,
+            "previous_cli_failure_context": previous_cli_failure_context,
             "requested_deliverables": requested_deliverables,
             "unsupported_requests": unsupported_requests,
             "budget_profile": self._config.microscopic_budget_profile,
@@ -249,6 +251,7 @@ class MicroscopicAgent(MicroscopicExecutorMixin, MicroscopicReportingMixin):
             "command_catalog": render_cli_command_catalog("microscopic"),
             "budget_profile": self._config.microscopic_budget_profile,
             "vertical_state_count_default": self._config.amesp_s1_nstates,
+            "cli_local_retry_attempts": self._config.cli_local_retry_attempts,
         }
 
     def _resolve_workdir(self, *, case_id: str, round_index: int) -> Path:

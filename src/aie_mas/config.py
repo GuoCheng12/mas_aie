@@ -70,6 +70,7 @@ class AieMasConfig(BaseModel):
     verifier_threshold: float = 0.72
     finalize_margin_threshold: float = 0.15
     max_rounds: int = 4
+    cli_local_retry_attempts: int = 1
 
     @classmethod
     def from_env(cls, **overrides: Any) -> "AieMasConfig":
@@ -137,6 +138,10 @@ class AieMasConfig(BaseModel):
             )
         if os.getenv("AIE_MAS_MAX_ROUNDS"):
             env_values["max_rounds"] = int(os.getenv("AIE_MAS_MAX_ROUNDS", "4"))
+        if os.getenv("AIE_MAS_CLI_LOCAL_RETRY_ATTEMPTS"):
+            env_values["cli_local_retry_attempts"] = int(
+                os.getenv("AIE_MAS_CLI_LOCAL_RETRY_ATTEMPTS", "1")
+            )
         if os.getenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY"):
             env_values["enable_long_term_memory"] = cls._parse_bool(
                 os.getenv("AIE_MAS_ENABLE_LONG_TERM_MEMORY", "0")
@@ -192,6 +197,7 @@ class AieMasConfig(BaseModel):
 
     def model_post_init(self, __context: object) -> None:
         self.project_root = self.project_root.expanduser().resolve()
+        self.cli_local_retry_attempts = max(0, int(self.cli_local_retry_attempts))
 
         if self.planner_backend is None:
             self.planner_backend = "openai_sdk"
@@ -373,6 +379,7 @@ class AieMasConfig(BaseModel):
             "verifier_threshold": self.verifier_threshold,
             "finalize_margin_threshold": self.finalize_margin_threshold,
             "max_rounds": self.max_rounds,
+            "cli_local_retry_attempts": self.cli_local_retry_attempts,
         }
 
     def _resolve_path(self, path: Path) -> Path:
