@@ -137,6 +137,7 @@ class WorkingMemoryManager:
             screening_focus_summary=state.last_planner_decision.screening_focus_summary,
             runner_up_hypothesis=state.runner_up_hypothesis,
             runner_up_confidence=state.runner_up_confidence,
+            hypothesis_evidence_ledger=list(state.hypothesis_evidence_ledger),
             action_taken=action_taken,
             evidence_summary=evidence_summary,
             diagnosis_summary=diagnosis_summary,
@@ -227,6 +228,9 @@ class WorkingMemoryManager:
                     "screening_focus_summary": self._truncate(entry.screening_focus_summary or "", 220),
                     "runner_up_hypothesis": entry.runner_up_hypothesis,
                     "runner_up_confidence": entry.runner_up_confidence,
+                    "hypothesis_evidence_ledger": [
+                        record.model_dump(mode="json") for record in entry.hypothesis_evidence_ledger
+                    ],
                     "action_taken": entry.action_taken,
                     "main_gap": entry.main_gap,
                     "decision_pair": list(entry.decision_pair),
@@ -301,6 +305,10 @@ class WorkingMemoryManager:
             "working_memory_summary": [item.model_dump(mode="json") for item in working_memory_summary],
             "recent_rounds_context": self.build_recent_rounds_context(state, window_size=recent_window),
             "recent_capability_context": self.build_capability_context(state),
+            "active_round_reports": [
+                self._compact_agent_report_for_planner(report, detail_level=latest_detail)
+                for report in state.active_round_reports
+            ],
             "latest_macro_report": self._compact_agent_report_for_planner(
                 state.macro_reports[-1] if state.macro_reports else None,
                 detail_level=latest_detail,

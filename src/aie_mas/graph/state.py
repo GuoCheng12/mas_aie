@@ -254,6 +254,15 @@ class CapabilityLessonEntry(BaseModel):
     recommended_contraction: str
 
 
+class HypothesisEvidenceRecord(BaseModel):
+    hypothesis: str
+    direct_positive_evidence_count: int = 0
+    direct_missing_or_weakening_count: int = 0
+    direct_support_families: list[EvidenceFamily] = Field(default_factory=list)
+    last_direct_support_round: Optional[int] = None
+    last_direct_missing_or_weakening_round: Optional[int] = None
+
+
 class PlannerDecision(BaseModel):
     diagnosis: str
     action: PlannerAction
@@ -285,6 +294,7 @@ class PlannerDecision(BaseModel):
     runner_up_hypothesis: Optional[str] = None
     runner_up_confidence: Optional[float] = None
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
+    hypothesis_evidence_ledger: list[HypothesisEvidenceRecord] = Field(default_factory=list)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
     verifier_supplement_target_pair: Optional[str] = None
@@ -347,6 +357,7 @@ class WorkingMemoryEntry(BaseModel):
     gap_trend: Optional[str] = None
     stagnation_detected: bool = False
     hypothesis_reweight_explanation: dict[str, str] = Field(default_factory=dict)
+    hypothesis_evidence_ledger: list[HypothesisEvidenceRecord] = Field(default_factory=list)
     decision_pair: list[str] = Field(default_factory=list)
     decision_gate_status: DecisionGateStatus = "not_ready"
     verifier_supplement_target_pair: Optional[str] = None
@@ -746,6 +757,7 @@ class AieMasState(BaseModel):
     planner_context_estimated_tokens: int = 0
     planner_context_projection: dict[str, Any] = Field(default_factory=dict)
     hypothesis_reweight_history: list[dict[str, str]] = Field(default_factory=list)
+    hypothesis_evidence_ledger: list[HypothesisEvidenceRecord] = Field(default_factory=list)
 
     planner_diagnosis_history: list[str] = Field(default_factory=list)
     planner_action_history: list[str] = Field(default_factory=list)

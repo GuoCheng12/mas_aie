@@ -202,6 +202,28 @@ def _verifier_report_for_pair(pair_key: str, specificity: str = "generic_review"
     }
 
 
+def _macro_report(capability: str) -> AgentReport:
+    return AgentReport(
+        agent_name="macro",
+        task_received="macro task",
+        task_completion_status="completed",
+        task_completion="Macro task completed.",
+        task_understanding="bounded macro task",
+        reasoning_summary="macro reasoning summary",
+        execution_plan="macro execution plan",
+        result_summary="macro result summary",
+        remaining_local_uncertainty="macro uncertainty",
+        structured_results={
+            "executed_capability": capability,
+            "selected_capability": capability,
+            "fulfillment_mode": "exact",
+            "status": "success",
+        },
+        status="success",
+        planner_readable_report="macro planner readable report",
+    )
+
+
 def test_mentioned_microscopic_capabilities_includes_new_targeted_interfaces() -> None:
     instruction = (
         "First try run_targeted_charge_analysis on the current torsion bundle, then if needed "
@@ -2239,6 +2261,173 @@ def test_initial_portfolio_screening_uses_portfolio_neutral_agent_framing(tmp_pa
     assert decision.agent_task_instructions["macro"].startswith("Current reasoning phase: portfolio_screening.")
     assert "provisional top1" in decision.agent_task_instructions["macro"]
     assert "Screening focus hypotheses: TICT, ESIPT." in decision.agent_task_instructions["microscopic"]
+
+
+def test_pairwise_contraction_requires_direct_support_for_top1(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            _round_response_json(
+                hypothesis_pool=[
+                    {"name": "ICT", "confidence": 0.62},
+                    {"name": "TICT", "confidence": 0.24},
+                    {"name": "ESIPT", "confidence": 0.07},
+                    {"name": "neutral aromatic", "confidence": 0.05},
+                    {"name": "unknown", "confidence": 0.02},
+                ],
+                reasoning_phase="pairwise_contraction",
+                portfolio_screening_complete=True,
+                coverage_debt_hypotheses=[],
+                credible_alternative_hypotheses=[],
+                hypothesis_screening_ledger=[],
+                diagnosis="Attempt pairwise contraction too early.",
+                action="microscopic",
+                current_hypothesis="ICT",
+                confidence=0.62,
+                task_instruction="Use one bounded direct microscopic screen.",
+                agent_task_instructions={"microscopic": "Use one bounded direct microscopic screen."},
+                decision_gate_status="not_ready",
+            )
+        ],
+    )
+    state = _base_state(
+        macro_reports=[_macro_report("screen_donor_acceptor_layout")],
+        confidence=0.58,
+        runner_up_confidence=0.24,
+        hypothesis_evidence_ledger=[],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.reasoning_phase == "portfolio_screening"
+    assert decision.portfolio_screening_complete is False
+    assert decision.decision_pair == []
+    assert decision.decision_gate_status == "needs_portfolio_screening"
+
+
+def test_top1_confidence_decays_without_direct_support(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            _round_response_json(
+                hypothesis_pool=[
+                    {"name": "ICT", "confidence": 0.62},
+                    {"name": "TICT", "confidence": 0.24},
+                    {"name": "ESIPT", "confidence": 0.07},
+                    {"name": "neutral aromatic", "confidence": 0.05},
+                    {"name": "unknown", "confidence": 0.02},
+                ],
+                diagnosis="Top1 remains ICT but without direct support.",
+                action="microscopic",
+                current_hypothesis="ICT",
+                confidence=0.62,
+                task_instruction="Use one bounded direct microscopic screen.",
+                agent_task_instructions={"microscopic": "Use one bounded direct microscopic screen."},
+            )
+        ],
+    )
+    state = _base_state(
+        round_idx=1,
+        confidence=0.58,
+        runner_up_confidence=0.24,
+        macro_reports=[_macro_report("screen_planarity_compactness")],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.confidence < 0.62
+    assert any(
+        record.hypothesis == "ICT" and record.direct_missing_or_weakening_count > 0
+        for record in decision.hypothesis_evidence_ledger
+    )
+
+
+def test_gap_stagnation_can_trigger_early_verifier_correction(tmp_path: Path) -> None:
+    planner, _ = _build_planner(
+        tmp_path,
+        [
+            _round_response_json(
+                hypothesis_pool=[
+                    {"name": "ICT", "confidence": 0.56},
+                    {"name": "TICT", "confidence": 0.23},
+                    {"name": "ESIPT", "confidence": 0.09},
+                    {"name": "neutral aromatic", "confidence": 0.08},
+                    {"name": "unknown", "confidence": 0.04},
+                ],
+                diagnosis="Continue microscopic follow-up.",
+                action="microscopic",
+                current_hypothesis="ICT",
+                confidence=0.56,
+                task_instruction="Use one bounded direct microscopic screen.",
+                agent_task_instructions={"microscopic": "Use one bounded direct microscopic screen."},
+            )
+        ],
+    )
+    state = _base_state(
+        round_idx=3,
+        confidence=0.55,
+        runner_up_confidence=0.23,
+        working_memory=[
+            WorkingMemoryEntry(
+                round_id=1,
+                current_hypothesis="ICT",
+                confidence=0.54,
+                hypothesis_pool=_base_hypothesis_pool(),
+                runner_up_hypothesis="TICT",
+                runner_up_confidence=0.23,
+                action_taken="microscopic",
+                evidence_summary="Round 1 evidence.",
+                diagnosis_summary="Gap is not shrinking.",
+                main_gap="Need one decisive pairwise discriminator.",
+                conflict_status="none",
+                next_action="microscopic",
+            ),
+            WorkingMemoryEntry(
+                round_id=2,
+                current_hypothesis="ICT",
+                confidence=0.55,
+                hypothesis_pool=_base_hypothesis_pool(),
+                runner_up_hypothesis="TICT",
+                runner_up_confidence=0.23,
+                action_taken="microscopic",
+                evidence_summary="Round 2 evidence.",
+                diagnosis_summary="Gap is still not shrinking.",
+                main_gap="Need one decisive pairwise discriminator.",
+                conflict_status="none",
+                next_action="microscopic",
+            ),
+        ],
+        microscopic_reports=[
+            AgentReport(
+                agent_name="microscopic",
+                task_received="microscopic task",
+                task_completion_status="completed",
+                task_completion="Microscopic route completed.",
+                task_understanding="bounded microscopic task",
+                reasoning_summary="microscopic reasoning summary",
+                execution_plan="microscopic execution plan",
+                result_summary="microscopic result summary",
+                remaining_local_uncertainty="microscopic uncertainty",
+                structured_results={
+                    "executed_capability": "extract_ct_descriptors_from_bundle",
+                    "selected_capability": "extract_ct_descriptors_from_bundle",
+                    "fulfillment_mode": "exact",
+                    "status": "success",
+                },
+                status="success",
+                planner_readable_report="microscopic planner readable report",
+            )
+        ],
+    )
+
+    result = planner.plan_diagnosis(state)
+
+    decision = result["decision"]
+    assert decision.action == "verifier"
+    assert decision.needs_verifier is True
+    assert decision.decision_gate_status == "needs_high_confidence_verifier"
 
 
 def test_pairwise_contraction_uses_hypothesis_anchored_agent_framing(tmp_path: Path) -> None:

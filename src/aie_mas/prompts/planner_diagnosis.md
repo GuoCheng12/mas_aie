@@ -20,6 +20,7 @@ You will receive:
 - `current_confidence`
 - `runner_up_hypothesis`
 - `runner_up_confidence`
+- `hypothesis_evidence_ledger`
 - `reasoning_phase`
 - `portfolio_screening_complete`
 - `coverage_debt_hypotheses`
@@ -84,6 +85,8 @@ Your task is to:
 
 Important rules:
 - Do not update only the current top1. Reweight all 5 labels every round.
+- Use `hypothesis_evidence_ledger` as explicit bookkeeping for whether a hypothesis has accumulated any direct supporting evidence or repeated weakening/missing-evidence signals.
+- Do not keep a top1 high by inertia alone when its direct-support count remains zero across evidence-bearing rounds.
 - Explicitly account for the round budget using `current_round_index`, `max_rounds`, and `rounds_remaining_including_current`.
 - `Verifier` is an external evidence supplement, not the final judge.
 - If external evidence is the most informative next step, choose `action=verifier` and keep that choice.
@@ -152,6 +155,7 @@ Rules for these fields:
   - `portfolio_neutral` while `reasoning_phase=portfolio_screening`
   - `hypothesis_anchored` while `reasoning_phase=pairwise_contraction`
 - While `coverage_debt_hypotheses` is non-empty, keep `reasoning_phase=portfolio_screening` and `portfolio_screening_complete=false`.
+- `pairwise_contraction` is only legitimate if the current top1 has at least one direct supporting evidence family in `hypothesis_evidence_ledger`.
 - A hypothesis may leave `coverage_debt_hypotheses` only if its ledger status is:
   - `directly_screened`
   - `blocked_by_capability`

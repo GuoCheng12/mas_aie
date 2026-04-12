@@ -21,6 +21,7 @@ You will be given:
 - `current_confidence`
 - `runner_up_hypothesis`
 - `runner_up_confidence`
+- `hypothesis_evidence_ledger`
 - `reasoning_phase`
 - `portfolio_screening_complete`
 - `coverage_debt_hypotheses`
@@ -73,6 +74,8 @@ Your task is to:
 Important rules:
 - Do not rely on scaffold stereotypes or hardcoded chemistry rules.
 - Use only the evidence chain from this run.
+- Use `hypothesis_evidence_ledger` as explicit bookkeeping for whether the current top hypotheses have gained direct support or instead accumulated repeated weakening/missing-evidence signals.
+- Do not keep a top1 high by inertia alone when it still has zero direct-support count after multiple evidence-bearing rounds.
 - Explicitly account for the round budget using `current_round_index`, `max_rounds`, and `rounds_remaining_including_current`.
 - The verifier is an external supplement, not the final judge.
 - Verifier evidence may justify a new targeted internal task, but it does not replace the Planner.
@@ -139,6 +142,7 @@ Rules for these fields:
   - `portfolio_neutral` while `reasoning_phase=portfolio_screening`
   - `hypothesis_anchored` while `reasoning_phase=pairwise_contraction`
 - While `coverage_debt_hypotheses` is non-empty, keep `reasoning_phase=portfolio_screening`, `portfolio_screening_complete=false`, and do not set `finalize=true`.
+- `pairwise_contraction` is only legitimate if the current top1 has at least one direct supporting evidence family in `hypothesis_evidence_ledger`.
 - A hypothesis may leave `coverage_debt_hypotheses` only if its ledger status is:
   - `directly_screened`
   - `blocked_by_capability`
@@ -160,6 +164,7 @@ Rules for these fields:
   - `needs_high_confidence_verifier` if verifier supplementation is still missing or partial after portfolio screening is complete
   - `needs_pairwise_discriminative_task` if closure justification still requires a targeted task after portfolio screening is complete
   - `blocked_by_missing_decisive_evidence` only when closure remains blocked and no safe decisive close is available after portfolio screening is complete
+- When the top1-vs-runner-up gap has not narrowed for multiple consecutive rounds and the current top1 still lacks strong direct support, an earlier verifier-correction step is allowed before formal high-confidence closure.
 - `finalization_mode` must be:
   - `decisive`
   - `best_available`

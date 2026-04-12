@@ -139,6 +139,7 @@ class AieMasWorkflow:
         state.confidence = decision.confidence
         state.runner_up_hypothesis = decision.runner_up_hypothesis
         state.runner_up_confidence = decision.runner_up_confidence
+        state.hypothesis_evidence_ledger = list(decision.hypothesis_evidence_ledger)
         state.reasoning_phase = decision.reasoning_phase
         state.agent_framing_mode = decision.agent_framing_mode
         state.portfolio_screening_complete = decision.portfolio_screening_complete
@@ -458,6 +459,7 @@ class AieMasWorkflow:
         state.confidence = decision.confidence  # type: ignore[union-attr]
         state.runner_up_hypothesis = decision.runner_up_hypothesis  # type: ignore[union-attr]
         state.runner_up_confidence = decision.runner_up_confidence  # type: ignore[union-attr]
+        state.hypothesis_evidence_ledger = list(decision.hypothesis_evidence_ledger)  # type: ignore[union-attr]
         state.reasoning_phase = decision.reasoning_phase  # type: ignore[union-attr]
         state.agent_framing_mode = decision.agent_framing_mode  # type: ignore[union-attr]
         state.portfolio_screening_complete = decision.portfolio_screening_complete  # type: ignore[union-attr]

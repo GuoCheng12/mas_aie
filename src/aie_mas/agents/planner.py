@@ -15,7 +15,9 @@ from aie_mas.graph.state import (
     AieMasState,
     CapabilityLessonEntry,
     DecisionGateStatus,
+    EvidenceFamily,
     HypothesisEntry,
+    HypothesisEvidenceRecord,
     HypothesisScreeningRecord,
     PlannerDecision,
     TEMPORARILY_DISABLED_MICROSCOPIC_CAPABILITIES,
@@ -177,6 +179,33 @@ _MICROSCOPIC_STRUCTURE_BLOCK_CODES = {
 }
 _PLANNER_CONTEXT_SOFT_TOKEN_BUDGET = 120000
 _PLANNER_CONTEXT_HARD_TOKEN_BUDGET = 180000
+_TOP1_NO_SUPPORT_DECAY = 0.04
+_TOP1_WEAKENING_DECAY = 0.02
+_DIRECT_SUPPORT_CONFIDENCE_EPSILON = 0.01
+_EARLY_VERIFIER_GAP_STAGNATION_WINDOW = 3
+_EVIDENCE_FAMILY_BY_ACTION_LABEL: dict[str, tuple[EvidenceFamily, ...]] = {
+    "run_torsion_snapshots": ("torsion_sensitivity",),
+    "parse_snapshot_outputs": ("torsion_sensitivity",),
+    "run_baseline_bundle": ("state_ordering_brightness",),
+    "run_targeted_state_characterization": ("state_ordering_brightness",),
+    "run_targeted_transition_dipole_analysis": ("state_ordering_brightness",),
+    "run_ris_state_characterization": ("state_ordering_brightness",),
+    "run_targeted_charge_analysis": ("charge_localization",),
+    "run_targeted_approx_delta_dipole_analysis": ("charge_localization",),
+    "run_targeted_density_population_analysis": ("charge_localization",),
+    "run_targeted_localized_orbital_analysis": ("charge_localization",),
+    "run_targeted_natural_orbital_analysis": ("charge_localization",),
+    "extract_ct_descriptors_from_bundle": ("charge_localization",),
+    "extract_geometry_descriptors_from_bundle": ("geometry_precondition",),
+    "inspect_raw_artifact_bundle": ("raw_artifact_inspection",),
+    "screen_donor_acceptor_layout": ("geometry_precondition",),
+    "screen_rotor_torsion_topology": ("geometry_precondition",),
+    "screen_planarity_compactness": ("geometry_precondition",),
+    "screen_intramolecular_hbond_preorganization": ("geometry_precondition",),
+    "screen_conformer_geometry_proxy": ("geometry_precondition",),
+    "screen_neutral_aromatic_structure": ("geometry_precondition",),
+    "verifier": ("external_precedent",),
+}
 
 
 def _normalize_hypothesis_label(raw_label: str | None) -> str | None:
@@ -692,6 +721,267 @@ def _normalize_hypothesis_name_list(
     return normalized
 
 
+def _normalize_hypothesis_evidence_ledger(
+    raw_ledger: list[HypothesisEvidenceRecord] | list[dict[str, Any]] | None,
+    *,
+    hypothesis_pool: list[HypothesisEntry],
+) -> list[HypothesisEvidenceRecord]:
+    ledger_map: dict[str, HypothesisEvidenceRecord] = {}
+    for raw_entry in raw_ledger or []:
+        try:
+            entry = (
+                raw_entry
+                if isinstance(raw_entry, HypothesisEvidenceRecord)
+                else HypothesisEvidenceRecord.model_validate(raw_entry)
+            )
+        except Exception:
+            continue
+        label = _normalize_hypothesis_label(entry.hypothesis)
+        if label is None:
+            continue
+        entry.hypothesis = label
+        entry.direct_support_families = list(
+            dict.fromkeys(
+                family
+                for family in entry.direct_support_families
+                if family in {
+                    "geometry_precondition",
+                    "state_ordering_brightness",
+                    "torsion_sensitivity",
+                    "charge_localization",
+                    "external_precedent",
+                    "raw_artifact_inspection",
+                }
+            )
+        )
+        ledger_map[label] = entry
+
+    normalized: list[HypothesisEvidenceRecord] = []
+    for entry in hypothesis_pool:
+        normalized.append(
+            ledger_map.get(
+                entry.name,
+                HypothesisEvidenceRecord(hypothesis=entry.name),
+            )
+        )
+    return normalized
+
+
+def _confidence_map(hypothesis_pool: list[HypothesisEntry]) -> dict[str, float]:
+    return {
+        entry.name: _normalize_confidence(entry.confidence)
+        for entry in hypothesis_pool
+    }
+
+
+def _screening_status_map(
+    raw_ledger: list[HypothesisScreeningRecord] | list[dict[str, Any]] | None,
+) -> dict[str, str]:
+    status_map: dict[str, str] = {}
+    for raw_entry in raw_ledger or []:
+        try:
+            entry = (
+                raw_entry
+                if isinstance(raw_entry, HypothesisScreeningRecord)
+                else HypothesisScreeningRecord.model_validate(raw_entry)
+            )
+        except Exception:
+            continue
+        label = _normalize_hypothesis_label(entry.hypothesis)
+        if label is None:
+            continue
+        status_map[label] = entry.screening_status
+    return status_map
+
+
+def _report_evidence_families(report_payload: Any) -> list[EvidenceFamily]:
+    if not isinstance(report_payload, dict):
+        return []
+    structured = report_payload.get("structured_results")
+    families: list[EvidenceFamily] = []
+    if isinstance(structured, dict):
+        executed_capability = str(structured.get("executed_capability") or "").strip()
+        families.extend(_EVIDENCE_FAMILY_BY_ACTION_LABEL.get(executed_capability, ()))
+        if str(structured.get("verifier_supplement_status") or "").strip() in {"partial", "sufficient"}:
+            families.extend(_EVIDENCE_FAMILY_BY_ACTION_LABEL.get("verifier", ()))
+    if report_payload.get("agent_name") == "verifier":
+        families.extend(_EVIDENCE_FAMILY_BY_ACTION_LABEL.get("verifier", ()))
+    return list(dict.fromkeys(families))
+
+
+def _latest_round_evidence_families(payload: dict[str, Any]) -> list[EvidenceFamily]:
+    active_round_reports = payload.get("active_round_reports")
+    if isinstance(active_round_reports, list) and active_round_reports:
+        families: list[EvidenceFamily] = []
+        for report_payload in active_round_reports:
+            families.extend(_report_evidence_families(report_payload))
+        return list(dict.fromkeys(families))
+
+    families: list[EvidenceFamily] = []
+    for key in ("latest_macro_report", "latest_microscopic_report", "latest_verifier_report", "verifier_report"):
+        families.extend(_report_evidence_families(payload.get(key)))
+    return list(dict.fromkeys(families))
+
+
+def _current_round_index_from_payload(payload: dict[str, Any]) -> int:
+    try:
+        return int(payload.get("current_round_index") or 1)
+    except (TypeError, ValueError):
+        return 1
+
+
+def _top1_has_direct_support(decision: PlannerDecision) -> bool:
+    for entry in decision.hypothesis_evidence_ledger:
+        if entry.hypothesis != decision.current_hypothesis:
+            continue
+        return entry.direct_positive_evidence_count > 0 and bool(entry.direct_support_families)
+    return False
+
+
+def _apply_confidence_decay(
+    hypothesis_pool: list[HypothesisEntry],
+    *,
+    current_hypothesis: str,
+    decay: float,
+) -> tuple[list[HypothesisEntry], str]:
+    decayed_pool: list[HypothesisEntry] = []
+    for entry in hypothesis_pool:
+        next_confidence = _normalize_confidence(entry.confidence)
+        if entry.name == current_hypothesis:
+            next_confidence = max(0.0, next_confidence - decay)
+        decayed_pool.append(
+            HypothesisEntry(
+                name=entry.name,
+                confidence=next_confidence,
+                rationale=entry.rationale,
+                candidate_strength=entry.candidate_strength,
+            )
+        )
+    return _normalize_hypothesis_pool(
+        decayed_pool,
+        current_hypothesis,
+    )
+
+
+def _gap_not_shrinking(
+    payload: dict[str, Any],
+    decision: PlannerDecision,
+) -> bool:
+    if not decision.runner_up_hypothesis:
+        return False
+    recent_rounds = payload.get("recent_rounds_context")
+    if not isinstance(recent_rounds, list):
+        return False
+    margins: list[float] = []
+    for entry in recent_rounds[-(_EARLY_VERIFIER_GAP_STAGNATION_WINDOW - 1) :]:
+        if not isinstance(entry, dict):
+            continue
+        if str(entry.get("current_hypothesis") or "") != decision.current_hypothesis:
+            continue
+        if str(entry.get("runner_up_hypothesis") or "") != (decision.runner_up_hypothesis or ""):
+            continue
+        try:
+            margins.append(
+                float(entry.get("confidence") or 0.0)
+                - float(entry.get("runner_up_confidence") or 0.0)
+            )
+        except (TypeError, ValueError):
+            continue
+    margins.append((decision.confidence or 0.0) - (decision.runner_up_confidence or 0.0))
+    if len(margins) < _EARLY_VERIFIER_GAP_STAGNATION_WINDOW:
+        return False
+    if max(margins) - min(margins) <= 0.03:
+        return True
+    return all(margins[index] <= margins[index - 1] + 0.01 for index in range(1, len(margins)))
+
+
+def _apply_hypothesis_evidence_ledger_update(
+    *,
+    decision: PlannerDecision,
+    hypothesis_pool: list[HypothesisEntry],
+    payload: dict[str, Any],
+) -> tuple[PlannerDecision, list[EvidenceFamily], bool]:
+    evidence_families = _latest_round_evidence_families(payload)
+    round_has_evidence = bool(evidence_families)
+    current_round_index = _current_round_index_from_payload(payload)
+    previous_current_hypothesis = _normalize_hypothesis_label(str(payload.get("current_hypothesis") or ""))
+    previous_confidence_map = _confidence_map(
+        [
+            HypothesisEntry.model_validate(entry)
+            for entry in list(payload.get("hypothesis_pool") or [])
+            if isinstance(entry, dict)
+        ]
+    )
+    previous_screening_status = _screening_status_map(
+        payload.get("hypothesis_screening_ledger") if isinstance(payload.get("hypothesis_screening_ledger"), list) else []
+    )
+    current_confidence_map = _confidence_map(hypothesis_pool)
+    current_screening_status = {
+        record.hypothesis: record.screening_status for record in decision.hypothesis_screening_ledger
+    }
+    ledger = _normalize_hypothesis_evidence_ledger(
+        payload.get("hypothesis_evidence_ledger")
+        if isinstance(payload.get("hypothesis_evidence_ledger"), list)
+        else decision.hypothesis_evidence_ledger,
+        hypothesis_pool=hypothesis_pool,
+    )
+    ledger_map = {entry.hypothesis: entry for entry in ledger}
+    top1_positive_added = False
+
+    for entry in ledger:
+        hypothesis = entry.hypothesis
+        previous_confidence = previous_confidence_map.get(hypothesis, 0.0)
+        current_confidence = current_confidence_map.get(hypothesis, 0.0)
+        previous_status = previous_screening_status.get(hypothesis)
+        current_status = current_screening_status.get(hypothesis)
+
+        if (
+            round_has_evidence
+            and current_status == "directly_screened"
+            and (
+                previous_status != "directly_screened"
+                or current_confidence > previous_confidence + _DIRECT_SUPPORT_CONFIDENCE_EPSILON
+            )
+        ):
+            entry.direct_positive_evidence_count += 1
+            entry.last_direct_support_round = current_round_index
+            for family in evidence_families:
+                if family not in entry.direct_support_families:
+                    entry.direct_support_families.append(family)
+            if hypothesis == decision.current_hypothesis:
+                top1_positive_added = True
+            continue
+
+        if current_status in {"indirectly_weakened", "blocked_by_capability", "dropped_with_reason"} and (
+            previous_status != current_status
+            or current_confidence + _DIRECT_SUPPORT_CONFIDENCE_EPSILON < previous_confidence
+        ):
+            entry.direct_missing_or_weakening_count += 1
+            entry.last_direct_missing_or_weakening_round = current_round_index
+
+    if previous_current_hypothesis and previous_current_hypothesis != decision.current_hypothesis:
+        previous_top_record = ledger_map.get(previous_current_hypothesis)
+        if previous_top_record is not None:
+            previous_top_record.direct_missing_or_weakening_count += 1
+            previous_top_record.last_direct_missing_or_weakening_round = current_round_index
+
+    current_top_record = ledger_map.get(decision.current_hypothesis)
+    if (
+        round_has_evidence
+        and current_top_record is not None
+        and current_round_index > 1
+        and not top1_positive_added
+    ):
+        current_top_record.direct_missing_or_weakening_count += 1
+        current_top_record.last_direct_missing_or_weakening_round = current_round_index
+
+    decision.hypothesis_evidence_ledger = _normalize_hypothesis_evidence_ledger(
+        ledger,
+        hypothesis_pool=hypothesis_pool,
+    )
+    return decision, evidence_families, top1_positive_added
+
+
 def _normalize_screening_status(raw_status: str | None) -> str:
     if raw_status in {
         "untested",
@@ -998,6 +1288,9 @@ def _planner_normalized_payload(
     payload["runner_up_hypothesis"] = decision.runner_up_hypothesis
     payload["runner_up_confidence"] = decision.runner_up_confidence
     payload["hypothesis_reweight_explanation"] = dict(decision.hypothesis_reweight_explanation)
+    payload["hypothesis_evidence_ledger"] = [
+        record.model_dump(mode="json") for record in decision.hypothesis_evidence_ledger
+    ]
     payload["reasoning_phase"] = decision.reasoning_phase
     payload["portfolio_screening_complete"] = decision.portfolio_screening_complete
     payload["agent_framing_mode"] = decision.agent_framing_mode
@@ -1426,6 +1719,10 @@ class OpenAIPlannerBackend:
                 response.hypothesis_reweight_explanation,
                 hypothesis_pool=hypothesis_pool,
             ),
+            hypothesis_evidence_ledger=_normalize_hypothesis_evidence_ledger(
+                [],
+                hypothesis_pool=hypothesis_pool,
+            ),
             reasoning_phase=reasoning_phase,  # type: ignore[arg-type]
             portfolio_screening_complete=portfolio_screening_complete,
             coverage_debt_hypotheses=coverage_debt_hypotheses,
@@ -1478,6 +1775,10 @@ class OpenAIPlannerBackend:
                 **response.model_dump(mode="json"),
                 "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
                 "current_hypothesis": current_hypothesis,
+                "confidence": decision.confidence,
+                "hypothesis_evidence_ledger": [
+                    entry.model_dump(mode="json") for entry in decision.hypothesis_evidence_ledger
+                ],
                 "legacy_pairwise_task_outcome": response.pairwise_task_outcome,
             },
             "normalized_response": _planner_normalized_payload(
@@ -1687,6 +1988,12 @@ class OpenAIPlannerBackend:
                 response.hypothesis_reweight_explanation,
                 hypothesis_pool=hypothesis_pool,
             ),
+            hypothesis_evidence_ledger=_normalize_hypothesis_evidence_ledger(
+                payload.get("hypothesis_evidence_ledger")
+                if isinstance(payload.get("hypothesis_evidence_ledger"), list)
+                else [],
+                hypothesis_pool=hypothesis_pool,
+            ),
             reasoning_phase=reasoning_phase,  # type: ignore[arg-type]
             portfolio_screening_complete=portfolio_screening_complete,
             coverage_debt_hypotheses=coverage_debt_hypotheses,
@@ -1745,6 +2052,11 @@ class OpenAIPlannerBackend:
             legacy_pairwise_task_outcome=legacy_pairwise_task_outcome,
             main_gap=payload.get("main_gap") or response.main_gap,
         )
+        decision, round_evidence_families, top1_positive_added = _apply_hypothesis_evidence_ledger_update(
+            decision=decision,
+            hypothesis_pool=hypothesis_pool,
+            payload=payload,
+        )
 
         evidence_summary = response.evidence_summary
         main_gap = response.main_gap
@@ -1800,6 +2112,17 @@ class OpenAIPlannerBackend:
             payload=payload,
             main_gap=main_gap,
         )
+        decision, hypothesis_pool = self._apply_evidence_led_confidence_decay(
+            decision=decision,
+            hypothesis_pool=hypothesis_pool,
+            payload=payload,
+            top1_positive_added=top1_positive_added,
+        )
+        decision = self._apply_early_verifier_correction_gate(
+            decision=decision,
+            payload=payload,
+            main_gap=main_gap,
+        )
         decision = self._apply_round_budget_gate(
             decision=decision,
             payload=payload,
@@ -1834,8 +2157,13 @@ class OpenAIPlannerBackend:
             "raw_response": {
                 **response.model_dump(mode="json"),
                 "hypothesis_pool": [entry.model_dump(mode="json") for entry in hypothesis_pool],
-                "current_hypothesis": current_hypothesis,
+                "current_hypothesis": decision.current_hypothesis,
+                "confidence": decision.confidence,
                 "legacy_pairwise_task_outcome": legacy_pairwise_task_outcome,
+                "hypothesis_evidence_ledger": [
+                    entry.model_dump(mode="json") for entry in decision.hypothesis_evidence_ledger
+                ],
+                "round_evidence_families": list(round_evidence_families),
             },
             "normalized_response": _planner_normalized_payload(
                 decision=decision,
@@ -2241,6 +2569,63 @@ class OpenAIPlannerBackend:
         main_gap: str,
     ) -> PlannerDecision:
         if decision.portfolio_screening_complete:
+            if not _top1_has_direct_support(decision):
+                support_note = (
+                    f"Top1 '{decision.current_hypothesis}' does not yet have any direct supporting evidence family in the "
+                    "hypothesis evidence ledger, so pairwise contraction is not yet allowed."
+                )
+                decision.reasoning_phase = "portfolio_screening"  # type: ignore[assignment]
+                decision.portfolio_screening_complete = False
+                decision.decision_pair = []
+                decision.decision_gate_status = "needs_portfolio_screening"
+                decision.portfolio_screening_summary = support_note
+                if (
+                    decision.runner_up_hypothesis
+                    and decision.runner_up_hypothesis not in decision.coverage_debt_hypotheses
+                ):
+                    decision.coverage_debt_hypotheses.append(decision.runner_up_hypothesis)
+                screening_focus = list(decision.screening_focus_hypotheses)
+                for item in (decision.current_hypothesis, decision.runner_up_hypothesis):
+                    if item and item not in screening_focus:
+                        screening_focus.append(item)
+                decision.screening_focus_hypotheses = screening_focus
+                decision.screening_focus_summary = (
+                    "Before pairwise contraction, obtain at least one direct evidence family that supports the current "
+                    f"top1 '{decision.current_hypothesis}' or changes the top1 ranking."
+                )
+                decision.capability_assessment = _append_unique_detail(
+                    decision.capability_assessment,
+                    support_note,
+                )
+                decision.contraction_reason = _append_unique_detail(
+                    decision.contraction_reason,
+                    support_note,
+                )
+                decision.finalize = False
+                decision.finalization_mode = "none"
+                decision.final_hypothesis_rationale = None
+                if decision.action == "stop":
+                    return _clear_pending_agent_execution(decision)
+                next_action = self._portfolio_screening_action(decision)
+                decision.action = next_action
+                decision.needs_verifier = next_action == "verifier"
+                decision.planned_agents = self._planned_agents_for_action(next_action)
+                if not decision.task_instruction:
+                    decision.task_instruction = _default_follow_up_task_instruction(
+                        next_action,
+                        decision.current_hypothesis,
+                        {
+                            "main_gap": main_gap,
+                            "challenger_hypothesis": decision.runner_up_hypothesis,
+                            "capability_assessment": decision.capability_assessment,
+                            "contraction_reason": decision.contraction_reason,
+                        },
+                    )
+                if next_action in {"macro", "microscopic", "verifier"} and not decision.agent_task_instructions:
+                    decision.agent_task_instructions = _normalize_agent_task_instructions(
+                        {next_action: decision.task_instruction or ""}
+                    )  # type: ignore[assignment]
+                return decision
             if decision.reasoning_phase != "pairwise_contraction":
                 decision.reasoning_phase = "pairwise_contraction"  # type: ignore[assignment]
             if decision.decision_gate_status == "needs_portfolio_screening":
@@ -2409,6 +2794,115 @@ class OpenAIPlannerBackend:
     def _decision_margin(self, decision: PlannerDecision) -> float:
         runner_up = decision.runner_up_confidence or 0.0
         return round((decision.confidence or 0.0) - runner_up, 6)
+
+    def _apply_evidence_led_confidence_decay(
+        self,
+        *,
+        decision: PlannerDecision,
+        hypothesis_pool: list[HypothesisEntry],
+        payload: dict[str, Any],
+        top1_positive_added: bool,
+    ) -> tuple[PlannerDecision, list[HypothesisEntry]]:
+        current_round_index = _current_round_index_from_payload(payload)
+        if current_round_index <= 1:
+            return decision, hypothesis_pool
+
+        current_top_record = next(
+            (entry for entry in decision.hypothesis_evidence_ledger if entry.hypothesis == decision.current_hypothesis),
+            None,
+        )
+        if current_top_record is None:
+            return decision, hypothesis_pool
+
+        decay = 0.0
+        if current_top_record.direct_positive_evidence_count == 0:
+            decay = _TOP1_NO_SUPPORT_DECAY
+        elif (
+            not top1_positive_added
+            and current_top_record.direct_missing_or_weakening_count >= current_top_record.direct_positive_evidence_count
+        ):
+            decay = _TOP1_WEAKENING_DECAY
+
+        if decay <= 0.0:
+            return decision, hypothesis_pool
+
+        decayed_pool, current_hypothesis = _apply_confidence_decay(
+            hypothesis_pool,
+            current_hypothesis=decision.current_hypothesis,
+            decay=decay,
+        )
+        runner_up_hypothesis, runner_up_confidence = _runner_up_from_pool(decayed_pool, current_hypothesis)
+        decision.current_hypothesis = current_hypothesis
+        decision.confidence = self._clamp_confidence(_normalize_confidence(decayed_pool[0].confidence))
+        decision.runner_up_hypothesis = runner_up_hypothesis
+        decision.runner_up_confidence = runner_up_confidence
+        decision.hypothesis_evidence_ledger = _normalize_hypothesis_evidence_ledger(
+            decision.hypothesis_evidence_ledger,
+            hypothesis_pool=decayed_pool,
+        )
+        decision.hypothesis_uncertainty_note = _append_unique_detail(
+            decision.hypothesis_uncertainty_note,
+            "The current top1 has not accumulated enough direct supporting evidence, so its confidence was automatically decayed rather than carried forward from earlier prioritization alone.",
+        )
+        decision.information_gain_assessment = _append_unique_detail(
+            decision.information_gain_assessment,
+            "Top1 confidence was decayed automatically because the current evidence chain did not add new direct support for it.",
+        )
+        return decision, decayed_pool
+
+    def _apply_early_verifier_correction_gate(
+        self,
+        *,
+        decision: PlannerDecision,
+        payload: dict[str, Any],
+        main_gap: str,
+    ) -> PlannerDecision:
+        current_round_index = _current_round_index_from_payload(payload)
+        if current_round_index < _EARLY_VERIFIER_GAP_STAGNATION_WINDOW:
+            return decision
+        if decision.action == "verifier" or decision.finalize:
+            return decision
+        if decision.verifier_supplement_status == "sufficient":
+            return decision
+        if not _gap_not_shrinking(payload, decision):
+            return decision
+
+        current_top_record = next(
+            (entry for entry in decision.hypothesis_evidence_ledger if entry.hypothesis == decision.current_hypothesis),
+            None,
+        )
+        if current_top_record is not None and current_top_record.direct_positive_evidence_count > current_top_record.direct_missing_or_weakening_count:
+            return decision
+
+        if not decision.decision_pair and decision.runner_up_hypothesis:
+            decision.decision_pair = [decision.current_hypothesis, decision.runner_up_hypothesis]
+
+        correction_note = (
+            "The top1-vs-runner-up gap has not shrunk across consecutive rounds, and the current top1 still lacks strong direct support. "
+            "Escalate to a bounded verifier correction step now instead of continuing to recycle the same internal route."
+        )
+        redirected = self._require_high_confidence_verifier(
+            decision=decision,
+            main_gap=main_gap,
+        )
+        redirected.stagnation_detected = True
+        redirected.stagnation_assessment = _append_unique_detail(
+            redirected.stagnation_assessment,
+            correction_note,
+        )
+        redirected.capability_assessment = _append_unique_detail(
+            redirected.capability_assessment,
+            correction_note,
+        )
+        redirected.contraction_reason = _append_unique_detail(
+            redirected.contraction_reason,
+            correction_note,
+        )
+        redirected.information_gain_assessment = _append_unique_detail(
+            redirected.information_gain_assessment,
+            "An earlier verifier correction is now justified because the pairwise gap is not shrinking under internal-only follow-up.",
+        )
+        return redirected
 
     def _latest_verifier_supplement_state(
         self,
@@ -2846,6 +3340,9 @@ class PlannerAgent:
             "current_confidence": state.confidence,
             "runner_up_hypothesis": state.runner_up_hypothesis,
             "runner_up_confidence": state.runner_up_confidence,
+            "hypothesis_evidence_ledger": [
+                record.model_dump(mode="json") for record in state.hypothesis_evidence_ledger
+            ],
             "reasoning_phase": state.reasoning_phase,
             "agent_framing_mode": state.agent_framing_mode,
             "portfolio_screening_complete": state.portfolio_screening_complete,
