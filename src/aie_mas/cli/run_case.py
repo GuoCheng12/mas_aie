@@ -959,6 +959,15 @@ def render_progress_event(event: WorkflowProgressEvent) -> None:
                 parts.append(f"aop_bytes={event['details']['aop_size_bytes']}")
             if event["details"].get("pid") is not None:
                 parts.append(f"pid={event['details']['pid']}")
+            if event["details"].get("new_file_count") is not None:
+                parts.append(f"new_files={event['details']['new_file_count']}")
+            if event["details"].get("growing_file_count") is not None:
+                parts.append(f"growing_files={event['details']['growing_file_count']}")
+            recent_files = event["details"].get("recent_files")
+            if isinstance(recent_files, list) and recent_files:
+                first = recent_files[0]
+                if isinstance(first, dict) and first.get("path"):
+                    parts.append(f"latest_file={first['path']}")
     typer.echo(" ".join(parts), err=True)
 
 

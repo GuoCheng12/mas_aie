@@ -3,8 +3,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import (
@@ -192,6 +193,9 @@ class CliExecutionError(RuntimeError):
         self.stderr = stderr
 
 
+CliRuntimeProbeCallback = Callable[[str, dict[str, Any]], None]
+
+
 def _truncate(text: str, limit: int = 600) -> str:
     if len(text) <= limit:
         return text
@@ -251,27 +255,243 @@ def validate_cli_action(
     return definition
 
 
+def _resolve_cli_timeout_seconds(
+    *,
+    config: AieMasConfig,
+    expected_agent_name: str,
+) -> float | None:
+    # Microscopic CLI execution can be long-running (Amesp). Run-to-completion by default.
+    if expected_agent_name == "microscopic":
+        return None
+    timeout_value = config.macro_timeout_seconds
+    if timeout_value is None:
+        return None
+    timeout_seconds = float(timeout_value)
+    if timeout_seconds <= 0:
+        return None
+    return timeout_seconds
+
+
+def _probe_interval_seconds(
+    *,
+    config: AieMasConfig,
+    stdin_payload: dict[str, Any],
+) -> float:
+    tool_config = stdin_payload.get("tool_config")
+    if isinstance(tool_config, dict):
+        candidate = tool_config.get("probe_interval_seconds")
+        if isinstance(candidate, (int, float)) and float(candidate) > 0:
+            return float(candidate)
+    return max(1.0, float(config.amesp_probe_interval_seconds))
+
+
+def _tracked_runtime_file_stats(
+    *,
+    stdin_payload: dict[str, Any],
+    max_recent_files: int = 6,
+    max_scan_files: int = 2000,
+) -> dict[str, Any]:
+    workdir_raw = stdin_payload.get("workdir")
+    if not isinstance(workdir_raw, str) or not workdir_raw.strip():
+        return {}
+    workdir = Path(workdir_raw)
+    if not workdir.exists():
+        return {"workdir": str(workdir), "workdir_exists": False}
+
+    label = str(stdin_payload.get("label") or "").strip()
+    details: dict[str, Any] = {
+        "workdir": str(workdir),
+        "workdir_exists": True,
+    }
+
+    if label:
+        stdout_log_path = workdir / f"{label}.stdout.log"
+        stderr_log_path = workdir / f"{label}.stderr.log"
+        details["stdout_log_exists"] = stdout_log_path.exists()
+        details["stderr_log_exists"] = stderr_log_path.exists()
+        details["stdout_log_bytes"] = stdout_log_path.stat().st_size if stdout_log_path.exists() else 0
+        details["stderr_log_bytes"] = stderr_log_path.stat().st_size if stderr_log_path.exists() else 0
+
+    scanned = 0
+    file_records: list[tuple[float, Path, int]] = []
+    for path in workdir.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        scanned += 1
+        file_records.append((stat.st_mtime, path, stat.st_size))
+        if scanned >= max_scan_files:
+            break
+    file_records.sort(key=lambda item: item[0], reverse=True)
+    details["tracked_file_count"] = len(file_records)
+
+    recent_files: list[dict[str, Any]] = []
+    for _, file_path, size_bytes in file_records[:max_recent_files]:
+        try:
+            relative_path = str(file_path.relative_to(workdir))
+        except ValueError:
+            relative_path = str(file_path)
+        recent_files.append(
+            {
+                "path": relative_path,
+                "size_bytes": int(size_bytes),
+            }
+        )
+    details["recent_files"] = recent_files
+    return details
+
+
+def _run_with_runtime_probe(
+    *,
+    command_id: str,
+    command: list[str],
+    config: AieMasConfig,
+    stdin_payload: dict[str, Any],
+    timeout_seconds: float | None,
+    runtime_probe: CliRuntimeProbeCallback | None,
+) -> subprocess.CompletedProcess[str]:
+    input_text = json.dumps(stdin_payload, ensure_ascii=False)
+    process = subprocess.Popen(
+        command,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        cwd=str(config.project_root),
+        env=_python_subprocess_env(config.project_root),
+    )
+    if process.stdin is not None:
+        process.stdin.write(input_text)
+        process.stdin.close()
+
+    probe_interval = _probe_interval_seconds(config=config, stdin_payload=stdin_payload)
+    start_time = time.perf_counter()
+    next_probe_at = start_time
+    seen_file_sizes: dict[str, int] = {}
+
+    if runtime_probe is not None:
+        runtime_probe(
+            "start",
+            {
+                "pid": process.pid,
+                "timeout_seconds": timeout_seconds,
+                **_tracked_runtime_file_stats(stdin_payload=stdin_payload),
+            },
+        )
+
+    while True:
+        return_code = process.poll()
+        now = time.perf_counter()
+        elapsed = now - start_time
+
+        if return_code is not None:
+            stdout_text, stderr_text = process.communicate()
+            if runtime_probe is not None:
+                runtime_probe(
+                    "end",
+                    {
+                        "pid": process.pid,
+                        "elapsed_seconds": round(elapsed, 2),
+                        "return_code": int(return_code),
+                        **_tracked_runtime_file_stats(stdin_payload=stdin_payload),
+                    },
+                )
+            return subprocess.CompletedProcess(command, int(return_code), stdout=stdout_text, stderr=stderr_text)
+
+        if timeout_seconds is not None and elapsed >= timeout_seconds:
+            process.kill()
+            stdout_text, stderr_text = process.communicate()
+            raise CliExecutionError(
+                f"{command!r} timed out after {timeout_seconds:.1f} seconds.",
+                command_id=command_id,
+                exit_code=124,
+                stdout=(stdout_text or "").strip(),
+                stderr=(stderr_text or "").strip(),
+            )
+
+        if runtime_probe is not None and now >= next_probe_at:
+            runtime_details = _tracked_runtime_file_stats(stdin_payload=stdin_payload)
+            recent_files = list(runtime_details.get("recent_files") or [])
+            new_files: list[str] = []
+            growing_files: list[str] = []
+            for entry in recent_files:
+                if not isinstance(entry, dict):
+                    continue
+                path_value = str(entry.get("path") or "")
+                if not path_value:
+                    continue
+                size_value = int(entry.get("size_bytes") or 0)
+                previous_size = seen_file_sizes.get(path_value)
+                if previous_size is None:
+                    new_files.append(path_value)
+                elif size_value > previous_size:
+                    growing_files.append(path_value)
+                seen_file_sizes[path_value] = size_value
+            runtime_probe(
+                "running",
+                {
+                    "pid": process.pid,
+                    "elapsed_seconds": round(elapsed, 2),
+                    "new_file_count": len(new_files),
+                    "growing_file_count": len(growing_files),
+                    "new_files": new_files[:6],
+                    "growing_files": growing_files[:6],
+                    **runtime_details,
+                },
+            )
+            next_probe_at = now + probe_interval
+        time.sleep(0.5)
+
+
 def execute_cli_action(
     *,
     config: AieMasConfig,
     action: CliActionSpec,
     expected_agent_name: str,
     stdin_enrichment: dict[str, Any] | None = None,
+    runtime_probe: CliRuntimeProbeCallback | None = None,
 ) -> CliCommandResult:
     definition = validate_cli_action(action, expected_agent_name=expected_agent_name)
     final_stdin_payload = dict(action.stdin_payload)
     if stdin_enrichment:
         final_stdin_payload.update(stdin_enrichment)
-    completed = subprocess.run(
-        [definition.command_program, *definition.command_args],
-        input=json.dumps(final_stdin_payload, ensure_ascii=False),
-        capture_output=True,
-        text=True,
-        cwd=str(config.project_root),
-        env=_python_subprocess_env(config.project_root),
-        timeout=max(config.macro_timeout_seconds, config.microscopic_timeout_seconds),
-        check=False,
+    command = [definition.command_program, *definition.command_args]
+    timeout_seconds = _resolve_cli_timeout_seconds(
+        config=config,
+        expected_agent_name=expected_agent_name,
     )
+    if runtime_probe is None:
+        try:
+            completed = subprocess.run(
+                command,
+                input=json.dumps(final_stdin_payload, ensure_ascii=False),
+                capture_output=True,
+                text=True,
+                cwd=str(config.project_root),
+                env=_python_subprocess_env(config.project_root),
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise CliExecutionError(
+                f"{action.command_id} timed out after {exc.timeout} seconds.",
+                command_id=action.command_id,
+                exit_code=124,
+                stdout=(exc.stdout or "").strip() if isinstance(exc.stdout, str) else "",
+                stderr=(exc.stderr or "").strip() if isinstance(exc.stderr, str) else "",
+            ) from exc
+    else:
+        completed = _run_with_runtime_probe(
+            command_id=action.command_id,
+            command=command,
+            config=config,
+            stdin_payload=final_stdin_payload,
+            timeout_seconds=timeout_seconds,
+            runtime_probe=runtime_probe,
+        )
     stdout_text = completed.stdout.strip()
     stderr_text = completed.stderr.strip()
     if completed.returncode != 0:

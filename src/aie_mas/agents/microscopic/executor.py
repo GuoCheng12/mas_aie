@@ -517,6 +517,17 @@ class MicroscopicExecutorMixin:
                         case_id=case_id,
                         current_hypothesis=current_hypothesis,
                     ),
+                    runtime_probe=lambda status, details: self._emit_probe(
+                        round_index=round_index,
+                        case_id=case_id,
+                        current_hypothesis=current_hypothesis,
+                        stage="cli_subprocess",
+                        status=status,
+                        details={
+                            "command_id": cli_action.command_id,
+                            **details,
+                        },
+                    ),
                 )
                 run_result = AmespBaselineRunResult.model_validate(cli_result.parsed_json)
                 structured_results = {
