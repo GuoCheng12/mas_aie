@@ -23,13 +23,6 @@ class MicroscopicExecutorMixin:
         self,
         *,
         plan: Any,
-        smiles: str,
-        label: str,
-        workdir: Any,
-        available_artifacts: dict[str, Any],
-        round_index: int,
-        case_id: str,
-        current_hypothesis: str,
     ) -> CliActionSpec:
         capability_name = plan.microscopic_tool_request.capability_name
         return CliActionSpec(
@@ -37,33 +30,53 @@ class MicroscopicExecutorMixin:
             command_program="python3",
             command_args=["-m", "aie_mas.cli.microscopic_exec"],
             stdin_payload={
-                "tool_config": {
-                    "amesp_bin": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
-                    "npara": self._config.amesp_npara,
-                    "maxcore_mb": self._config.amesp_maxcore_mb,
-                    "use_ricosx": self._config.amesp_use_ricosx,
-                    "s1_nstates": self._config.amesp_s1_nstates,
-                    "td_tout": self._config.amesp_td_tout,
-                    "follow_up_max_conformers": self._config.amesp_follow_up_max_conformers,
-                    "follow_up_max_torsion_snapshots_total": self._config.amesp_follow_up_max_torsion_snapshots_total,
-                    "probe_interval_seconds": self._config.amesp_probe_interval_seconds,
-                },
-                "plan": plan.model_dump(mode="json"),
-                "smiles": smiles,
-                "label": label,
-                "workdir": str(workdir),
-                "available_artifacts": available_artifacts,
-                "round_index": round_index,
-                "case_id": case_id,
-                "current_hypothesis": current_hypothesis,
+                "microscopic_tool_request": plan.microscopic_tool_request.model_dump(mode="json"),
+                "local_goal": plan.local_goal,
+                "requested_deliverables": list(plan.requested_deliverables),
+                "requested_route_summary": plan.requested_route_summary,
+                "failure_reporting": plan.failure_reporting,
+                "unsupported_requests": list(plan.unsupported_requests),
+                "structure_source": plan.structure_source,
             },
             expected_outputs=list(plan.expected_outputs),
             perform_new_calculation=bool(plan.microscopic_tool_request.perform_new_calculation),
             reused_existing_artifacts=bool(plan.microscopic_tool_request.reuse_existing_artifacts_only),
-            resolved_target_ids={},
+            resolved_target_ids=dict(getattr(plan, "resolved_target_ids", {}) or {}),
             binding_mode=plan.binding_mode,
             requested_observable_tags=list(plan.requested_observable_tags),
         )
+
+    def _cli_runtime_enrichment(
+        self,
+        *,
+        smiles: str,
+        label: str,
+        workdir: Any,
+        available_artifacts: dict[str, Any],
+        round_index: int,
+        case_id: str,
+        current_hypothesis: str,
+    ) -> dict[str, Any]:
+        return {
+            "tool_config": {
+                "amesp_bin": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
+                "npara": self._config.amesp_npara,
+                "maxcore_mb": self._config.amesp_maxcore_mb,
+                "use_ricosx": self._config.amesp_use_ricosx,
+                "s1_nstates": self._config.amesp_s1_nstates,
+                "td_tout": self._config.amesp_td_tout,
+                "follow_up_max_conformers": self._config.amesp_follow_up_max_conformers,
+                "follow_up_max_torsion_snapshots_total": self._config.amesp_follow_up_max_torsion_snapshots_total,
+                "probe_interval_seconds": self._config.amesp_probe_interval_seconds,
+            },
+            "smiles": smiles,
+            "label": label,
+            "workdir": str(workdir),
+            "available_artifacts": available_artifacts,
+            "round_index": round_index,
+            "case_id": case_id,
+            "current_hypothesis": current_hypothesis,
+        }
 
     def _cli_failure_context(
         self,
@@ -478,20 +491,11 @@ class MicroscopicExecutorMixin:
 
             label = f"{case_id}_round_{round_index:02d}_micro"
             workdir = self._resolve_workdir(case_id=case_id, round_index=round_index)
-            cli_action = self._build_cli_action(
-                plan=plan,
-                smiles=smiles,
-                label=label,
-                workdir=workdir,
-                available_artifacts=available_artifacts,
-                round_index=round_index,
-                case_id=case_id,
-                current_hypothesis=current_hypothesis,
-            )
+            cli_action = reasoning.cli_action or self._build_cli_action(plan=plan)
             reasoning.cli_action = cli_action
             reasoning.unsupported_requests = list(plan.unsupported_requests)
             tool_calls = [
-                "microscopic_reasoning(task_instruction_to_execution_plan)",
+                "microscopic_reasoning(task_instruction_to_cli_action)",
                 f"{cli_action.command_program} {' '.join(cli_action.command_args)}(command_id='{cli_action.command_id}', label='{label}')",
             ]
             if plan.structure_source == "existing_prepared_structure":
@@ -504,10 +508,21 @@ class MicroscopicExecutorMixin:
                     config=self._config,
                     action=cli_action,
                     expected_agent_name="microscopic",
+                    stdin_enrichment=self._cli_runtime_enrichment(
+                        smiles=smiles,
+                        label=label,
+                        workdir=workdir,
+                        available_artifacts=available_artifacts,
+                        round_index=round_index,
+                        case_id=case_id,
+                        current_hypothesis=current_hypothesis,
+                    ),
                 )
                 run_result = AmespBaselineRunResult.model_validate(cli_result.parsed_json)
                 structured_results = {
                     "backend": "amesp",
+                    "operational_status": "completed",
+                    "failure_classification": None,
                     "reasoning_backend": self._config.microscopic_backend,
                     "task_mode": task_spec.mode,
                     "task_label": task_spec.task_label,
@@ -644,6 +659,8 @@ class MicroscopicExecutorMixin:
                     continue
                 structured_results = {
                     "backend": "amesp",
+                    "operational_status": "execution_failed",
+                    "failure_classification": "execution_failed",
                     "reasoning_backend": self._config.microscopic_backend,
                     "task_mode": task_spec.mode,
                     "task_label": task_spec.task_label,
@@ -708,6 +725,8 @@ class MicroscopicExecutorMixin:
             except AmespExecutionError as exc:
                 structured_results = {
                     "backend": "amesp",
+                    "operational_status": "execution_stalled" if exc.status == "failed" else "partial_result_only",
+                    "failure_classification": "execution_stalled" if exc.status == "failed" else "partial_result_only",
                     "reasoning_backend": self._config.microscopic_backend,
                     "task_mode": task_spec.mode,
                     "task_label": task_spec.task_label,

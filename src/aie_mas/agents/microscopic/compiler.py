@@ -39,6 +39,7 @@ from aie_mas.tools.amesp import (
     render_amesp_capability_registry,
     render_registry_backed_microscopic_examples,
 )
+from aie_mas.tools.cli_execution import microscopic_capability_name, microscopic_command_id
 from aie_mas.utils.prompts import PromptRepository
 
 
@@ -47,6 +48,7 @@ MicroscopicStructureStrategy = Literal[
     "reuse_if_available_else_prepare_from_smiles",
 ]
 MicroscopicSemanticContractMode = Literal[
+    "cli_action_json",
     "reasoned_action_text",
     "structured_action_decision",
     "semantic_contract",
@@ -483,7 +485,7 @@ class MicroscopicReasoningResponse(BaseModel):
     reasoning_summary: str
     cli_action: CliActionSpec | None = None
     unsupported_requests: list[str] = Field(default_factory=list)
-    execution_plan: MicroscopicReasoningPlanDraft
+    execution_plan: MicroscopicReasoningPlanDraft | None = None
     capability_limit_note: str
     expected_outputs: list[str] = Field(default_factory=list)
     failure_policy: str
@@ -1479,6 +1481,113 @@ def compile_action_decision_to_execution_plan(
     return execution_plan
 
 
+def _resolved_target_ids_from_tool_request(request: MicroscopicToolRequest) -> dict[str, Any]:
+    resolved: dict[str, Any] = {}
+    if request.artifact_bundle_id:
+        resolved["artifact_bundle_id"] = request.artifact_bundle_id
+    if request.artifact_member_id:
+        resolved["artifact_member_id"] = request.artifact_member_id
+    if request.artifact_member_ids:
+        resolved["artifact_member_ids"] = list(request.artifact_member_ids)
+    if request.dihedral_id:
+        resolved["dihedral_id"] = request.dihedral_id
+    if request.conformer_id:
+        resolved["conformer_id"] = request.conformer_id
+    if request.conformer_ids:
+        resolved["conformer_ids"] = list(request.conformer_ids)
+    return resolved
+
+
+def _cli_action_from_execution_plan(execution_plan: MicroscopicExecutionPlan) -> CliActionSpec:
+    request = execution_plan.microscopic_tool_request
+    return CliActionSpec(
+        command_id=microscopic_command_id(request.capability_name),
+        command_program="python3",
+        command_args=["-m", "aie_mas.cli.microscopic_exec"],
+        stdin_payload={
+            "microscopic_tool_request": request.model_dump(mode="json"),
+            "local_goal": execution_plan.local_goal,
+            "requested_deliverables": list(execution_plan.requested_deliverables),
+            "requested_route_summary": execution_plan.requested_route_summary,
+            "failure_reporting": execution_plan.failure_reporting,
+            "unsupported_requests": list(execution_plan.unsupported_requests),
+            "structure_source": execution_plan.structure_source,
+        },
+        expected_outputs=list(execution_plan.expected_outputs),
+        perform_new_calculation=bool(request.perform_new_calculation),
+        reused_existing_artifacts=bool(request.reuse_existing_artifacts_only),
+        resolved_target_ids=_resolved_target_ids_from_tool_request(request),
+        binding_mode=execution_plan.binding_mode,
+        requested_observable_tags=list(execution_plan.requested_observable_tags),
+    )
+
+
+def _action_decision_from_cli_action(
+    action: CliActionSpec,
+    *,
+    response: MicroscopicReasoningResponse,
+    payload: dict[str, Any],
+) -> MicroscopicActionDecision:
+    capability_name = microscopic_capability_name(action.command_id)
+    if capability_name is None or capability_name not in AMESP_ACTION_REGISTRY:
+        raise TaggedMicroscopicProtocolError(f"Unknown microscopic command_id '{action.command_id}'.")
+    request_payload = dict(action.stdin_payload.get("microscopic_tool_request") or {})
+    request_payload["capability_name"] = capability_name
+    if "requested_route_summary" not in request_payload:
+        request_payload["requested_route_summary"] = (
+            action.stdin_payload.get("requested_route_summary")
+            or response.reasoning_summary.strip()
+            or _default_requested_route_summary_for_capability(capability_name)
+        )
+    if "deliverables" not in request_payload:
+        request_payload["deliverables"] = (
+            list(action.stdin_payload.get("requested_deliverables") or [])
+            or list(response.expected_outputs)
+            or _default_requested_deliverables_for_capability(capability_name)
+        )
+    try:
+        request = MicroscopicToolRequest.model_validate(request_payload)
+    except ValidationError as exc:
+        raise TaggedMicroscopicProtocolError(
+            f"Invalid cli_action microscopic_tool_request for `{action.command_id}`: {exc}"
+        ) from exc
+    action_definition = AMESP_ACTION_REGISTRY[capability_name]
+    params: dict[str, Any] = {}
+    for param_name in action_definition.allowed_llm_params:
+        value = getattr(request, param_name, None)
+        if value not in (None, [], {}):
+            params[param_name] = value
+    requested_observable_tags = list(action.requested_observable_tags) or _requested_observable_tags(
+        task_instruction=str(payload.get("task_instruction") or ""),
+        requested_deliverables=list(action.stdin_payload.get("requested_deliverables") or response.expected_outputs),
+    )
+    fulfillment_mode, covered_tags, residual_tags = _action_coverage_for_requested_tags(
+        action_name=capability_name,
+        requested_observable_tags=requested_observable_tags,
+    )
+    context = _translation_context_from_payload(payload)
+    return MicroscopicActionDecision(
+        status="supported",
+        execution_action=capability_name,
+        discovery_actions=[],
+        params=params,
+        unsupported_parts=list(dict.fromkeys(response.unsupported_requests)),
+        local_execution_rationale=(
+            str(action.stdin_payload.get("requested_route_summary") or "").strip()
+            or response.reasoning_summary
+            or _default_requested_route_summary_for_capability(capability_name)
+        ),
+        fulfillment_mode=fulfillment_mode,
+        binding_mode=action.binding_mode or context["binding_mode"],
+        planner_requested_capability=context["planner_requested_capability"],
+        translation_substituted_action=False,
+        translation_substitution_reason=None,
+        requested_observable_tags=requested_observable_tags,
+        covered_observable_tags=covered_tags,
+        residual_unmet_observable_tags=residual_tags,
+    )
+
+
 def _closest_supported_actions_for_unsupported_parts(
     unsupported_parts: list[str],
 ) -> list[AmespCapabilityName]:
@@ -1541,6 +1650,7 @@ def _build_reasoning_response_from_action_decision(
                 f"working hypothesis '{current_hypothesis}': {task_instruction}"
             ),
             reasoning_summary=decision.local_execution_rationale,
+            cli_action=_cli_action_from_execution_plan(compiled_plan),
             execution_plan=MicroscopicReasoningPlanDraft(
                 local_goal=compiled_plan.local_goal,
                 requested_deliverables=list(compiled_plan.requested_deliverables),
@@ -1575,6 +1685,7 @@ def _build_reasoning_response_from_action_decision(
             f"'{current_hypothesis}': {task_instruction}"
         ),
         reasoning_summary=decision.local_execution_rationale,
+        cli_action=None,
         execution_plan=MicroscopicReasoningPlanDraft(
             local_goal="Do not execute a microscopic action that is unsupported by the current Amesp registry.",
             requested_deliverables=requested_deliverables,
@@ -1819,8 +1930,21 @@ def _translation_context_from_payload(payload: dict[str, Any]) -> dict[str, Any]
     binding_mode: MicroscopicTranslationBindingMode = (
         "hard" if hard_bound_action is not None else "preferred" if planner_requested_capability is not None else "none"
     )
-    artifact_bundle_id = _extract_first_artifact_bundle_id_from_text(operative_instruction)
-    artifact_member_ids = _extract_artifact_member_ids_from_text(operative_instruction)
+    exact_target_ids = dict(payload.get("exact_target_ids") or {})
+    artifact_bundle_id = str(
+        exact_target_ids.get("artifact_bundle_id")
+        or _extract_first_artifact_bundle_id_from_text(operative_instruction)
+        or ""
+    ).strip() or None
+    artifact_member_ids = list(exact_target_ids.get("artifact_member_ids") or []) or _extract_artifact_member_ids_from_text(
+        operative_instruction
+    )
+    dihedral_id = (
+        str(exact_target_ids.get("dihedral_id") or _extract_first_dihedral_id_from_text(operative_instruction) or "").strip()
+        or None
+    )
+    explicit_reuse_only = payload.get("reuse_only")
+    explicit_allow_new_calculation = payload.get("allow_new_calculation")
     return {
         "task_instruction": task_instruction,
         "operative_instruction": operative_instruction,
@@ -1828,16 +1952,25 @@ def _translation_context_from_payload(payload: dict[str, Any]) -> dict[str, Any]
             task_instruction=operative_instruction,
             requested_deliverables=list(payload.get("requested_deliverables") or []),
         ),
+        "evidence_family_goal": str(payload.get("evidence_family_goal") or "").strip() or None,
         "mentioned_actions": mentioned_actions,
         "planner_requested_capability": planner_requested_capability,
         "binding_mode": binding_mode,
         "hard_bound_action": hard_bound_action,
         "disallowed_actions": disallowed_actions,
-        "requires_reuse_only": _task_requires_reuse_only(operative_instruction),
-        "artifact_bundle_context": _references_reusable_artifact_bundle(operative_instruction),
+        "allowed_command_families": list(payload.get("allowed_command_families") or []),
+        "disallowed_command_families": list(payload.get("disallowed_command_families") or []),
+        "requires_reuse_only": (
+            bool(explicit_reuse_only)
+            if explicit_reuse_only is not None
+            else _task_requires_reuse_only(operative_instruction)
+        ),
+        "allow_new_calculation": explicit_allow_new_calculation,
+        "allow_action_fallback": bool(payload.get("allow_action_fallback") or False),
+        "artifact_bundle_context": bool(artifact_bundle_id) or _references_reusable_artifact_bundle(operative_instruction),
         "artifact_bundle_id": artifact_bundle_id,
         "artifact_member_ids": artifact_member_ids,
-        "dihedral_id": _extract_first_dihedral_id_from_text(operative_instruction),
+        "dihedral_id": dihedral_id,
         "artifact_kind": _infer_artifact_kind_from_bundle_id(artifact_bundle_id),
         "task_mode": str(payload.get("task_mode") or "targeted_follow_up"),
     }
@@ -1853,8 +1986,12 @@ def _compatibility_from_translation_context(
         return False
     if action_name in context["disallowed_actions"]:
         return False
+    if not _command_family_allowed(action_name=action_name, context=context):
+        return False
     if context["task_mode"] == "baseline_s0_s1":
         return action_name == "run_baseline_bundle"
+    if context.get("allow_new_calculation") is False and action.requires_new_calculation:
+        return False
     if context["requires_reuse_only"] and action.requires_new_calculation:
         return False
     if context["artifact_bundle_context"] and action.target_object_kind == "prepared_structure":
@@ -1916,6 +2053,98 @@ def _selection_score(
     return (rank, len(covered_tags), fewer_new_calcs, planner_preferred, lower_cost_reuse + llm_preferred)
 
 
+def _command_family_for_action(action_name: AmespCapabilityName) -> str:
+    if action_name == "run_baseline_bundle":
+        return "baseline"
+    if action_name == "run_conformer_bundle":
+        return "conformer"
+    if action_name == "run_torsion_snapshots":
+        return "torsion"
+    if action_name in {
+        "run_targeted_charge_analysis",
+        "run_targeted_localized_orbital_analysis",
+        "run_targeted_natural_orbital_analysis",
+        "run_targeted_density_population_analysis",
+        "run_targeted_transition_dipole_analysis",
+        "run_targeted_approx_delta_dipole_analysis",
+        "run_ris_state_characterization",
+        "run_targeted_state_characterization",
+    }:
+        return "targeted_follow_up"
+    if action_name in {
+        "parse_snapshot_outputs",
+        "extract_ct_descriptors_from_bundle",
+        "extract_geometry_descriptors_from_bundle",
+        "inspect_raw_artifact_bundle",
+    }:
+        return "parse_only"
+    if action_name in {
+        "list_rotatable_dihedrals",
+        "list_available_conformers",
+        "list_artifact_bundles",
+        "list_artifact_bundle_members",
+    }:
+        return "discovery"
+    return "other"
+
+
+def _command_family_allowed(
+    *,
+    action_name: AmespCapabilityName,
+    context: dict[str, Any],
+) -> bool:
+    family = _command_family_for_action(action_name)
+    allowed = {str(item).strip() for item in context.get("allowed_command_families") or [] if str(item).strip()}
+    disallowed = {str(item).strip() for item in context.get("disallowed_command_families") or [] if str(item).strip()}
+    if action_name in disallowed or family in disallowed:
+        return False
+    if not allowed:
+        return True
+    return action_name in allowed or family in allowed
+
+
+def _unsupported_translation_decision(
+    *,
+    outcome: MicroscopicReasoningOutcome,
+    context: dict[str, Any],
+    reason: str,
+) -> MicroscopicReasoningOutcome:
+    normalized_decision = outcome.action_decision.model_copy(
+        update={
+            "status": "unsupported",
+            "execution_action": None,
+            "discovery_actions": [],
+            "params": {},
+            "unsupported_parts": list(
+                dict.fromkeys(list(outcome.action_decision.unsupported_parts) + [reason])
+            ),
+            "fulfillment_mode": "unsupported",
+            "binding_mode": context["binding_mode"],
+            "planner_requested_capability": context["planner_requested_capability"],
+            "translation_substituted_action": False,
+            "translation_substitution_reason": None,
+            "requested_observable_tags": list(context["requested_observable_tags"]),
+            "covered_observable_tags": [],
+            "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
+        }
+    )
+    updated_response = outcome.reasoning_response.model_copy(
+        update={
+            "reasoning_summary": (
+                f"{outcome.reasoning_response.reasoning_summary} {reason}"
+            ).strip()
+        }
+    )
+    return MicroscopicReasoningOutcome(
+        action_decision=normalized_decision,
+        reasoning_response=updated_response,
+        compiled_execution_plan=None,
+        reasoning_parse_mode=outcome.reasoning_parse_mode,
+        reasoning_contract_mode=outcome.reasoning_contract_mode,
+        reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+    )
+
+
 def _candidate_action_decision(
     *,
     action_name: AmespCapabilityName,
@@ -1945,18 +2174,7 @@ def _candidate_action_decision(
     if context["dihedral_id"] and "dihedral_id" in allowed_params:
         params["dihedral_id"] = context["dihedral_id"]
     original_selected_action = original_decision.execution_action if original_decision.status == "supported" else None
-    substitution = (
-        (
-            bool(context["planner_requested_capability"])
-            and context["binding_mode"] != "hard"
-            and context["planner_requested_capability"] != action_name
-        )
-        if context["planner_requested_capability"]
-        else (
-            original_selected_action is not None
-            and original_selected_action != action_name
-        )
-    )
+    substitution = original_selected_action is not None and original_selected_action != action_name
     substitution_reason = None
     if substitution:
         if context["planner_requested_capability"] and context["planner_requested_capability"] != action_name:
@@ -1999,6 +2217,78 @@ def normalize_reasoning_outcome_for_best_fit_translation(
 ) -> MicroscopicReasoningOutcome:
     if payload.get("task_mode") == "baseline_s0_s1":
         return outcome
+    if outcome.reasoning_parse_mode == "cli_action_json" and outcome.reasoning_response.cli_action is not None:
+        context = _translation_context_from_payload(payload)
+        selected_action = outcome.action_decision.execution_action if outcome.action_decision.status == "supported" else None
+        if selected_action is None:
+            return outcome
+        if context["binding_mode"] == "hard" and context["hard_bound_action"] not in {None, selected_action}:
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context={**context, "binding_mode": "hard"},
+                reason=(
+                    f"Planner hard-bound `{context['hard_bound_action']}` but local CLI action selected `{selected_action}`."
+                ),
+            )
+        if not _compatibility_from_translation_context(action_name=selected_action, context=context):
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context=context,
+                reason=(
+                    f"Local microscopic CLI action `{selected_action}` does not satisfy the current command-family, reuse, or target constraints."
+                ),
+            )
+        selected_decision = _candidate_action_decision(
+            action_name=selected_action,
+            context=context,
+            original_decision=outcome.action_decision,
+        ).model_copy(
+            update={
+                "translation_substituted_action": False,
+                "translation_substitution_reason": None,
+            }
+        )
+        compiled_plan = compile_action_decision_to_execution_plan(
+            selected_decision,
+            payload=payload,
+            config=config,
+        )
+        if compiled_plan is None:
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context=context,
+                reason=f"Local microscopic CLI action `{selected_action}` did not compile into an execution plan.",
+            )
+        compiled_plan.fulfillment_mode = selected_decision.fulfillment_mode
+        compiled_plan.binding_mode = selected_decision.binding_mode
+        compiled_plan.planner_requested_capability = selected_decision.planner_requested_capability
+        compiled_plan.translation_substituted_action = False
+        compiled_plan.translation_substitution_reason = None
+        compiled_plan.requested_observable_tags = list(selected_decision.requested_observable_tags)
+        compiled_plan.covered_observable_tags = list(selected_decision.covered_observable_tags)
+        compiled_plan.residual_unmet_observable_tags = list(selected_decision.residual_unmet_observable_tags)
+        updated_response = outcome.reasoning_response.model_copy(
+            update={
+                "cli_action": _cli_action_from_execution_plan(compiled_plan),
+                "execution_plan": MicroscopicReasoningPlanDraft.model_validate(
+                    _build_reasoning_response_from_action_decision(
+                        selected_decision,
+                        payload=payload,
+                        compiled_plan=compiled_plan,
+                        config=config,
+                    ).execution_plan.model_dump(mode="json")
+                ),
+                "expected_outputs": list(compiled_plan.expected_outputs) or outcome.reasoning_response.expected_outputs,
+            }
+        )
+        return MicroscopicReasoningOutcome(
+            action_decision=selected_decision,
+            reasoning_response=updated_response,
+            compiled_execution_plan=compiled_plan,
+            reasoning_parse_mode=outcome.reasoning_parse_mode,
+            reasoning_contract_mode=outcome.reasoning_contract_mode,
+            reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+        )
     if outcome.reasoning_contract_mode in {
         "semantic_contract",
         "legacy_semantic_contract_fallback",
@@ -2008,52 +2298,38 @@ def normalize_reasoning_outcome_for_best_fit_translation(
         return outcome
     context = _translation_context_from_payload(payload)
     llm_selected_action = outcome.action_decision.execution_action if outcome.action_decision.status == "supported" else None
+    compatible_original_decision: MicroscopicActionDecision | None = None
+    if llm_selected_action is not None and _compatibility_from_translation_context(
+        action_name=llm_selected_action,
+        context=context,
+    ):
+        candidate = _candidate_action_decision(
+            action_name=llm_selected_action,
+            context=context,
+            original_decision=outcome.action_decision,
+        )
+        if candidate.fulfillment_mode != "unsupported":
+            compatible_original_decision = candidate
 
     if context["binding_mode"] == "hard" and context["hard_bound_action"] is not None:
         selected_action = context["hard_bound_action"]
         if not _compatibility_from_translation_context(action_name=selected_action, context=context):
-            normalized_decision = outcome.action_decision.model_copy(
-                update={
-                    "status": "unsupported",
-                    "execution_action": None,
-                    "discovery_actions": [],
-                    "params": {},
-                    "unsupported_parts": list(
-                        dict.fromkeys(
-                            list(outcome.action_decision.unsupported_parts)
-                            + [f"Planner hard-bound `{selected_action}` but hard constraints prevent executing that action."]
-                        )
-                    ),
-                    "fulfillment_mode": "unsupported",
-                    "binding_mode": "hard",
-                    "planner_requested_capability": selected_action,
-                    "translation_substituted_action": False,
-                    "translation_substitution_reason": None,
-                    "requested_observable_tags": list(context["requested_observable_tags"]),
-                    "covered_observable_tags": [],
-                    "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
-                }
-            )
-            updated_response = outcome.reasoning_response.model_copy(
-                update={
-                    "reasoning_summary": (
-                        f"{outcome.reasoning_response.reasoning_summary} Planner hard-bound `{selected_action}`, "
-                        "so no alternate microscopic action was selected."
-                    ).strip()
-                }
-            )
-            return MicroscopicReasoningOutcome(
-                action_decision=normalized_decision,
-                reasoning_response=updated_response,
-                compiled_execution_plan=None,
-                reasoning_parse_mode=outcome.reasoning_parse_mode,
-                reasoning_contract_mode=outcome.reasoning_contract_mode,
-                reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context={**context, "binding_mode": "hard", "planner_requested_capability": selected_action},
+                reason=f"Planner hard-bound `{selected_action}` but hard constraints prevent executing that action.",
             )
         selected_decision = _candidate_action_decision(
             action_name=selected_action,
             context=context,
             original_decision=outcome.action_decision,
+        )
+    elif compatible_original_decision is not None:
+        selected_decision = compatible_original_decision.model_copy(
+            update={
+                "translation_substituted_action": False,
+                "translation_substitution_reason": None,
+            }
         )
     elif context["binding_mode"] == "preferred" and context["planner_requested_capability"] is not None:
         selected_action = context["planner_requested_capability"]
@@ -2063,7 +2339,7 @@ def normalize_reasoning_outcome_for_best_fit_translation(
                 context=context,
                 original_decision=outcome.action_decision,
             )
-        else:
+        elif context["allow_action_fallback"]:
             candidates: list[tuple[tuple[int, int, int, int, int], MicroscopicActionDecision]] = []
             for action_name in _available_execution_actions():
                 if not _compatibility_from_translation_context(action_name=action_name, context=context):
@@ -2084,44 +2360,12 @@ def normalize_reasoning_outcome_for_best_fit_translation(
                 )
                 candidates.append((score, candidate))
             if not candidates:
-                unsupported_note = (
-                    f"No registry-backed action matched Planner-requested capability `{selected_action}` under current hard constraints."
-                )
-                normalized_decision = outcome.action_decision.model_copy(
-                    update={
-                        "status": "unsupported",
-                        "execution_action": None,
-                        "discovery_actions": [],
-                        "params": {},
-                        "unsupported_parts": list(
-                            dict.fromkeys(
-                                list(outcome.action_decision.unsupported_parts) + [unsupported_note]
-                            )
-                        ),
-                        "fulfillment_mode": "unsupported",
-                        "binding_mode": context["binding_mode"],
-                        "planner_requested_capability": context["planner_requested_capability"],
-                        "translation_substituted_action": False,
-                        "translation_substitution_reason": None,
-                        "requested_observable_tags": list(context["requested_observable_tags"]),
-                        "covered_observable_tags": [],
-                        "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
-                    }
-                )
-                updated_response = outcome.reasoning_response.model_copy(
-                    update={
-                        "reasoning_summary": (
-                            f"{outcome.reasoning_response.reasoning_summary} {unsupported_note}"
-                        ).strip()
-                    }
-                )
-                return MicroscopicReasoningOutcome(
-                    action_decision=normalized_decision,
-                    reasoning_response=updated_response,
-                    compiled_execution_plan=None,
-                    reasoning_parse_mode=outcome.reasoning_parse_mode,
-                    reasoning_contract_mode=outcome.reasoning_contract_mode,
-                    reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+                return _unsupported_translation_decision(
+                    outcome=outcome,
+                    context=context,
+                    reason=(
+                        f"No registry-backed action matched Planner-requested capability `{selected_action}` under current hard constraints."
+                    ),
                 )
             candidates.sort(key=lambda item: item[0], reverse=True)
             selected_decision = candidates[0][1].model_copy(
@@ -2133,7 +2377,23 @@ def normalize_reasoning_outcome_for_best_fit_translation(
                     ),
                 }
             )
+        else:
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context=context,
+                reason=(
+                    f"Local microscopic action `{selected_action}` does not satisfy the current command-family or reuse constraints, and silent fallback is disabled."
+                ),
+            )
     else:
+        if llm_selected_action is not None and not context["allow_action_fallback"]:
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context=context,
+                reason=(
+                    f"Local microscopic action `{llm_selected_action}` could not be executed under the current command-family, reuse, or target constraints, and silent fallback is disabled."
+                ),
+            )
         candidates: list[tuple[tuple[int, int, int, int, int], MicroscopicActionDecision]] = []
         for action_name in _available_execution_actions():
             if not _compatibility_from_translation_context(action_name=action_name, context=context):
@@ -2154,39 +2414,14 @@ def normalize_reasoning_outcome_for_best_fit_translation(
             )
             candidates.append((score, candidate))
         if not candidates:
-            unsupported_reason = (
-                f"No registry-backed action matched requested evidence goal tags: {', '.join(context['requested_observable_tags'])}."
-                if context["requested_observable_tags"]
-                else "No registry-backed action matched the requested local evidence goal."
-            )
-            normalized_decision = outcome.action_decision.model_copy(
-                update={
-                    "status": "unsupported",
-                    "execution_action": None,
-                    "discovery_actions": [],
-                    "params": {},
-                    "unsupported_parts": list(
-                        dict.fromkeys(
-                            list(outcome.action_decision.unsupported_parts) + [unsupported_reason]
-                        )
-                    ),
-                    "fulfillment_mode": "unsupported",
-                    "binding_mode": context["binding_mode"],
-                    "planner_requested_capability": context["planner_requested_capability"],
-                    "translation_substituted_action": False,
-                    "translation_substitution_reason": None,
-                    "requested_observable_tags": list(context["requested_observable_tags"]),
-                    "covered_observable_tags": [],
-                    "residual_unmet_observable_tags": list(context["requested_observable_tags"]),
-                }
-            )
-            return MicroscopicReasoningOutcome(
-                action_decision=normalized_decision,
-                reasoning_response=outcome.reasoning_response,
-                compiled_execution_plan=None,
-                reasoning_parse_mode=outcome.reasoning_parse_mode,
-                reasoning_contract_mode=outcome.reasoning_contract_mode,
-                reasoning_contract_errors=list(outcome.reasoning_contract_errors),
+            return _unsupported_translation_decision(
+                outcome=outcome,
+                context=context,
+                reason=(
+                    f"No registry-backed action matched requested evidence goal tags: {', '.join(context['requested_observable_tags'])}."
+                    if context["requested_observable_tags"]
+                    else "No registry-backed action matched the requested local evidence goal."
+                ),
             )
         candidates.sort(key=lambda item: item[0], reverse=True)
         selected_decision = candidates[0][1]
@@ -2196,6 +2431,19 @@ def normalize_reasoning_outcome_for_best_fit_translation(
         payload=payload,
         config=config,
     )
+    if (
+        compiled_plan is not None
+        and compiled_plan.microscopic_tool_request is not None
+        and compiled_plan.microscopic_tool_request.capability_name != selected_decision.execution_action
+    ):
+        return _unsupported_translation_decision(
+            outcome=outcome,
+            context=context,
+            reason=(
+                f"Compiled microscopic execution plan changed the selected command from `{selected_decision.execution_action}` "
+                f"to `{compiled_plan.microscopic_tool_request.capability_name}`, which is not allowed in CLI-first mode."
+            ),
+        )
     if compiled_plan is not None:
         compiled_plan.fulfillment_mode = selected_decision.fulfillment_mode
         compiled_plan.binding_mode = selected_decision.binding_mode
@@ -3565,6 +3813,22 @@ def compile_reasoning_response_to_execution_plan(
     payload: Optional[dict[str, Any]],
     config: AieMasConfig,
 ) -> MicroscopicExecutionPlan:
+    if reasoning.cli_action is not None and reasoning.execution_plan is None:
+        decision = _action_decision_from_cli_action(
+            reasoning.cli_action,
+            response=reasoning,
+            payload=payload or {},
+        )
+        compiled_from_action = compile_action_decision_to_execution_plan(
+            decision,
+            payload=payload or {},
+            config=config,
+        )
+        if compiled_from_action is None:
+            raise TaggedMicroscopicProtocolError(
+                "Microscopic cli_action did not compile into an execution plan."
+            )
+        return compiled_from_action
     task_instruction = str((payload or {}).get("task_instruction") or "")
     task_mode = str((payload or {}).get("task_mode") or "targeted_follow_up")
     budget_profile = (payload or {}).get("budget_profile") or config.microscopic_budget_profile or "balanced"
@@ -3967,6 +4231,65 @@ def _parse_tagged_semantic_contract_response(
 ) -> MicroscopicReasoningResponse:
     response, _ = _parse_tagged_semantic_contract_response_with_plan(raw_text, payload=payload)
     return response
+
+
+def _parse_cli_action_json_response_with_plan(
+    raw_text: str,
+    *,
+    payload: dict[str, Any],
+    config: AieMasConfig,
+) -> tuple[MicroscopicActionDecision, MicroscopicReasoningResponse, Optional[MicroscopicExecutionPlan]]:
+    payload_obj = _extract_json_object_from_text(raw_text)
+    response = MicroscopicReasoningResponse.model_validate(payload_obj)
+    if response.cli_action is None:
+        raise TaggedMicroscopicProtocolError("Microscopic CLI-action JSON response did not include `cli_action`.")
+    decision = _action_decision_from_cli_action(
+        response.cli_action,
+        response=response,
+        payload=payload,
+    )
+    compiled_plan = compile_action_decision_to_execution_plan(
+        decision,
+        payload=payload,
+        config=config,
+    )
+    if compiled_plan is not None:
+        requested_deliverables = list(
+            response.cli_action.stdin_payload.get("requested_deliverables") or response.expected_outputs
+        )
+        if requested_deliverables:
+            compiled_plan.requested_deliverables = list(requested_deliverables)
+            compiled_plan.microscopic_tool_plan.requested_deliverables = list(requested_deliverables)
+            compiled_plan.microscopic_tool_request.deliverables = list(requested_deliverables)
+            if not compiled_plan.expected_outputs:
+                compiled_plan.expected_outputs = list(requested_deliverables)
+    compatibility_response = _build_reasoning_response_from_action_decision(
+        decision,
+        payload=payload,
+        compiled_plan=compiled_plan,
+        config=config,
+    )
+    normalized_action = compatibility_response.cli_action or response.cli_action
+    normalized_response = response.model_copy(
+        update={
+            "cli_action": normalized_action,
+            "execution_plan": compatibility_response.execution_plan,
+            "unsupported_requests": list(
+                dict.fromkeys(
+                    list(response.unsupported_requests)
+                    + list(
+                        compatibility_response.execution_plan.unsupported_requests
+                        if compatibility_response.execution_plan is not None
+                        else []
+                    )
+                )
+            ),
+            "expected_outputs": list(response.expected_outputs) or list(compatibility_response.expected_outputs),
+            "capability_limit_note": response.capability_limit_note or compatibility_response.capability_limit_note,
+            "failure_policy": response.failure_policy or compatibility_response.failure_policy,
+        }
+    )
+    return decision, normalized_response, compiled_plan
 
 
 def _parse_structured_action_decision_response_with_plan(

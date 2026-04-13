@@ -64,6 +64,13 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
             command_program="python3",
             command_args=["-m", "aie_mas.cli.macro_exec"],
             perform_new_calculation=False,
+            required_stdin_keys=[
+                "selected_capability",
+                "requested_deliverables",
+                "requested_observable_tags",
+                "binding_mode",
+                "smiles",
+            ],
         )
     for command_id in microscopic_command_ids:
         perform_new_calculation = command_id not in {
@@ -82,6 +89,7 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
             command_program="python3",
             command_args=["-m", "aie_mas.cli.microscopic_exec"],
             perform_new_calculation=perform_new_calculation,
+            required_stdin_keys=[],
         )
     return catalog
 
@@ -95,6 +103,14 @@ def macro_command_id(capability_name: str) -> CliCommandId:
 
 def microscopic_command_id(capability_name: str) -> CliCommandId:
     return f"microscopic.{capability_name}"  # type: ignore[return-value]
+
+
+def microscopic_capability_name(command_id: str) -> str | None:
+    prefix = "microscopic."
+    if not isinstance(command_id, str) or not command_id.startswith(prefix):
+        return None
+    capability_name = command_id[len(prefix) :].strip()
+    return capability_name or None
 
 
 def render_cli_command_catalog(agent_name: str | None = None) -> dict[str, Any]:
@@ -164,6 +180,18 @@ def validate_cli_action(
     if action.command_program != definition.command_program or list(action.command_args) != list(definition.command_args):
         raise CliExecutionError(
             f"CLI action `{action.command_id}` does not match the catalog command template.",
+            command_id=action.command_id,
+        )
+    if definition.agent_name == "microscopic":
+        if "plan" not in action.stdin_payload and "microscopic_tool_request" not in action.stdin_payload:
+            raise CliExecutionError(
+                f"CLI action `{action.command_id}` must provide either `plan` or `microscopic_tool_request` in stdin payload.",
+                command_id=action.command_id,
+            )
+    missing_keys = [key for key in definition.required_stdin_keys if key not in action.stdin_payload]
+    if missing_keys:
+        raise CliExecutionError(
+            f"CLI action `{action.command_id}` is missing required stdin payload keys: {', '.join(missing_keys)}.",
             command_id=action.command_id,
         )
     return definition
@@ -301,25 +329,13 @@ class MicroscopicCliExecutionTool:
             command_program="python3",
             command_args=["-m", "aie_mas.cli.microscopic_exec"],
             stdin_payload={
-                "tool_config": {
-                    "amesp_bin": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
-                    "npara": self._config.amesp_npara,
-                    "maxcore_mb": self._config.amesp_maxcore_mb,
-                    "use_ricosx": self._config.amesp_use_ricosx,
-                    "s1_nstates": self._config.amesp_s1_nstates,
-                    "td_tout": self._config.amesp_td_tout,
-                    "follow_up_max_conformers": self._config.amesp_follow_up_max_conformers,
-                    "follow_up_max_torsion_snapshots_total": self._config.amesp_follow_up_max_torsion_snapshots_total,
-                    "probe_interval_seconds": self._config.amesp_probe_interval_seconds,
-                },
-                "plan": plan.model_dump(mode="json"),
-                "smiles": smiles,
-                "label": label,
-                "workdir": str(workdir),
-                "available_artifacts": available_artifacts or {},
-                "round_index": round_index,
-                "case_id": case_id,
-                "current_hypothesis": current_hypothesis,
+                "microscopic_tool_request": plan.microscopic_tool_request.model_dump(mode="json"),
+                "local_goal": plan.local_goal,
+                "requested_deliverables": list(plan.requested_deliverables),
+                "requested_route_summary": plan.requested_route_summary,
+                "failure_reporting": plan.failure_reporting,
+                "unsupported_requests": list(plan.unsupported_requests),
+                "structure_source": plan.structure_source,
             },
             expected_outputs=list(plan.expected_outputs),
             perform_new_calculation=bool(plan.microscopic_tool_request.perform_new_calculation),
@@ -331,6 +347,26 @@ class MicroscopicCliExecutionTool:
             config=self._config,
             action=action,
             expected_agent_name="microscopic",
+            stdin_enrichment={
+                "tool_config": {
+                    "amesp_bin": str(self._config.amesp_binary_path) if self._config.amesp_binary_path else None,
+                    "npara": self._config.amesp_npara,
+                    "maxcore_mb": self._config.amesp_maxcore_mb,
+                    "use_ricosx": self._config.amesp_use_ricosx,
+                    "s1_nstates": self._config.amesp_s1_nstates,
+                    "td_tout": self._config.amesp_td_tout,
+                    "follow_up_max_conformers": self._config.amesp_follow_up_max_conformers,
+                    "follow_up_max_torsion_snapshots_total": self._config.amesp_follow_up_max_torsion_snapshots_total,
+                    "probe_interval_seconds": self._config.amesp_probe_interval_seconds,
+                },
+                "smiles": smiles,
+                "label": label,
+                "workdir": str(workdir),
+                "available_artifacts": available_artifacts or {},
+                "round_index": round_index,
+                "case_id": case_id,
+                "current_hypothesis": current_hypothesis,
+            },
         )
         from aie_mas.tools.amesp import AmespBaselineRunResult
 

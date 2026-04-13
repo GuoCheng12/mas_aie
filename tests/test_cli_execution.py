@@ -124,7 +124,8 @@ def test_microscopic_cli_execution_tool_invokes_cli(monkeypatch, tmp_path: Path)
     )
 
     assert captured["cmd"][1:] == ["-m", "aie_mas.cli.microscopic_exec"]
-    assert captured["input"]["plan"]["microscopic_tool_request"]["capability_name"] == "extract_ct_descriptors_from_bundle"
+    assert captured["input"]["microscopic_tool_request"]["capability_name"] == "extract_ct_descriptors_from_bundle"
+    assert captured["input"]["tool_config"]["amesp_bin"] is None
     assert result.executed_capability == "extract_ct_descriptors_from_bundle"
     assert result.reused_existing_artifacts is True
 
@@ -186,6 +187,7 @@ def test_microscopic_cli_execution_tool_can_wrap_baseline_capability(monkeypatch
         current_hypothesis="ICT",
     )
 
-    assert captured["input"]["plan"]["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
+    assert captured["input"]["microscopic_tool_request"]["capability_name"] == "run_baseline_bundle"
+    assert captured["input"]["requested_deliverables"] == []
     assert result.executed_capability == "run_baseline_bundle"
     assert result.performed_new_calculations is True

@@ -13,6 +13,7 @@ from .compiler import (
     MicroscopicReasoningParseError,
     MicroscopicReasoningResponse,
     MicroscopicSemanticContractMode,
+    _parse_cli_action_json_response_with_plan,
     _action_decision_from_execution_plan,
     _extract_tagged_reasoning_sections,
     _parse_legacy_tagged_microscopic_reasoning_response,
@@ -62,6 +63,23 @@ class OpenAIMicroscopicReasoningBackend:
         raw_text = ""
         try:
             raw_text = self._invoke_reasoned_action_text(rendered_prompt)
+            action_decision, response, compiled_plan = _parse_cli_action_json_response_with_plan(
+                raw_text,
+                payload=payload,
+                config=self._config,
+            )
+            return MicroscopicReasoningOutcome(
+                action_decision=action_decision,
+                reasoning_response=response,
+                compiled_execution_plan=compiled_plan,
+                reasoning_parse_mode="cli_action_json",
+                reasoning_contract_mode="cli_action_json",
+                reasoning_contract_errors=[],
+            )
+        except Exception as exc:
+            contract_errors.append(f"cli_action_json: {exc}")
+
+        try:
             action_decision, response, compiled_plan = _parse_reasoned_action_response_with_plan(
                 raw_text,
                 payload=payload,
@@ -194,7 +212,7 @@ class OpenAIMicroscopicReasoningBackend:
         except Exception as exc:
             contract_errors.append(f"legacy_json: {exc}")
             raise MicroscopicReasoningParseError(
-                "Microscopic reasoning output was neither a valid semantic contract, valid legacy tagged protocol, nor valid legacy JSON.",
+                "Microscopic reasoning output was neither a valid CLI-action JSON object, valid semantic contract, valid legacy tagged protocol, nor valid legacy JSON.",
                 raw_text=raw_text,
                 contract_mode="failed",
                 contract_errors=contract_errors,

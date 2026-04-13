@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 import pytest
 
 from aie_mas.agents.microscopic import _parse_tagged_microscopic_reasoning_response
+from aie_mas.agents.microscopic.interpreter import OpenAIMicroscopicReasoningBackend
 from aie_mas.agents.result_agents import MicroscopicAgent
 from aie_mas.config import AieMasConfig
 from aie_mas.graph.state import MicroscopicTaskSpec, SharedStructureContext
@@ -264,6 +266,84 @@ def _build_agent(
     return agent, fake_client
 
 
+def test_openai_microscopic_supports_cli_action_json_primary_path(tmp_path: Path) -> None:
+    agent, fake_client = _build_agent(
+        tmp_path,
+        [
+            json.dumps(
+                {
+                    "task_understanding": "Reuse the existing bundle and perform one bounded RIS characterization follow-up.",
+                    "reasoning_summary": "The requested discriminator is best matched by a targeted RIS state-characterization command on the reusable bundle.",
+                    "cli_action": {
+                        "command_id": "microscopic.run_ris_state_characterization",
+                        "command_program": "python3",
+                        "command_args": ["-m", "aie_mas.cli.microscopic_exec"],
+                        "stdin_payload": {
+                            "microscopic_tool_request": {
+                                "capability_name": "run_ris_state_characterization",
+                                "perform_new_calculation": True,
+                                "reuse_existing_artifacts_only": False,
+                                "artifact_bundle_id": "round_09_baseline_bundle",
+                                "artifact_kind": "baseline_bundle",
+                                "requested_route_summary": "Run bounded RIS state characterization on the reusable baseline bundle.",
+                            },
+                            "requested_deliverables": ["RIS state-characterization summary"],
+                            "requested_route_summary": "Run bounded RIS state characterization on the reusable baseline bundle.",
+                        },
+                        "expected_outputs": ["RIS state-characterization summary"],
+                        "perform_new_calculation": True,
+                        "reused_existing_artifacts": False,
+                        "resolved_target_ids": {"artifact_bundle_id": "round_09_baseline_bundle"},
+                        "binding_mode": "none",
+                        "requested_observable_tags": ["state_ordering"],
+                    },
+                    "unsupported_requests": [],
+                    "capability_limit_note": "Current microscopic capability is bounded to registry-backed Amesp execution only.",
+                    "expected_outputs": ["RIS state-characterization summary"],
+                    "failure_policy": "Return a local failed or partial report with available artifacts only.",
+                }
+            )
+        ],
+    )
+
+    payload = agent._build_reasoning_payload(
+        current_hypothesis="ICT",
+        reasoning_phase="portfolio_screening",
+        agent_framing_mode="portfolio_neutral",
+        screening_focus_hypotheses=["ICT", "neutral aromatic"],
+        screening_focus_summary="Need one bounded targeted discriminator.",
+        task_instruction=(
+            "Reuse bundle_id=`round_09_baseline_bundle` and perform a targeted RIS state characterization "
+            "for the current local microscopic evidence goal."
+        ),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="ris-follow-up",
+            objective="Collect one bounded RIS discriminator.",
+            allowed_command_families=["targeted_follow_up"],
+            exact_target_ids={"artifact_bundle_id": "round_09_baseline_bundle"},
+        ),
+        recent_rounds_context=[],
+        available_artifacts={},
+        shared_structure_context=_shared_structure_context(tmp_path),
+        round_index=2,
+    )
+    rendered_prompt = PromptRepository(PROMPTS_DIR).render("microscopic_reasoning", payload)
+    backend = OpenAIMicroscopicReasoningBackend(
+        agent._config,
+        client=OpenAICompatibleMicroscopicClient(agent._config, client=fake_client),
+    )
+
+    outcome = backend.reason(rendered_prompt, payload)
+
+    assert outcome.reasoning_parse_mode == "cli_action_json"
+    assert outcome.reasoning_response.cli_action is not None
+    assert outcome.reasoning_response.cli_action.command_id == "microscopic.run_ris_state_characterization"
+    assert outcome.compiled_execution_plan is not None
+    assert outcome.compiled_execution_plan.microscopic_tool_request.capability_name == "run_ris_state_characterization"
+    assert "response_format" not in fake_client.chat.completions.calls[0]
+
+
 def test_openai_microscopic_reasoning_backend_uses_configured_model(tmp_path: Path) -> None:
     agent, fake_client = _build_agent(
         tmp_path,
@@ -450,13 +530,11 @@ def test_microscopic_best_fit_translation_selects_approx_delta_dipole_proxy(tmp_
         round_index=2,
     )
 
-    assert report.status == "success"
-    assert report.structured_results["executed_capability"] == "run_targeted_approx_delta_dipole_analysis"
-    assert report.structured_results["fulfillment_mode"] == "proxy"
-    assert report.structured_results["planner_requested_capability"] is None
-    assert report.structured_results["translation_substituted_action"] is True
-    assert "delta_dipole" in report.structured_results["covered_observable_tags"]
-    assert "excited_state_dipole" in report.structured_results["covered_observable_tags"]
+    assert report.status == "failed"
+    assert report.completion_reason_code == "action_not_supported_by_registry"
+    assert report.structured_results["executed_capability"] is None
+    assert report.structured_results["translation_substituted_action"] is False
+    assert "delta_dipole" in " ".join(report.structured_results["unsupported_parts"])
 
 
 def test_microscopic_best_fit_translation_selects_transition_dipole_exact_route(tmp_path: Path) -> None:
@@ -512,11 +590,11 @@ def test_microscopic_best_fit_translation_selects_transition_dipole_exact_route(
         round_index=2,
     )
 
-    assert report.status == "success"
-    assert report.structured_results["executed_capability"] == "run_targeted_transition_dipole_analysis"
-    assert report.structured_results["fulfillment_mode"] == "exact"
-    assert "transition_dipole" in report.structured_results["covered_observable_tags"]
-    assert report.structured_results["translation_substituted_action"] is True
+    assert report.status == "failed"
+    assert report.completion_reason_code == "action_not_supported_by_registry"
+    assert report.structured_results["executed_capability"] is None
+    assert report.structured_results["translation_substituted_action"] is False
+    assert "transition_dipole" in " ".join(report.structured_results["unsupported_parts"])
 
 
 def test_microscopic_best_fit_translation_selects_inventory_only_raw_inspection(tmp_path: Path) -> None:
@@ -572,11 +650,11 @@ def test_microscopic_best_fit_translation_selects_inventory_only_raw_inspection(
         round_index=2,
     )
 
-    assert report.status == "success"
-    assert report.structured_results["executed_capability"] == "inspect_raw_artifact_bundle"
-    assert report.structured_results["fulfillment_mode"] == "inventory_only"
-    assert report.structured_results["translation_substituted_action"] is True
-    assert report.structured_results["covered_observable_tags"] == ["raw_observable_inventory"]
+    assert report.status == "failed"
+    assert report.completion_reason_code == "action_not_supported_by_registry"
+    assert report.structured_results["executed_capability"] is None
+    assert report.structured_results["translation_substituted_action"] is False
+    assert "raw_observable_inventory" in " ".join(report.structured_results["requested_observable_tags"])
 
 
 def test_microscopic_preferred_explicit_action_is_not_substituted(tmp_path: Path) -> None:
@@ -693,6 +771,130 @@ def test_microscopic_hard_bound_only_request_does_not_substitute(tmp_path: Path)
     assert report.structured_results["binding_mode"] == "hard"
     assert report.structured_results["translation_substituted_action"] is False
     assert report.structured_results["planner_requested_capability"] == "extract_ct_descriptors_from_bundle"
+
+
+def test_microscopic_cli_first_preserves_selected_ris_state_characterization(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Reuse the existing torsion bundle and run one bounded RIS state characterization follow-up.
+            </task_understanding>
+            <reasoning_summary>
+            The selected local command already matches the targeted discriminator, so no alternate route should be chosen.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to one registry-backed targeted follow-up command.
+            </capability_limit_note>
+            <expected_outputs>
+            RIS state-characterization summary
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "run_ris_state_characterization",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": true,
+                "artifact_bundle_id": "round_10_torsion_snapshots",
+                "target_selection_mode": "representative_subset"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Run RIS state characterization on the selected reusable torsion bundle."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Use one bounded RIS state characterization on bundle_id=`round_10_torsion_snapshots`.",
+        current_hypothesis="neutral aromatic",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="neutral-aromatic-ris-screen",
+            objective="Collect one bounded neutral-aromatic targeted screen.",
+            allowed_command_families=["targeted_follow_up"],
+            disallowed_command_families=["baseline"],
+            exact_target_ids={"artifact_bundle_id": "round_10_torsion_snapshots"},
+        ),
+        case_id="case123",
+        round_index=10,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    assert report.status == "success"
+    assert report.structured_results["command_id"] == "microscopic.run_ris_state_characterization"
+    assert report.structured_results["translation_substituted_action"] is False
+    assert plan["microscopic_tool_request"]["capability_name"] == "run_ris_state_characterization"
+
+
+def test_microscopic_cli_first_preserves_selected_targeted_state_characterization(tmp_path: Path) -> None:
+    agent, _ = _build_agent(
+        tmp_path,
+        [
+            """
+            <task_understanding>
+            Reuse the existing torsion bundle and run one bounded targeted state-characterization follow-up.
+            </task_understanding>
+            <reasoning_summary>
+            The selected local command already matches the targeted discriminator, so no baseline fallback should appear.
+            </reasoning_summary>
+            <capability_limit_note>
+            Current Amesp capability is bounded to one registry-backed targeted follow-up command.
+            </capability_limit_note>
+            <expected_outputs>
+            state-characterization records
+            </expected_outputs>
+            <failure_policy>
+            If Amesp fails, return a local failed or partial report with available artifacts only.
+            </failure_policy>
+            <action_decision_json>
+            {
+              "status": "supported",
+              "execution_action": "run_targeted_state_characterization",
+              "discovery_actions": [],
+              "params": {
+                "perform_new_calculation": true,
+                "artifact_bundle_id": "round_13_torsion_snapshots",
+                "target_selection_mode": "representative_subset"
+              },
+              "unsupported_parts": [],
+              "local_execution_rationale": "Run targeted state characterization on the selected reusable torsion bundle."
+            }
+            </action_decision_json>
+            """
+        ],
+    )
+
+    report = agent.run(
+        smiles="C1=CCCCC1",
+        task_received="Use one bounded state characterization on bundle_id=`round_13_torsion_snapshots`.",
+        current_hypothesis="ICT",
+        shared_structure_context=_shared_structure_context(tmp_path),
+        task_spec=MicroscopicTaskSpec(
+            mode="targeted_follow_up",
+            task_label="ict-targeted-state-screen",
+            objective="Collect one bounded ICT-targeted state screen.",
+            allowed_command_families=["targeted_follow_up"],
+            disallowed_command_families=["baseline"],
+            exact_target_ids={"artifact_bundle_id": "round_13_torsion_snapshots"},
+        ),
+        case_id="case123",
+        round_index=13,
+    )
+
+    plan = report.structured_results["execution_plan"]
+    assert report.status == "success"
+    assert report.structured_results["command_id"] == "microscopic.run_targeted_state_characterization"
+    assert report.structured_results["translation_substituted_action"] is False
+    assert plan["microscopic_tool_request"]["capability_name"] == "run_targeted_state_characterization"
 
 
 def test_microscopic_parse_only_loop_guard_marks_repeated_no_new_observable_gain(tmp_path: Path) -> None:
