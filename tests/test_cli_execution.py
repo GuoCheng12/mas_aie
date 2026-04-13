@@ -57,7 +57,7 @@ def test_macro_cli_execution_tool_invokes_cli(monkeypatch, tmp_path: Path) -> No
         shared_structure_context=None,
     )
 
-    assert captured["cmd"][1:] == ["-m", "aie_mas.cli.macro_exec"]
+    assert captured["cmd"][1:] == ["-m", "aie_mas.macro_harness.cli", "execute-payload"]
     assert captured["input"]["smiles"] == "c1ccccc1"
     assert captured["input"]["plan"]["selected_capability"] == "screen_donor_acceptor_layout"
     assert result["executed_capability"] == "screen_donor_acceptor_layout"

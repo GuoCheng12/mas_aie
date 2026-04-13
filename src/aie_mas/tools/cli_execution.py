@@ -92,7 +92,7 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
             command_id=command_id,  # type: ignore[arg-type]
             agent_name="macro",
             command_program="python3",
-            command_args=["-m", "aie_mas.cli.macro_exec"],
+            command_args=["-m", "aie_mas.macro_harness.cli", "execute-payload"],
             perform_new_calculation=False,
             required_stdin_keys=[
                 "selected_capability",
@@ -561,7 +561,7 @@ class MacroCliExecutionTool:
         action = CliActionSpec(
             command_id=macro_command_id(plan.selected_capability or "screen_planarity_compactness"),
             command_program="python3",
-            command_args=["-m", "aie_mas.cli.macro_exec"],
+            command_args=["-m", "aie_mas.macro_harness.cli", "execute-payload"],
             stdin_payload={
                 "selected_capability": plan.selected_capability,
                 "requested_deliverables": list(plan.requested_deliverables),

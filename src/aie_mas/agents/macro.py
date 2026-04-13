@@ -193,6 +193,8 @@ class MacroAgent:
                         },
                         structured_results={
                             "status": "failed",
+                            "operational_status": "execution_failed",
+                            "failure_classification": "execution_failed",
                             "command_id": cli_action.command_id,
                             "command_program": cli_action.command_program,
                             "command_args": list(cli_action.command_args),
@@ -213,7 +215,7 @@ class MacroAgent:
                             "planner_requested_capability": compatibility_plan.selected_capability,
                             "translation_substituted_action": False,
                             "translation_substitution_reason": "",
-                            "fulfillment_mode": "unsupported",
+                            "fulfillment_mode": None,
                             "error": {
                                 "message": str(exc),
                                 "stdout": exc.stdout,
@@ -274,6 +276,8 @@ class MacroAgent:
 
         structured_results = {
             **raw_result,
+            "operational_status": "completed",
+            "failure_classification": None,
             "command_id": cli_action.command_id,
             "command_program": cli_action.command_program,
             "command_args": list(cli_action.command_args),
@@ -489,41 +493,45 @@ class MacroAgent:
             requested_capability=requested_capability,
         )
         command_id = macro_command_id(selected_capability)
-        action = reasoning.cli_action
-        if action is not None and action.command_id == command_id:
-            return action.model_copy(
-                update={
-                    "command_program": "python3",
-                    "command_args": ["-m", "aie_mas.cli.macro_exec"],
-                }
-            )
         action_definition = MACRO_ACTION_REGISTRY[selected_capability]
         requested_observable_tags = (
             list(reasoning.execution_plan.requested_observable_tags)
             if reasoning.execution_plan is not None
             else list(action_definition.exact_observable_tags)
         )
+        canonical_stdin_payload = {
+            "selected_capability": selected_capability,
+            "requested_capability": requested_capability or selected_capability,
+            "requested_observable_tags": requested_observable_tags,
+            "requested_deliverables": (
+                list(reasoning.execution_plan.requested_deliverables)
+                if reasoning.execution_plan is not None and reasoning.execution_plan.requested_deliverables
+                else list(action_definition.default_deliverables)
+            ),
+            "binding_mode": binding_mode,
+            "smiles": smiles,
+            "shared_structure_context": (
+                shared_structure_context.model_dump(mode="json")
+                if shared_structure_context is not None
+                else None
+            ),
+        }
+        action = reasoning.cli_action
+        if action is not None and action.command_id == command_id:
+            merged_stdin_payload = dict(action.stdin_payload)
+            merged_stdin_payload.update(canonical_stdin_payload)
+            return action.model_copy(
+                update={
+                    "command_program": "python3",
+                    "command_args": ["-m", "aie_mas.macro_harness.cli", "execute-payload"],
+                    "stdin_payload": merged_stdin_payload,
+                }
+            )
         return CliActionSpec(
             command_id=command_id,
             command_program="python3",
-            command_args=["-m", "aie_mas.cli.macro_exec"],
-            stdin_payload={
-                "selected_capability": selected_capability,
-                "requested_capability": requested_capability or selected_capability,
-                "requested_observable_tags": requested_observable_tags,
-                "requested_deliverables": (
-                    list(reasoning.execution_plan.requested_deliverables)
-                    if reasoning.execution_plan is not None and reasoning.execution_plan.requested_deliverables
-                    else list(action_definition.default_deliverables)
-                ),
-                "binding_mode": binding_mode,
-                "smiles": smiles,
-                "shared_structure_context": (
-                    shared_structure_context.model_dump(mode="json")
-                    if shared_structure_context is not None
-                    else None
-                ),
-            },
+            command_args=["-m", "aie_mas.macro_harness.cli", "execute-payload"],
+            stdin_payload=canonical_stdin_payload,
             expected_outputs=list(reasoning.expected_outputs),
             perform_new_calculation=False,
             reused_existing_artifacts=shared_structure_context is not None,
