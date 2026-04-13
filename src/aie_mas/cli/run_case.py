@@ -620,11 +620,14 @@ def main(
 
 def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, object]:
     final_answer = state.final_answer or {}
+    final_summary_text = _canonical_final_summary_text(state)
     return {
         "case_id": state.case_id,
         "smiles": state.smiles,
         "current_hypothesis": state.current_hypothesis,
         "confidence": state.confidence,
+        "runner_up_hypothesis": state.runner_up_hypothesis,
+        "runner_up_confidence": state.runner_up_confidence,
         "reasoning_phase": final_answer.get("reasoning_phase"),
         "agent_framing_mode": final_answer.get("agent_framing_mode"),
         "portfolio_screening_complete": final_answer.get("portfolio_screening_complete"),
@@ -634,7 +637,8 @@ def build_summary_payload(state: AieMasState, report_dir: Path) -> dict[str, obj
         "portfolio_screening_summary": final_answer.get("portfolio_screening_summary"),
         "screening_focus_hypotheses": final_answer.get("screening_focus_hypotheses"),
         "screening_focus_summary": final_answer.get("screening_focus_summary"),
-        "diagnosis": final_answer.get("diagnosis"),
+        "diagnosis": final_summary_text,
+        "planner_raw_diagnosis": final_answer.get("diagnosis"),
         "action": final_answer.get("action"),
         "finalize": state.finalize,
         "hypothesis_uncertainty_note": final_answer.get("hypothesis_uncertainty_note"),
@@ -670,6 +674,31 @@ def _planner_synthesis_status(state: AieMasState, final_answer: dict[str, Any]) 
             return "best_available"
         return "finalized"
     return "incomplete"
+
+
+def _canonical_final_summary_text(state: AieMasState) -> str:
+    final_answer = state.final_answer or {}
+    top1 = str(state.current_hypothesis or "unknown")
+    top1_confidence = f"{float(state.confidence or 0.0):.2f}"
+    runner_up = str(state.runner_up_hypothesis or "unknown")
+    runner_up_confidence = (
+        f"{float(state.runner_up_confidence or 0.0):.2f}"
+        if state.runner_up_hypothesis
+        else None
+    )
+    decision_gate_status = str(final_answer.get("decision_gate_status") or "unknown").strip()
+    coverage_debt = [str(item) for item in list(final_answer.get("coverage_debt_hypotheses") or []) if str(item).strip()]
+    pairwise_outcome = str(final_answer.get("pairwise_task_outcome") or "").strip()
+    summary = (
+        f"Top1 is {top1} (confidence={top1_confidence}) and top2 is {runner_up}"
+        + (f" (confidence={runner_up_confidence})" if runner_up_confidence is not None else "")
+        + f". decision_gate_status={decision_gate_status}."
+    )
+    if coverage_debt:
+        summary += f" coverage_debt={', '.join(coverage_debt)}."
+    if pairwise_outcome:
+        summary += f" pairwise_task_outcome={pairwise_outcome}."
+    return summary
 
 
 def _append_unique_text(items: list[str], text: object) -> None:
@@ -709,12 +738,7 @@ def _key_round_evidence(state: AieMasState) -> list[dict[str, object]]:
 
 def build_planner_synthesis_payload(state: AieMasState) -> dict[str, object]:
     final_answer = state.final_answer or {}
-    guess_summary = (
-        final_answer.get("final_hypothesis_rationale")
-        or final_answer.get("diagnosis")
-        or state.latest_evidence_summary
-        or "No final planner synthesis was available."
-    )
+    guess_summary = _canonical_final_summary_text(state)
     reasoning_evidence: list[str] = []
     for value in (
         final_answer.get("diagnosis"),
@@ -847,6 +871,7 @@ def prepare_report_paths(config: AieMasConfig, case_id: str) -> dict[str, Path]:
         "full_state_path": report_dir / "full_state.json",
         "planner_synthesis_path": report_dir / "planner_synthesis.json",
         "live_trace_path": report_dir / "live_trace.jsonl",
+        "live_trace_pretty_path": report_dir / "live_trace_pretty.md",
         "live_status_path": report_dir / "live_status.md",
     }
 
@@ -865,6 +890,10 @@ def write_run_report(
     summary_payload = build_summary_payload(state, report_dir)
     full_state_payload = build_full_state_payload(config, state, report_dir)
     planner_synthesis_payload = build_planner_synthesis_payload(state)
+    if summary_payload["current_hypothesis"] != planner_synthesis_payload["猜想"]["当前结论"]:
+        raise RuntimeError("Report generation mismatch: summary.json and planner_synthesis.json disagree on top1.")
+    if summary_payload["runner_up_hypothesis"] != planner_synthesis_payload["猜想"]["次优假设"]:
+        raise RuntimeError("Report generation mismatch: summary.json and planner_synthesis.json disagree on top2.")
 
     summary_path.write_text(
         json.dumps(summary_payload, ensure_ascii=False, indent=2) + "\n",
@@ -896,6 +925,7 @@ def render_terminal_summary(
         f"rounds: {summary['working_memory_rounds']}",
         f"report_dir: {summary['report_dir']}",
         f"live_trace_file: {report_paths['live_trace_path']}",
+        f"live_trace_pretty_file: {report_paths['live_trace_pretty_path']}",
         f"live_status_file: {report_paths['live_status_path']}",
         f"summary_file: {report_paths['summary_path']}",
         f"full_state_file: {report_paths['full_state_path']}",
@@ -961,6 +991,7 @@ class LiveRunTracer:
         self._user_query = user_query
         self._events: list[dict[str, object]] = []
         self._live_trace_path = report_dir / "live_trace.jsonl"
+        self._live_trace_pretty_path = report_dir / "live_trace_pretty.md"
         self._live_status_path = report_dir / "live_status.md"
         self._write_status_file()
 
@@ -979,7 +1010,94 @@ class LiveRunTracer:
             "".join(json.dumps(item, ensure_ascii=False) + "\n" for item in self._events),
             encoding="utf-8",
         )
+        self._write_trace_pretty_file()
         self._write_status_file()
+
+    def _truncate(self, text: str, limit: int = 260) -> str:
+        if len(text) <= limit:
+            return text
+        return f"{text[: limit - 3]}..."
+
+    def _compact_pretty_details(self, details: dict[str, object]) -> dict[str, object]:
+        compact: dict[str, object] = {}
+        for key, value in details.items():
+            if key in {"probe_stage", "probe_status"}:
+                compact[key] = value
+                continue
+            if isinstance(value, str):
+                compact[key] = self._truncate(value, 240)
+                continue
+            if isinstance(value, dict):
+                if key in {"microscopic_tool_plan", "execution_plan"}:
+                    compact[key] = {
+                        sub_key: value.get(sub_key)
+                        for sub_key in (
+                            "requested_route_summary",
+                            "requested_deliverables",
+                            "calls",
+                            "capability_route",
+                            "local_goal",
+                        )
+                        if sub_key in value
+                    }
+                    continue
+                if key == "agent_reports":
+                    compact[key] = {"count": len(value) if hasattr(value, "__len__") else None}
+                    continue
+                compact[key] = {
+                    sub_key: value[sub_key]
+                    for sub_key in list(value.keys())[:8]
+                }
+                continue
+            if isinstance(value, list):
+                if key == "agent_reports":
+                    compact[key] = {"count": len(value)}
+                    continue
+                compact[key] = value[:6]
+                continue
+            compact[key] = value
+        return compact
+
+    def _render_pretty_value(self, value: object) -> str:
+        if isinstance(value, str):
+            return value
+        return self._truncate(json.dumps(value, ensure_ascii=False), 420)
+
+    def _write_trace_pretty_file(self) -> None:
+        lines = [
+            "# Live Trace (Pretty)",
+            "",
+            f"- case_id: {self._case_id}",
+            f"- smiles: {self._smiles}",
+            f"- events_recorded: {len(self._events)}",
+            "",
+        ]
+        if not self._events:
+            lines.append("No events have been recorded yet.")
+            self._live_trace_pretty_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            return
+        for index, event in enumerate(self._events, start=1):
+            round_label = "setup" if event["round"] == 0 else str(event["round"])
+            lines.extend(
+                [
+                    f"## Event {index}",
+                    "",
+                    f"- phase: {event['phase']}",
+                    f"- round: {round_label}",
+                    f"- agent: {event['agent']}",
+                    f"- node: {event['node']}",
+                    f"- current_hypothesis: {event.get('current_hypothesis')}",
+                ]
+            )
+            details = event.get("details") or {}
+            if isinstance(details, dict) and details:
+                compact = self._compact_pretty_details(details)
+                lines.append("")
+                lines.append("### Details")
+                for key, value in compact.items():
+                    lines.append(f"- {key}: {self._render_pretty_value(value)}")
+            lines.append("")
+        self._live_trace_pretty_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def _write_status_file(self) -> None:
         lines = [
