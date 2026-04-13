@@ -364,8 +364,15 @@ def _run_with_runtime_probe(
         env=_python_subprocess_env(config.project_root),
     )
     if process.stdin is not None:
-        process.stdin.write(input_text)
-        process.stdin.close()
+        try:
+            process.stdin.write(input_text)
+            process.stdin.flush()
+        except BrokenPipeError:
+            pass
+        finally:
+            process.stdin.close()
+            # Avoid communicate() trying to flush a closed handle.
+            process.stdin = None
 
     probe_interval = _probe_interval_seconds(config=config, stdin_payload=stdin_payload)
     start_time = time.perf_counter()
