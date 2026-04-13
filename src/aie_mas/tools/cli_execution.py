@@ -57,8 +57,37 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
         "microscopic.inspect_raw_artifact_bundle",
     ]
     catalog: dict[CliCommandId, CliCommandDefinition] = {}
+    supports_required_stdin_keys = "required_stdin_keys" in CliCommandDefinition.model_fields
+    supports_required_payload_keys = "required_payload_keys" in CliCommandDefinition.model_fields
+    supports_required_input_keys = "required_input_keys" in CliCommandDefinition.model_fields
+
+    def _build_definition(
+        *,
+        command_id: CliCommandId,
+        agent_name: str,
+        command_program: str,
+        command_args: list[str],
+        perform_new_calculation: bool,
+        required_stdin_keys: list[str],
+    ) -> CliCommandDefinition:
+        kwargs: dict[str, Any] = {
+            "command_id": command_id,
+            "agent_name": agent_name,
+            "command_program": command_program,
+            "command_args": command_args,
+            "perform_new_calculation": perform_new_calculation,
+        }
+        # Keep compatibility with schema variants across branches.
+        if supports_required_stdin_keys:
+            kwargs["required_stdin_keys"] = required_stdin_keys
+        elif supports_required_payload_keys:
+            kwargs["required_payload_keys"] = required_stdin_keys
+        elif supports_required_input_keys:
+            kwargs["required_input_keys"] = required_stdin_keys
+        return CliCommandDefinition(**kwargs)
+
     for command_id in macro_command_ids:
-        catalog[command_id] = CliCommandDefinition(
+        catalog[command_id] = _build_definition(
             command_id=command_id,  # type: ignore[arg-type]
             agent_name="macro",
             command_program="python3",
@@ -83,7 +112,7 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
             "microscopic.extract_geometry_descriptors_from_bundle",
             "microscopic.inspect_raw_artifact_bundle",
         }
-        catalog[command_id] = CliCommandDefinition(
+        catalog[command_id] = _build_definition(
             command_id=command_id,  # type: ignore[arg-type]
             agent_name="microscopic",
             command_program="python3",
@@ -95,6 +124,30 @@ def _build_catalog() -> dict[CliCommandId, CliCommandDefinition]:
 
 
 CLI_COMMAND_CATALOG = _build_catalog()
+
+
+def _required_stdin_keys_for_definition(definition: CliCommandDefinition) -> list[str]:
+    for attr_name in ("required_stdin_keys", "required_payload_keys", "required_input_keys"):
+        attr_value = getattr(definition, attr_name, None)
+        if isinstance(attr_value, list):
+            return [str(item) for item in attr_value]
+
+    model_dump = definition.model_dump(mode="python")
+    for field_name in ("required_stdin_keys", "required_payload_keys", "required_input_keys"):
+        field_value = model_dump.get(field_name)
+        if isinstance(field_value, list):
+            return [str(item) for item in field_value]
+
+    # Last-resort compatibility fallback by command namespace.
+    if str(definition.command_id).startswith("macro."):
+        return [
+            "selected_capability",
+            "requested_deliverables",
+            "requested_observable_tags",
+            "binding_mode",
+            "smiles",
+        ]
+    return []
 
 
 def macro_command_id(capability_name: str) -> CliCommandId:
@@ -188,7 +241,8 @@ def validate_cli_action(
                 f"CLI action `{action.command_id}` must provide either `plan` or `microscopic_tool_request` in stdin payload.",
                 command_id=action.command_id,
             )
-    missing_keys = [key for key in definition.required_stdin_keys if key not in action.stdin_payload]
+    required_stdin_keys = _required_stdin_keys_for_definition(definition)
+    missing_keys = [key for key in required_stdin_keys if key not in action.stdin_payload]
     if missing_keys:
         raise CliExecutionError(
             f"CLI action `{action.command_id}` is missing required stdin payload keys: {', '.join(missing_keys)}.",
