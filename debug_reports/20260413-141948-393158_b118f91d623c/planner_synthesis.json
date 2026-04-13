@@ -1,0 +1,58 @@
+{
+  "case_id": "b118f91d623c",
+  "smiles": "N#N=NCCOc4ccc(/C=N/N=c2c1ccccc1c3ccccc23)c(O)c4",
+  "生成方式": "state_derived_planner_synthesis_v1",
+  "猜想": {
+    "当前结论": "neutral aromatic",
+    "置信度": 0.33,
+    "次优假设": "ICT",
+    "次优置信度": 0.23,
+    "结论状态": "best_available",
+    "摘要": "Top1 is neutral aromatic (confidence=0.33) and top2 is ICT (confidence=0.23). decision_gate_status=ready_to_finalize_best_available. pairwise_task_outcome=best_available_tool_blocked."
+  },
+  "推理证据": {
+    "最终证据摘要": [
+      "Top1 is neutral aromatic (0.33) and top2 is ICT (0.23). The latest evidence weakens neither hypothesis chemically but leaves the current top1 unresolved because the last microscopic attempt produced no new molecular evidence and failed for a registry-compatibility reason. For the top2 challenger ICT, the latest round is mildly unfavorable in relative terms because ICT still lacks any direct positive support family while the leader retains the only direct positive ledger support. An additional candidate, unknown, becomes slightly more material because repeated failure of the intended discriminator preserves residual uncertainty. No still-credible additional hypothesis remains in coverage debt; portfolio screening is legitimately complete, so the case remains in pairwise contraction rather than returning to portfolio screening. The key remaining discriminator is a successful internal CT-sensitive readout for the neutral aromatic versus ICT pair. The best next action is microscopic, because verifier supplementation is already sufficient, macro has exhausted its useful role here, and the current bottleneck is specifically a missing internal pairwise discriminator that must now be requested in a registry-supported one-command form.",
+      "Best-available closure keeps 'neutral aromatic' ahead of 'ICT', but the repeated microscopic local limitation shows the remaining gap is not shrinking under the current route: A successful single-command internal microscopic discriminator for CT character in the neutral aromatic versus ICT pair, using a registry-supported route.",
+      "Verifier supplementation for ICT versus neutral aromatic remains sufficient as external context. It helped resolve screening debt and frame the discriminator, but it is not decisive enough to replace the missing internal pairwise readout.",
+      "Closure justification is still collecting. The last targeted internal task failed before execution, so one successful bounded internal pairwise discriminator is still needed before any finalization attempt.",
+      "Portfolio screening remains complete. All still-credible named alternatives have been directly screened or dropped with reason, and no coverage debt remains. The case legitimately remains in pairwise contraction, but closure is still not ready because the latest bounded pairwise microscopic attempt failed before execution.",
+      "Macro has completed its portfolio role and verifier supplementation is already sufficient. The current bottleneck is an internal pairwise closure task. Recent microscopic failures were caused by unsupported task framing rather than exhaustion of microscopic capability, so the route is still viable if contracted to a registry-supported single-command descriptor extraction or similarly supported CT-sensitive observable. Recent working memory repeats the same microscopic local uncertainty, so repeating the same microscopic route is unlikely to shrink the current gap: Microscopic local uncertainty after this Amesp run: the current Amesp registry does not expose the requested microscopic action, so no new local evidence was collected in this round",
+      "Latest evidence: the microscopic attempt failed before execution because the requested action was not supported by the current registry. Therefore no new molecular evidence was produced this round. Existing evidence still favors neutral aromatic modestly through its lone direct support family and earlier rigidity/aromatic-core screening, while ICT remains credible but unsupported directly."
+    ],
+    "关键轮次": [
+      {
+        "round_id": 1,
+        "current_hypothesis": "ICT",
+        "confidence": 0.4,
+        "action_taken": "macro, microscopic",
+        "main_gap": "The main gap is direct screening of TICT via bounded torsion-topology evidence, plus a clearer determination of whether ESIPT should remain credible after the failed direct-geometry readout.",
+        "evidence_summary": "macro: command_id=macro.screen_intramolecular_hbond_preorganization | executed_capability=macro.screen_intramolecular_hbond_preorganization | fulfillment_mode=proxy | Shared prepared geometry was unavailable, so only motif-l... | microscopic: command_id=microscopic.run_baseline_bundle | executed_capability=microscopic.run_baseline_bundle | fulfillment_mode=exact | Amesp route 'baseline_bundle' finished with final_energy_hartree=-67.4009092924, homo_lumo_ga...",
+        "diagnosis_summary": "Top1 is ICT (0.40) and top2 is TICT (0.27). The latest evidence modestly strengthens ICT because the baseline microscopic run is consistent with a conjugated electronically active donor-acceptor scaffold, but it still does not provide di..."
+      },
+      {
+        "round_id": 8,
+        "current_hypothesis": "neutral aromatic",
+        "confidence": 0.307,
+        "action_taken": "verifier",
+        "main_gap": "Direct discriminative evidence between neutral aromatic and ICT is still missing; specifically, the run lacks a direct positive support family showing whether the excited state has appreciable charge-transfer character in this compound.",
+        "evidence_summary": "verifier: The verifier retrieved 4 evidence card(s) covering these topics: esipt, intramolecular_h-bond, geometry_requirement, ortho-hydroxy, schiff_base, ict, hydrazone, solvatochromism,...",
+        "diagnosis_summary": "Top1 is neutral aromatic and top2 is ICT after verifier reweighting. I interpret the verifier evidence as mixed, high-information but mostly class-level/contextual: it helps most by clarifying that ESIPT-like behavior requires favorable ..."
+      },
+      {
+        "round_id": 11,
+        "current_hypothesis": "neutral aromatic",
+        "confidence": 0.33,
+        "action_taken": "microscopic",
+        "main_gap": "A successful single-command internal microscopic discriminator for CT character in the neutral aromatic versus ICT pair, using a registry-supported route.",
+        "evidence_summary": "microscopic: fulfillment_mode=unsupported | Microscopic execution did not start because the Planner explicitly requested a registry-unsupported local task. Blocked request(s): Local microscopic CLI action `run_targeted_st...",
+        "diagnosis_summary": "Top1 is neutral aromatic (0.33) and top2 is ICT (0.23). The latest evidence weakens neither hypothesis chemically but leaves the current top1 unresolved because the last microscopic attempt produced no new molecular evidence and failed f..."
+      }
+    ]
+  },
+  "建议": [
+    "如果需要更高置信度，优先补足当前主缺口：A successful single-command internal microscopic discriminator for CT character in the neutral aromatic versus ICT pair, using a registry-supported route.",
+    "当前结论属于 best-available。对外使用时应明确保留剩余不确定性，不应表述为决定性机制结论。",
+    "当前主要受能力边界限制。若要继续推进，应优先补充能直接输出关键判别量的新 microscopic capability 或更针对性的 verifier 外证。"
+  ]
+}
